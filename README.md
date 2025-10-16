@@ -235,6 +235,12 @@ Made with ❤️ by MOA Community
 
 ## 🧪 CI/CD 測試記錄
 
+- **2025-10-17 (Test #2)**: 測試 hotfix → PR → main 工作流程
+  - 觸發條件: `hotfix/*` 分支 PR 到 `main`
+  - 預期行為: Auto-merge Hotfix → Auto-version → CI Release → CD
+  - 測試目的: 驗證緊急修復的自動化部署流程（不手動改版本號）
+  - 狀態: 測試中 ✅
+
 - **2025-10-17**: 測試 hotfix → main 的完整自動化流程
   - 觸發條件: `hotfix/*` 分支 PR 到 `main`
   - 預期行為: Auto-merge Hotfix → Auto-version → CI Release → CD
