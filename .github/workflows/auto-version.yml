@@ -1,0 +1,131 @@
+name: Auto Version Bump
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_run:
+    workflows: ['Auto Merge Hotfix']
+    types: [completed]
+
+jobs:
+  check-and-bump:
+    runs-on: ubuntu-latest
+    # 對於 PR 關閉事件：只在已合併時執行；對於 Auto Merge Hotfix：只在成功完成時執行
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: write
+    outputs:
+      version_changed: ${{ steps.bump.outputs.version_changed }}
+      new_version: ${{ steps.bump.outputs.new_version }}
+      old_version: ${{ steps.bump.outputs.old_version }}
+      bump_type: ${{ steps.bump.outputs.bump_type }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 配置 Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 分析 Commits 並自動升級版本
+        id: bump
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "📦 當前版本: $CURRENT_VERSION"
+
+          LAST_COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          if echo "$LAST_COMMIT_MSG" | grep -q "chore(release): bump version"; then
+            echo "⏭️ 跳過版本升級 commit，避免無限循環"
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          COMMITS=$(git log ${LAST_TAG:-HEAD~20}..HEAD --pretty=format:"%s" --no-merges)
+
+          if [ -z "$COMMITS" ]; then
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ 沒有新的 commits"
+            exit 0
+          fi
+
+          echo "$COMMITS"
+
+          BUMP_TYPE="none"
+          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|!:"; then
+            BUMP_TYPE="major"
+          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+            BUMP_TYPE="minor"
+          elif echo "$COMMITS" | grep -qiE "^(fix|chore|refactor|perf|test|build|ci|docs|style)(\(.+\))?:"; then
+            BUMP_TYPE="patch"
+          fi
+
+          if [ "$BUMP_TYPE" = "none" ]; then
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          NEW_VERSION=$(npm version $BUMP_TYPE --no-git-tag-version | sed 's/v//')
+          echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "version_changed=true" >> $GITHUB_OUTPUT
+          echo "✅ 版本升級為: $NEW_VERSION"
+
+      - name: 提交與推送變更
+        if: steps.bump.outputs.version_changed == 'true'
+        run: |
+          NEW_VERSION=${{ steps.bump.outputs.new_version }}
+          BUMP_TYPE=${{ steps.bump.outputs.bump_type }}
+
+          git add package.json package-lock.json || true
+          git commit -m "chore(release): bump version to v${NEW_VERSION}" -m "Type: ${BUMP_TYPE}"
+
+          echo "🔄 確保 main 最新..."
+          git pull --rebase origin main || true
+
+          echo "📤 推送到 main..."
+          git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
+
+          echo "🏷️ 建立 tag v${NEW_VERSION}"
+          git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
+          git push origin "v${NEW_VERSION}" || echo "ℹ️ tag 已存在，略過"
+
+          echo "🔄 同步到 dev 分支"
+          # 記住剛剛在 main 上的釋出 commit SHA
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          git fetch origin dev || true
+          git checkout -B dev origin/dev
+          git cherry-pick "$RELEASE_COMMIT" || true
+          git push origin dev || true
+
+  notify:
+    name: 版本升級通知
+    runs-on: ubuntu-latest
+    needs: check-and-bump
+    if: needs.check-and-bump.outputs.version_changed == 'true'
+    steps:
+      - name: 📣 發送版本升級通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🚀 *版本自動升級*
+            *專案:* `${{ github.repository }}`
+            *版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
+            *類型:* `${{ needs.check-and-bump.outputs.bump_type }}`
+            *合併者:* `${{ github.actor }}`
+            [查看 Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

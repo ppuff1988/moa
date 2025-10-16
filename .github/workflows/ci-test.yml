@@ -1,0 +1,107 @@
+name: CI Test
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+
+  test-api:
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ${{ secrets.TEST_DB_USER || 'moa_test_user' }}
+          POSTGRES_PASSWORD: ${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}
+          POSTGRES_DB: ${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: 初始化測試資料庫
+        env:
+          PGPASSWORD: ${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}
+        run: |
+          # 等待資料庫完全就緒
+          sleep 2
+
+          # 執行資料庫初始化腳本
+          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -f migrations/init_database.sql
+
+          # 驗證表是否創建成功
+          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\dt"
+
+      - name: 建置應用程式
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
+
+      - name: 啟動測試伺服器
+        run: npm run start:test &
+        env:
+          DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
+          JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-secret-key-for-testing-only' }}
+
+      - name: 等待伺服器啟動
+        run: npx wait-on http://localhost:5173 --timeout 30000
+
+      - name: 執行 API 測試
+        run: npm run test:api
+        env:
+          CI: true
+          DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
+          JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-secret-key-for-testing-only' }}
+          API_BASE_URL: http://localhost:5173
+
+  notify:
+    name: 測試通知
+    runs-on: ubuntu-latest
+    needs: [lint, test-api]
+    # 只在測試失敗時通知
+    if: always() && (needs.lint.result == 'failure' || needs.test-api.result == 'failure')
+    steps:
+      - name: 📣 發送測試失敗通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            ❌ *CI 測試失敗*
+
+            *專案:* `${{ github.repository }}`
+            *分支:* `${{ github.head_ref || github.ref_name }}`
+            *觸發者:* `${{ github.actor }}`
+            *事件:* `${{ github.event_name }}`
+
+            *失敗項目:*
+            ${{ needs.lint.result == 'failure' && '• ❌ Lint 檢查失敗' || '' }}
+            ${{ needs.test-api.result == 'failure' && '• ❌ API 測試失敗' || '' }}
+
+            [立即查看](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

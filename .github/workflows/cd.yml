@@ -1,0 +1,130 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ['CI Release'] # 確保這個名稱和 CI Release workflow 名稱完全相同
+    types:
+      - completed
+  workflow_dispatch: # 支援手動觸發部署
+  release: # 當 GitHub Release 創建時觸發
+    types: [published]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-production:
+    name: 部署到生產環境
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔐 設定 SSH 金鑰
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 10 -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: 🚀 部署到伺服器
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          PUBLIC_GTM_ID: ${{ vars.PUBLIC_GTM_ID }}
+        run: |
+          set -euxo pipefail
+
+          SSH_OPTS="-i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+
+          max_attempts=3
+          attempt=1
+
+          while [ $attempt -le $max_attempts ]; do
+            echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
+            if ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "
+              set -euo pipefail
+              cd $DEPLOY_PATH
+              git pull origin main
+              printf '%s\n' \
+                'DOCKER_USERNAME=$DOCKER_USERNAME' \
+                'DATABASE_URL=$DATABASE_URL' \
+                'JWT_SECRET=$JWT_SECRET' \
+                'JWT_EXPIRES_IN=30d' \
+                'POSTGRES_USER=$POSTGRES_USER' \
+                'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' \
+                'POSTGRES_DB=$POSTGRES_DB' \
+                'POSTGRES_PORT=5432' \
+                'PORT=5173' \
+                'NODE_ENV=production' \
+                'PUBLIC_GTM_ID=$PUBLIC_GTM_ID' \
+                > .env
+              chmod +x deploy-prod.sh
+              ./deploy-prod.sh
+            "; then
+              echo "✅ 部署成功！"
+              exit 0
+            fi
+            echo "❌ 部署失敗，10 秒後重試..."
+            sleep 10
+            attempt=$((attempt + 1))
+          done
+          echo "❌ 達到最大重試次數，部署失敗！"
+          exit 1
+
+      - name: 🏥 健康檢查
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+        run: |
+          max_attempts=10
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "嘗試 $attempt/$max_attempts..."
+            if curl -fsS "$DEPLOY_URL/api/health" > /dev/null; then
+              echo "✅ 健康檢查通過！"
+              exit 0
+            fi
+            echo "⏳ 等待服務啟動..."
+            sleep 10
+            attempt=$((attempt + 1))
+          done
+          echo "❌ 健康檢查失敗！"
+          exit 1
+
+      - name: 🧹 清理 SSH 金鑰
+        if: always()
+        run: shred -u ~/.ssh/deploy_key
+
+  notify:
+    name: 發送部署通知
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: always()
+    steps:
+      - name: 📣 發送 Telegram 通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🚀 *部署通知*
+            *狀態:* ${{ needs.deploy-production.result == 'success' && '✅ 成功' || '❌ 失敗' }}
+            *專案:* `${{ github.repository }}`
+            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || github.event_name == 'workflow_run' && 'CI 完成' || '手動觸發' }}`
+            *版本:* `${{ github.event_name == 'release' && github.event.release.tag_name || 'N/A' }}`
+            *提交者:* `${{ github.actor }}`
+            [查看工作流程](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

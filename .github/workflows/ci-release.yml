@@ -1,0 +1,223 @@
+name: CI Release
+
+on:
+  workflow_run:
+    workflows: ['Auto Version Bump']
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  build-docker:
+    runs-on: ubuntu-latest
+    # 只在版本升級成功或手動觸發時執行
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: 檢查觸發來源
+        run: |
+          echo "📋 觸發事件: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "✅ 由 Auto Version Bump 完成觸發"
+            echo "📦 Version Bump 結果: ${{ github.event.workflow_run.conclusion }}"
+          else
+            echo "✅ 手動觸發"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 讀取版本號
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 版本號碼: $VERSION"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/moa:latest
+            ${{ secrets.DOCKER_USERNAME }}/moa:v${{ steps.get_version.outputs.version }}
+            ${{ secrets.DOCKER_USERNAME }}/moa:${{ github.sha }}
+          build-args: |
+            DATABASE_URL=postgres://dummy:dummy@localhost:5432/dummy
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:latest
+          cache-to: type=inline
+          platforms: linux/amd64,linux/arm64
+
+      - run: echo "✅ Docker 映像建置成功"
+
+  create-tag:
+    name: 創建發布標籤
+    runs-on: ubuntu-latest
+    needs: build-docker
+    # 在 Auto Version Bump 成功或手動觸發時創建標籤與 Release
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      tag: ${{ steps.check_version.outputs.tag }}
+      should_release: ${{ steps.check_version.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 檢查版本是否已發布
+        id: check_version
+        run: |
+          VERSION="${{ needs.build-docker.outputs.version }}"
+          TAG="v${VERSION}"
+
+          # 確保取得所有遠端 tags
+          git fetch --tags --force
+
+          # 檢查該版本的 tag 是否已存在（本地或遠端）
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "⏭️ 版本 $TAG 已存在，跳過發布"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ 版本 $TAG 是新版本，將創建發布"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: 創建並推送標籤
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          VERSION="${{ needs.build-docker.outputs.version }}"
+          TAG="v${VERSION}"
+          SHORT_SHA=${GITHUB_SHA::7}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 創建帶註解的標籤
+          git tag -a "$TAG" -m "Release $TAG" -m "Version: $VERSION" -m "Commit: $SHORT_SHA" -m "Triggered by: ${{ github.actor }}"
+          git push origin "$TAG"
+
+          echo "✅ 標籤 $TAG 已創建並推送"
+
+      - name: 生成 Release Notes
+        if: steps.check_version.outputs.should_release == 'true'
+        id: release_notes
+        run: |
+          VERSION="${{ needs.build-docker.outputs.version }}"
+          TAG="v${VERSION}"
+
+          # 獲取上一個版本標籤
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "ℹ️ 這是第一個版本發布"
+            COMMITS="首次發布"
+          else
+            echo "📝 從 $PREV_TAG 到 $TAG 的變更"
+            # 獲取兩個版本之間的 commit 記錄
+            COMMITS=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges | head -n 20)
+          fi
+
+          # 將多行內容儲存到 output
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: 創建 GitHub Release
+        if: steps.check_version.outputs.should_release == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.build-docker.outputs.version }}';
+            const tag = 'v' + version;
+            const shortSha = '${{ github.sha }}'.substring(0, 7);
+            const prevTag = '${{ steps.release_notes.outputs.prev_tag }}';
+            const commits = `${{ steps.release_notes.outputs.commits }}`;
+
+            let body = `## 🚀 Release ${version}\n\n`;
+            body += `**發布時間:** ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}\n`;
+            body += `**Commit:** ${shortSha}\n`;
+            body += `**觸發者:** ${{ github.actor }}\n\n`;
+
+            if (prevTag) {
+              body += `### 📝 更新內容 (${prevTag} → ${tag})\n\n${commits}\n\n`;
+            } else {
+              body += `### 📝 首次發布\n\n`;
+            }
+
+            body += `### 📦 Docker Images\n`;
+            body += `\`\`\`\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:latest\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:v${version}\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:${shortSha}\n`;
+            body += `\`\`\`\n\n`;
+
+            body += `### 🔗 相關連結\n`;
+            body += `- [查看 Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\n`;
+            body += `- [查看 Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n`;
+
+            try {
+              const release = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `Release ${tag}`,
+                body: body,
+                draft: false,
+                prerelease: version.includes('-') || version.includes('alpha') || version.includes('beta')
+              });
+              
+              console.log(`✅ GitHub Release 已創建: ${release.data.html_url}`);
+            } catch (error) {
+              console.log(`⚠️ 創建 Release 失敗: ${error.message}`);
+              throw error;
+            }
+
+  notify:
+    name: 發布通知
+    runs-on: ubuntu-latest
+    needs: [build-docker, create-tag]
+    # 發布失敗或新版本發布時通知
+    if: always() && (needs.build-docker.result == 'failure' || needs.create-tag.outputs.should_release == 'true')
+    steps:
+      - name: 📣 發送發布通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            ${{ needs.build-docker.result == 'failure' && '❌ *Docker 建置失敗*' || '🎉 *新版本發布*' }}
+
+            *專案:* `${{ github.repository }}`
+            *版本:* `v${{ needs.build-docker.outputs.version }}`
+            *提交者:* `${{ github.actor }}`
+
+            ${{ needs.build-docker.result == 'failure' && '⚠️ Docker 建置失敗，請檢查錯誤' || '✅ Docker 映像已建置並推送' }}
+            ${{ needs.create-tag.outputs.should_release == 'true' && format('✅ Git tag 和 GitHub Release 已創建', '') || '' }}
+
+            *Docker 標籤:*
+            • `${{ secrets.DOCKER_USERNAME }}/moa:latest`
+            • `${{ secrets.DOCKER_USERNAME }}/moa:v${{ needs.build-docker.outputs.version }}`
+
+            [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: moa_postgres_prod
+    restart: always
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - moa_pgdata_prod:/var/lib/postgresql/data
+      - ./migrations/init_database.sql:/docker-entrypoint-initdb.d/01-init_database.sql
+      - ./migrations/remove_test_users.sql:/migrations/remove_test_users.sql
+      - ./migrations/reset_games.sql:/migrations/reset_games.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - moa_network
+
+  app:
+    image: ${DOCKER_USERNAME}/moa:latest
+    container_name: moa_app_prod
+    restart: always
+    ports:
+      - '${PORT:-5173}:5173'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-30d}
+      - PORT=5173
+      - SOCKET_PORT=5173
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moa_network
+    healthcheck:
+      test:
+        ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:5173/api/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  moa_pgdata_prod:
+    driver: local
+
+networks:
+  moa_network:
+    driver: bridge

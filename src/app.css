@@ -1,0 +1,165 @@
+/* 古董局主题配色 - 基于中式古董美学 */
+:root {
+	--background: 25 10% 11%; /* 墨黑背景 #1C1B19 */
+	--foreground: 42 15% 96%; /* 米白文字 #F5F1E8 */
+
+	--card: 38 25% 83%; /* 宣纸米色 #E8D9C5 */
+	--card-foreground: 30 15% 20%; /* 深色文字在浅色卡片上 */
+
+	--popover: 38 25% 83%;
+	--popover-foreground: 30 15% 20%;
+
+	--primary: 1 63% 39%; /* 朱红色 #A52422 */
+	--primary-foreground: 42 15% 96%;
+
+	--secondary: 42 30% 59%; /* 鎏金色 #C6A664 */
+	--secondary-foreground: 30 15% 20%;
+
+	--muted: 38 25% 83%; /* 宣纸色 */
+	--muted-foreground: 30 15% 50%; /* 灰褐色 #7A6E5E */
+
+	--accent: 150 15% 36%; /* 青铜/黛绿 #4B6F5B */
+	--accent-foreground: 42 15% 96%;
+
+	--destructive: 0 84% 60%;
+	--destructive-foreground: 42 15% 96%;
+
+	--border: 30 20% 25%; /* 深色边框 */
+	--input: 30 20% 25%;
+	--ring: 1 63% 39%; /* 朱红色焦点环 */
+
+	--radius: 0.75rem;
+
+	/* 古董风格渐变 */
+	--gradient-antique: linear-gradient(
+		135deg,
+		hsl(var(--card)),
+		hsl(var(--card)) 50%,
+		hsl(42 20% 78%)
+	);
+	--gradient-gold: linear-gradient(135deg, hsl(var(--secondary)), hsl(42 40% 65%));
+	--gradient-shadow: 0 10px 30px -5px hsl(var(--primary) / 0.3);
+
+	/* 古董纹理阴影 */
+	--shadow-antique: 0 8px 25px -5px hsl(30 20% 15% / 0.4), inset 0 1px 0 hsl(42 30% 90% / 0.3);
+	--transition-elegant: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* 全域基礎樣式 */
+* {
+	box-sizing: border-box;
+}
+
+html {
+	color-scheme: dark;
+}
+
+body {
+	background-color: hsl(var(--background));
+	color: hsl(var(--foreground));
+	font-family:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	line-height: 1.6;
+	transition: var(--transition-elegant);
+}
+
+/* 卡片樣式 */
+.card {
+	background: hsl(var(--card));
+	color: hsl(var(--card-foreground));
+	border: 1px solid hsl(var(--border));
+	border-radius: calc(var(--radius));
+	box-shadow: var(--shadow-antique);
+	transition: var(--transition-elegant);
+}
+
+.card:hover {
+	box-shadow: var(--gradient-shadow);
+	transform: translateY(-2px);
+}
+
+/* 按鈕樣式 */
+.btn-primary {
+	background: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+	border: 1px solid hsl(var(--primary));
+	border-radius: calc(var(--radius));
+	padding: 0.75rem 1.5rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: var(--transition-elegant);
+	box-shadow: var(--shadow-antique);
+}
+
+.btn-primary:hover {
+	background: hsl(var(--primary) / 0.9);
+	box-shadow: var(--gradient-shadow);
+	transform: translateY(-1px);
+}
+
+.btn-secondary {
+	background: var(--gradient-gold);
+	color: hsl(var(--secondary-foreground));
+	border: 1px solid hsl(var(--secondary));
+	border-radius: calc(var(--radius));
+	padding: 0.75rem 1.5rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: var(--transition-elegant);
+	box-shadow: var(--shadow-antique);
+}
+
+.btn-secondary:hover {
+	background: hsl(var(--secondary) / 0.9);
+	transform: translateY(-1px);
+}
+
+/* 輸入框樣式 */
+input,
+textarea,
+select {
+	background: hsl(var(--background));
+	color: hsl(var(--foreground));
+	border: 2px solid hsl(var(--border));
+	border-radius: calc(var(--radius));
+	padding: 0.75rem 1rem;
+	transition: var(--transition-elegant);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+	outline: none;
+	border-color: hsl(var(--ring));
+	box-shadow: 0 0 0 3px hsl(var(--ring) / 0.2);
+}
+
+/* 鏈接樣式 */
+a {
+	color: hsl(var(--primary));
+	text-decoration: none;
+	transition: var(--transition-elegant);
+}
+
+a:hover {
+	color: hsl(var(--primary) / 0.8);
+	text-decoration: underline;
+}
+
+/* 滾動條樣式 */
+::-webkit-scrollbar {
+	width: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+	background: hsl(var(--border));
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: hsl(var(--primary));
+}

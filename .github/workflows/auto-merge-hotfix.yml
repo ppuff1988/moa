@@ -1,0 +1,151 @@
+name: Auto Merge Hotfix
+
+on:
+  workflow_run:
+    workflows: ['CI Test']
+    types:
+      - completed
+
+jobs:
+  auto-merge-hotfix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    # 只在 CI Test 成功且是 PR 事件時執行
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const associatedPRs = context.payload.workflow_run.pull_requests;
+
+            if (!associatedPRs || associatedPRs.length === 0) {
+              console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
+              return;
+            }
+
+            for (const associatedPR of associatedPRs) {
+              // 獲取完整的 PR 資訊
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: associatedPR.number
+              });
+
+              // 只處理 hotfix 分支且目標是 main 的 PR
+              if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) {
+                console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (hotfix/* → main, 非 draft)`);
+                continue;
+              }
+
+              const sourceBranch = pr.head.ref;
+              const targetBranch = pr.base.ref;
+
+              console.log(`🚨 處理 HOTFIX PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
+
+              if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
+                // 合併到 main (加上 fix: 前綴以觸發 auto version bump)
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  merge_method: 'squash',
+                  commit_title: `fix: 🚨 [HOTFIX] ${pr.title}`,
+                  commit_message: `緊急修復 - 原始 PR #${pr.number}\n\n${pr.body || ''}`
+                });
+
+                console.log(`🚨 HOTFIX PR #${pr.number} 已自動合併到 main (含 fix: 前綴)`);
+
+                // 自動建立同步到 dev 的 PR
+                try {
+                  console.log('🔄 建立 hotfix 同步到 dev 的 PR...');
+
+                  const syncPr = await github.rest.pulls.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: `[HOTFIX SYNC] ${pr.title}`,
+                    head: sourceBranch,
+                    base: 'dev',
+                    body: `🚨 自動同步 hotfix 到 dev\n\n原始 PR: #${pr.number}\n\n${pr.body || ''}`
+                  });
+
+                  // 加上 label
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: syncPr.data.number,
+                    labels: ['hotfix', 'auto-sync']
+                  });
+
+                  console.log(`✅ 已建立同步 PR #${syncPr.data.number} 到 dev`);
+                  console.log(`📝 該 PR 會在 CI 測試通過後自動合併到 dev（並刪除 ${sourceBranch} 分支）`);
+                } catch (error) {
+                  if (error.status === 422) {
+                    console.log('ℹ️ hotfix 已經存在於 dev 或無需同步，刪除 hotfix 分支');
+                    
+                    // 如果不需要同步，直接刪除 hotfix 分支
+                    try {
+                      await github.rest.git.deleteRef({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        ref: `heads/${sourceBranch}`
+                      });
+                      console.log(`🗑️ 已刪除分支: ${sourceBranch}`);
+                    } catch (delError) {
+                      console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
+                    }
+                  } else {
+                    console.log(`⚠️ 建立同步 PR 失敗: ${error.message}`);
+                  }
+                }
+              } else if (pr.mergeable_state === 'dirty') {
+                console.log(`❌ HOTFIX PR #${pr.number} 有衝突，需要手動處理`);
+
+                // 加上 label 提醒
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: ['hotfix', 'merge-conflict', 'needs-attention']
+                });
+
+                // 留言通知
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: '🚨 **HOTFIX 自動合併失敗**\n\n此 PR 存在合併衝突，請立即手動處理。'
+                });
+              } else {
+                console.log(`⏳ HOTFIX PR #${pr.number} 狀態: ${pr.mergeable_state}，等待就緒`);
+              }
+            }
+
+  notify:
+    name: Hotfix 合併通知
+    runs-on: ubuntu-latest
+    needs: auto-merge-hotfix
+    # Hotfix 是緊急修復，成功和失敗都要通知
+    if: always()
+    steps:
+      - name: 📣 發送 Hotfix 合併通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            ${{ needs.auto-merge-hotfix.result == 'success' && '🚨 *Hotfix 自動合併成功*' || '❌ *Hotfix 自動合併失敗*' }}
+
+            *專案:* `${{ github.repository }}`
+            *分支:* `${{ github.event.workflow_run.head_branch }} → main`
+            *觸發者:* `${{ github.event.workflow_run.actor.login }}`
+
+            ${{ needs.auto-merge-hotfix.result == 'success' && '⚠️ 這是緊急修復，已自動合併到生產環境' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
+
+            [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
