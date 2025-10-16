@@ -52,7 +52,15 @@ jobs:
           fi
 
           LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-          COMMITS=$(git log ${LAST_TAG:-HEAD~20}..HEAD --pretty=format:"%s" --no-merges)
+
+          # 如果沒有 tag，使用所有提交記錄（適用於新倉庫）
+          if [ -z "$LAST_TAG" ]; then
+            # 獲取第一個提交的 hash
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+            COMMITS=$(git log ${FIRST_COMMIT}..HEAD --pretty=format:"%s" --no-merges)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" --no-merges)
+          fi
 
           if [ -z "$COMMITS" ]; then
             echo "version_changed=false" >> $GITHUB_OUTPUT
