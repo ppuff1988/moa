@@ -235,6 +235,16 @@ Made with ❤️ by MOA Community
 
 ## 🧪 CI/CD 測試記錄
 
+- **2025-10-17 (Test #3)**: 測試 hotfix 自動刪除分支功能
+  - 觸發條件: `hotfix/*` 分支 PR 到 `main`
+  - 預期行為: Auto-merge → Auto-delete branch → Auto-version → CI Release → CD
+  - 測試目的: 驗證 hotfix 分支在合併後自動刪除
+  - 修復內容:
+    - ✅ 新增 hotfix 分支自動刪除功能
+    - ✅ 修復 auto-version 的 HEAD~20 問題（新倉庫適配）
+    - ✅ 測試 lint-staged 在 hotfix 分支的行為
+  - 狀態: 測試中 🚀
+
 - **2025-10-17 (Test #2)**: 測試 hotfix → PR → main 工作流程
   - 觸發條件: `hotfix/*` 分支 PR 到 `main`
   - 預期行為: Auto-merge Hotfix → Auto-version → CI Release → CD
