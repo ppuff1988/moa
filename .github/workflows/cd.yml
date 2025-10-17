@@ -6,6 +6,15 @@ on:
     types:
       - completed
   workflow_dispatch: # 支援手動觸發部署
+    inputs:
+      version:
+        description: '部署版本號'
+        required: false
+        type: string
+      tag:
+        description: '部署標籤'
+        required: false
+        type: string
   release: # 當 GitHub Release 創建時觸發
     types: [published]
 
@@ -24,6 +33,24 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: 📦 讀取部署版本
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            echo "ℹ️ 使用手動指定版本: $VERSION"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            echo "ℹ️ 使用 Release 版本: $VERSION"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "ℹ️ 從 package.json 讀取版本: $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 準備部署版本: $VERSION"
 
       - name: 🔐 設定 SSH 金鑰
         run: |
@@ -45,6 +72,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ vars.POSTGRES_DB }}
           PUBLIC_GTM_ID: ${{ vars.PUBLIC_GTM_ID }}
+          DEPLOY_VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euxo pipefail
 
@@ -53,12 +81,16 @@ jobs:
           max_attempts=3
           attempt=1
 
+          echo "🚀 開始部署版本: $DEPLOY_VERSION"
+
           while [ $attempt -le $max_attempts ]; do
             echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
             if ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "
               set -euo pipefail
               cd $DEPLOY_PATH
+              echo '📥 拉取最新代碼...'
               git pull origin main
+              echo '⚙️ 設定環境變數...'
               printf '%s\n' \
                 'DOCKER_USERNAME=$DOCKER_USERNAME' \
                 'DATABASE_URL=$DATABASE_URL' \
@@ -72,10 +104,11 @@ jobs:
                 'NODE_ENV=production' \
                 'PUBLIC_GTM_ID=$PUBLIC_GTM_ID' \
                 > .env
+              echo '🚀 執行部署腳本...'
               chmod +x deploy-prod.sh
               ./deploy-prod.sh
             "; then
-              echo "✅ 部署成功！"
+              echo "✅ 部署成功！版本: $DEPLOY_VERSION"
               exit 0
             fi
             echo "❌ 部署失敗，10 秒後重試..."
@@ -114,6 +147,22 @@ jobs:
     needs: deploy-production
     if: always()
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: 📦 讀取版本
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: 📣 發送 Telegram 通知
         uses: appleboy/telegram-action@master
         with:
@@ -122,9 +171,11 @@ jobs:
           format: markdown
           message: |
             🚀 *部署通知*
+
             *狀態:* ${{ needs.deploy-production.result == 'success' && '✅ 成功' || '❌ 失敗' }}
             *專案:* `${{ github.repository }}`
-            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || github.event_name == 'workflow_run' && 'CI 完成' || '手動觸發' }}`
-            *版本:* `${{ github.event_name == 'release' && github.event.release.tag_name || 'N/A' }}`
+            *版本:* `${{ steps.get_version.outputs.version }}`
+            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || github.event_name == 'workflow_run' && 'CI Release 完成' || '手動觸發' }}`
             *提交者:* `${{ github.actor }}`
+
             [查看工作流程](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

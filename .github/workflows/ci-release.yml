@@ -221,3 +221,49 @@ jobs:
             • `${{ secrets.DOCKER_USERNAME }}/moa:v${{ needs.build-docker.outputs.version }}`
 
             [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+  trigger-deploy:
+    name: 觸發生產部署
+    runs-on: ubuntu-latest
+    needs: [build-docker, create-tag]
+    # 只在建立新版本且 Docker 建置成功時觸發部署
+    if: |
+      needs.build-docker.result == 'success' &&
+      needs.create-tag.outputs.should_release == 'true'
+    steps:
+      - name: 🚀 觸發 CD 工作流程
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            const version = '${{ needs.build-docker.outputs.version }}';
+            const tag = '${{ needs.create-tag.outputs.tag }}';
+
+            console.log('🚀 準備觸發 CD 部署...');
+            console.log(`   版本: ${version}`);
+            console.log(`   Tag: ${tag}`);
+            console.log('');
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'cd.yml',
+                ref: 'main',
+                inputs: {
+                  version: version,
+                  tag: tag
+                }
+              });
+              
+              console.log('✅ CD 工作流程已成功觸發');
+              console.log('ℹ️ 請前往 Actions 頁面查看部署進度');
+              console.log(`🔗 https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/cd.yml`);
+            } catch (error) {
+              console.error('❌ 觸發 CD 失敗:', error.message);
+              console.error('請檢查：');
+              console.error('1. PAT token 是否有正確設定');
+              console.error('2. PAT 是否有 workflow 權限');
+              console.error('3. cd.yml 檔案是否存在');
+              throw error;
+            }
