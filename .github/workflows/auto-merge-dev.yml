@@ -65,11 +65,11 @@ jobs:
                 });
 
                 console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch}`);
-                
+
                 // 自動刪除源分支（排除保護分支）
                 const protectedBranches = ['main', 'dev', 'staging', 'production'];
                 const shouldDelete = !protectedBranches.includes(sourceBranch);
-                
+
                 if (shouldDelete) {
                   try {
                     await github.rest.git.deleteRef({
