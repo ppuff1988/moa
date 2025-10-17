@@ -101,6 +101,18 @@ jobs:
                     }
                   } else {
                     console.log(`⚠️ 建立同步 PR 失敗: ${error.message}`);
+                    
+                    // 建立同步 PR 失敗時也應該刪除 hotfix 分支（因為已經合併到 main 了）
+                    try {
+                      await github.rest.git.deleteRef({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        ref: `heads/${sourceBranch}`
+                      });
+                      console.log(`🗑️ 已刪除分支: ${sourceBranch}（雖然同步失敗，但 hotfix 已合併到 main）`);
+                    } catch (delError) {
+                      console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
+                    }
                   }
                 }
               } else if (pr.mergeable_state === 'dirty') {
