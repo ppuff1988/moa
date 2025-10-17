@@ -23,6 +23,9 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            console.log('🔍 開始檢查 main → dev 同步狀態...');
+            console.log('');
+
             // 從 main 的 package.json 讀取版本
             const { data: pkg } = await github.rest.repos.getContent({
               owner: context.repo.owner,
@@ -34,7 +37,44 @@ jobs:
             const version = JSON.parse(content).version;
             core.setOutput('version', version);
 
-            // 若已有同樣的開啟 PR，則略過但輸出 PR 資訊
+            console.log(`📦 Main 分支版本: v${version}`);
+            console.log('');
+
+            // 檢查 main 和 dev 的 commit 差異
+            try {
+              const { data: comparison } = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: 'dev',
+                head: 'main'
+              });
+              
+              console.log(`📊 Main 領先 Dev ${comparison.ahead_by} 個 commits`);
+              console.log(`📊 Dev 領先 Main ${comparison.behind_by} 個 commits`);
+              
+              if (comparison.ahead_by === 0) {
+                console.log('');
+                console.log('✅ Dev 分支已經是最新的，無需建立同步 PR');
+                core.setOutput('result', 'up-to-date');
+                return;
+              }
+              
+              console.log('');
+              console.log('📝 需要同步的變更：');
+              comparison.commits.slice(0, 5).forEach(commit => {
+                console.log(`   - ${commit.sha.slice(0, 7)}: ${commit.commit.message.split('\n')[0]}`);
+              });
+              if (comparison.commits.length > 5) {
+                console.log(`   ... 還有 ${comparison.commits.length - 5} 個 commits`);
+              }
+              console.log('');
+            } catch (error) {
+              console.log(`⚠️ 無法比較分支: ${error.message}`);
+              console.log('繼續檢查是否需要建立 PR...');
+              console.log('');
+            }
+
+            // 檢查是否已有開啟的 main → dev PR
             const { data: prs } = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -45,11 +85,16 @@ jobs:
 
             if (prs.length > 0) {
               console.log(`ℹ️ 已存在同步 PR #${prs[0].number}: ${prs[0].html_url}`);
+              console.log(`   狀態: ${prs[0].state}`);
+              console.log(`   標題: ${prs[0].title}`);
               core.setOutput('result', 'exists');
               core.setOutput('pr_number', String(prs[0].number));
               core.setOutput('pr_url', prs[0].html_url);
               return;
             }
+
+            console.log('📌 沒有開啟的同步 PR，準備建立新的...');
+            console.log('');
 
             const title = `chore(release): sync main to dev v${version}`;
             const body = [
@@ -82,7 +127,9 @@ jobs:
             core.setOutput('pr_number', String(pr.number));
             core.setOutput('pr_url', pr.html_url);
 
-            // 可選：嘗試啟用 GitHub Auto-merge（Rebase）。若倉庫未開啟，會被 try/catch 吃掉。
+            // 嘗試啟用 GitHub Auto-merge（需要分支保護規則）
+            console.log('');
+            console.log('🔍 嘗試啟用 GitHub 內建 Auto-merge...');
             try {
               await github.graphql(`
                 mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
@@ -97,11 +144,22 @@ jobs:
                 pullRequestId: pr.node_id,
                 mergeMethod: 'REBASE'
               });
-              console.log('🤖 已嘗試啟用 GitHub Auto-merge（Rebase）');
+              console.log('✅ GitHub Auto-merge 已啟用（Rebase 模式）');
+              console.log('ℹ️ PR 將在所有檢查通過後自動合併');
             } catch (e) {
-              console.log(`ℹ️ 無法啟用 GitHub Auto-merge（可能未啟用），將交由 Auto Merge to Dev 處理：${e.message}`);
+              console.log('⚠️ 無法啟用 GitHub Auto-merge');
+              console.log(`   原因: ${e.message}`);
+              console.log('');
+              console.log('💡 要啟用 GitHub Auto-merge，需要：');
+              console.log('   1. Settings → General → Pull Requests');
+              console.log('      ☑ Allow auto-merge');
+              console.log('');
+              console.log('   2. Settings → Branches → Branch protection rule (dev)');
+              console.log('      ☑ Require status checks to pass before merging');
+              console.log('      ☑ 選擇必要的檢查項目（如：lint, test-api）');
+              console.log('');
+              console.log('✅ 不過沒關係！Auto Merge to Dev 工作流程會在 CI 通過後自動處理');
             }
-
   notify:
     name: TG 通知 - Sync Main→Dev
     runs-on: ubuntu-latest
