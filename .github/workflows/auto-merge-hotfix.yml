@@ -116,6 +116,7 @@ jobs:
             *分支:* `${{ github.event.workflow_run.head_branch }} → main`
             *觸發者:* `${{ github.event.workflow_run.actor.login }}`
 
-            ${{ needs.auto-merge-hotfix.result == 'success' && '✅ Hotfix 已合併到 main 並刪除分支\n🔄 已觸發 sync-main-to-dev workflow' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
+            ${{ needs.auto-merge-hotfix.result == 'success' && '✅ Hotfix 已合併到 main 並刪除分支
+            🔄 已觸發 sync-main-to-dev workflow' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
 
             [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
