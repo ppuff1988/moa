@@ -98,9 +98,7 @@ jobs:
           echo "📤 推送到 main..."
           git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
 
-          echo "🏷️ 建立 tag v${NEW_VERSION}"
-          git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
-          git push origin "v${NEW_VERSION}" || echo "ℹ️ tag 已存在，略過"
+          echo "✅ 版本升級完成，tag 將由 CI Release workflow 創建"
 
           echo "🔄 同步到 dev 分支"
           # 記住剛剛在 main 上的釋出 commit SHA
