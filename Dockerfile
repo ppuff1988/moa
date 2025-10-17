@@ -1,13 +1,15 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with optimizations for cross-platform builds
+# Use --ignore-scripts to avoid running scripts that might fail in QEMU
+# Use --prefer-offline and --no-audit to reduce network operations
+RUN npm ci --ignore-scripts --prefer-offline --no-audit
 
 # Copy source code
 COPY . .
@@ -26,16 +28,17 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install curl for healthcheck and verify npm is available
-RUN apk add --no-cache curl && \
-    node --version && \
-    npm --version
+# Install curl for healthcheck
+RUN apk add --no-cache curl
 
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --omit=dev --ignore-scripts
+# Install production dependencies with QEMU-friendly settings
+# --ignore-scripts prevents running native binaries that fail in QEMU
+# --prefer-offline reduces network operations
+# --no-audit speeds up installation
+RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit
 
 # Copy built application from builder
 COPY --from=builder /app/build ./build
