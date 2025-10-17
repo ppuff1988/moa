@@ -60,60 +60,18 @@ jobs:
                 });
 
                 console.log(`🚨 HOTFIX PR #${pr.number} 已自動合併到 main (含 fix: 前綴)`);
+                console.log('ℹ️ 將觸發 Auto Version Bump → Sync Main to Dev 流程');
 
-                // 自動建立同步到 dev 的 PR
+                // 立即刪除 hotfix 分支
                 try {
-                  console.log('🔄 建立 hotfix 同步到 dev 的 PR...');
-
-                  const syncPr = await github.rest.pulls.create({
+                  await github.rest.git.deleteRef({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    title: `[HOTFIX SYNC] ${pr.title}`,
-                    head: sourceBranch,
-                    base: 'dev',
-                    body: `🚨 自動同步 hotfix 到 dev\n\n原始 PR: #${pr.number}\n\n${pr.body || ''}`
+                    ref: `heads/${sourceBranch}`
                   });
-
-                  // 加上 label
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: syncPr.data.number,
-                    labels: ['hotfix', 'auto-sync']
-                  });
-
-                  console.log(`✅ 已建立同步 PR #${syncPr.data.number} 到 dev`);
-                  console.log(`📝 該 PR 會在 CI 測試通過後自動合併到 dev（並刪除 ${sourceBranch} 分支）`);
-                } catch (error) {
-                  if (error.status === 422) {
-                    console.log('ℹ️ hotfix 已經存在於 dev 或無需同步，刪除 hotfix 分支');
-                    
-                    // 如果不需要同步，直接刪除 hotfix 分支
-                    try {
-                      await github.rest.git.deleteRef({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        ref: `heads/${sourceBranch}`
-                      });
-                      console.log(`🗑️ 已刪除分支: ${sourceBranch}`);
-                    } catch (delError) {
-                      console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
-                    }
-                  } else {
-                    console.log(`⚠️ 建立同步 PR 失敗: ${error.message}`);
-                    
-                    // 建立同步 PR 失敗時也應該刪除 hotfix 分支（因為已經合併到 main 了）
-                    try {
-                      await github.rest.git.deleteRef({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        ref: `heads/${sourceBranch}`
-                      });
-                      console.log(`🗑️ 已刪除分支: ${sourceBranch}（雖然同步失敗，但 hotfix 已合併到 main）`);
-                    } catch (delError) {
-                      console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
-                    }
-                  }
+                  console.log(`🗑️ 已刪除 hotfix 分支: ${sourceBranch}`);
+                } catch (delError) {
+                  console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
                 }
               } else if (pr.mergeable_state === 'dirty') {
                 console.log(`❌ HOTFIX PR #${pr.number} 有衝突，需要手動處理`);
@@ -158,6 +116,6 @@ jobs:
             *分支:* `${{ github.event.workflow_run.head_branch }} → main`
             *觸發者:* `${{ github.event.workflow_run.actor.login }}`
 
-            ${{ needs.auto-merge-hotfix.result == 'success' && '⚠️ 這是緊急修復，已自動合併到生產環境' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
+            ${{ needs.auto-merge-hotfix.result == 'success' && '✅ Hotfix 已合併到 main 並刪除分支\n🔄 已觸發 sync-main-to-dev workflow' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
 
             [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
