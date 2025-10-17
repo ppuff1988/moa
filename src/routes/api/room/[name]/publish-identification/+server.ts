@@ -148,23 +148,25 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		// 計算最終分數
 		let xuYuanScore = game.totalScore || 0;
 
-		// 找出老朝奉成功 +1 分
+		// 許愿陣營找出老朝奉 → +1 分
 		if (laoChaoFengSuccess) {
 			xuYuanScore += 1;
 		}
 
-		// 老朝奉沒找出許愿 +2 分
+		// 老朝奉找出許愿 → 許愿陣營不加分（防守成功）
+		// 老朝奉沒找出許愿 → 許愿陣營 +2 分（進攻成功）
 		if (!xuYuanSuccess) {
 			xuYuanScore += 2;
 		}
 
-		// 藥不然沒找出方震 +1 分
+		// 藥不然找出方震 → 許愿陣營不加分（防守成功）
+		// 藥不然沒找出方震 → 許愿陣營 +1 分（進攻成功）
 		if (yaoburanPlayer && !fangZhenSuccess) {
 			xuYuanScore += 1;
 		}
 
 		// 決定獲勝陣營
-		const winner = xuYuanScore >= 4 ? '許愿陣營' : '老朝奉陣營';
+		const winner = xuYuanScore >= 6 ? '許愿陣營' : '老朝奉陣營';
 
 		// 更新遊戲狀態
 		await db
