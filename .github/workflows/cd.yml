@@ -55,9 +55,26 @@ jobs:
       - name: 🔐 設定 SSH 金鑰
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "📝 寫入 SSH 金鑰..."
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -T 10 -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+          echo "🔍 驗證金鑰格式..."
+          if ! ssh-keygen -l -f ~/.ssh/deploy_key > /dev/null 2>&1; then
+            echo "⚠️ 金鑰格式可能有問題，嘗試修復..."
+            # 移除可能的 Windows 換行符號
+            dos2unix ~/.ssh/deploy_key 2>/dev/null || sed -i 's/\r$//' ~/.ssh/deploy_key
+          fi
+
+          echo "✅ 金鑰權限已設定為 600"
+          ls -la ~/.ssh/deploy_key
+
+          echo "🔑 添加 SSH known_hosts..."
+          ssh-keyscan -T 10 -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          echo "✅ SSH 設定完成"
 
       - name: 🚀 部署到伺服器
         env:
