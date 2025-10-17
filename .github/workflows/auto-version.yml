@@ -108,14 +108,7 @@ jobs:
           git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
 
           echo "✅ 版本升級完成，tag 將由 CI Release workflow 創建"
-
-          echo "🔄 同步到 dev 分支"
-          # 記住剛剛在 main 上的釋出 commit SHA
-          RELEASE_COMMIT=$(git rev-parse HEAD)
-          git fetch origin dev || true
-          git checkout -B dev origin/dev
-          git cherry-pick "$RELEASE_COMMIT" || true
-          git push origin dev || true
+          echo "ℹ️ Sync Main to Dev workflow 將自動建立同步 PR"
 
   notify:
     name: 版本升級通知

@@ -51,6 +51,21 @@ jobs:
               
               console.log(`📊 Main 領先 Dev ${comparison.ahead_by} 個 commits`);
               console.log(`📊 Dev 領先 Main ${comparison.behind_by} 個 commits`);
+
+              // 檢測分支分叉：兩邊都有獨有的 commits
+              if (comparison.behind_by > 0 && comparison.ahead_by > 0) {
+                console.log('');
+                console.log('⚠️ 警告：分支已分叉！');
+                console.log(`   Main 獨有: ${comparison.ahead_by} commits`);
+                console.log(`   Dev 獨有: ${comparison.behind_by} commits`);
+                console.log('');
+                console.log('🔧 這通常是由於 cherry-pick 導致的重複 commits。');
+                console.log('💡 建議操作：手動檢查並重置 dev 分支到 main');
+                console.log('');
+                console.log('⏭️ 跳過自動建立 PR，避免潛在的合併衝突');
+                core.setOutput('result', 'diverged');
+                return;
+              }
               
               if (comparison.ahead_by === 0) {
                 console.log('');
@@ -103,7 +118,7 @@ jobs:
               `- 新版本: v${version}`,
               `- 來源: main → dev`,
               '',
-              '此 PR 將在 CI 通過後由 Auto Merge to Dev workflow 以 Rebase 模式自動合併（符合 Require linear history）'
+              '此 PR 將在 CI 通過後由 Auto Merge to Dev workflow 以 Squash 模式自動合併（符合 Require linear history）'
             ].join('\n');
 
             const { data: pr } = await github.rest.pulls.create({
@@ -142,9 +157,9 @@ jobs:
                 }
               `, {
                 pullRequestId: pr.node_id,
-                mergeMethod: 'REBASE'
+                mergeMethod: 'SQUASH'
               });
-              console.log('✅ GitHub Auto-merge 已啟用（Rebase 模式）');
+              console.log('✅ GitHub Auto-merge 已啟用（Squash 模式）');
               console.log('ℹ️ PR 將在所有檢查通過後自動合併');
             } catch (e) {
               console.log('⚠️ 無法啟用 GitHub Auto-merge');
