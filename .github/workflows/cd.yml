@@ -103,7 +103,7 @@ jobs:
 
           while [ $attempt -le $max_attempts ]; do
             echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
-            if ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" "
+            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "
               set -euo pipefail
               cd $DEPLOY_PATH
               echo '📥 拉取最新代碼...'
