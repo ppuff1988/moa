@@ -27,8 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.PAT }}
-          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -53,15 +52,7 @@ jobs:
           fi
 
           LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-
-          # 如果沒有 tag，使用所有提交記錄（適用於新倉庫）
-          if [ -z "$LAST_TAG" ]; then
-            # 獲取第一個提交的 hash
-            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-            COMMITS=$(git log ${FIRST_COMMIT}..HEAD --pretty=format:"%s" --no-merges)
-          else
-            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" --no-merges)
-          fi
+          COMMITS=$(git log ${LAST_TAG:-HEAD~20}..HEAD --pretty=format:"%s" --no-merges)
 
           if [ -z "$COMMITS" ]; then
             echo "version_changed=false" >> $GITHUB_OUTPUT
@@ -106,6 +97,10 @@ jobs:
 
           echo "📤 推送到 main..."
           git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
+
+          echo "🏷️ 建立 tag v${NEW_VERSION}"
+          git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
+          git push origin "v${NEW_VERSION}" || echo "ℹ️ tag 已存在，略過"
 
           echo "🔄 同步到 dev 分支"
           # 記住剛剛在 main 上的釋出 commit SHA
