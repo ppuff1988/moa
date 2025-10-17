@@ -207,19 +207,6 @@
 		</div>
 	</div>
 
-	<!-- Debug 資訊區域 -->
-	{#if !hasVoted && !zhengGuoQuRole}
-		<div class="debug-info">
-			<p style="color: #fbbf24; font-size: 0.875rem; margin-bottom: 0.5rem;">
-				當前角色: {currentPlayerRole || '未知'} | 可投票: {canVoteLaoChaoFeng ||
-				canVoteXuYuan ||
-				canVoteFangZhen
-					? '是'
-					: '否'}
-			</p>
-		</div>
-	{/if}
-
 	{#if !hasVoted && !zhengGuoQuRole}
 		<div class="voting-section">
 			{#if canVoteLaoChaoFeng}
@@ -236,9 +223,6 @@
 									bind:group={selectedLaoChaoFeng}
 								/>
 								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-								{#if player.roleName}
-									<span class="role-badge">{player.roleName}</span>
-								{/if}
 							</label>
 						{/each}
 					</div>
