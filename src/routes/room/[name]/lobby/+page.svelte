@@ -30,7 +30,6 @@
 
 	// 監聽遊戲狀態變化，當不是 waiting 或 selecting 時導向遊戲頁面
 	$: if ($gameStatus && $gameStatus !== 'waiting' && $gameStatus !== 'selecting' && !$isLoading) {
-		console.log('🎮 遊戲狀態已改變:', $gameStatus, '- 導向遊戲頁面');
 		// 使用相對路徑導航到遊戲頁面，避免 URL 編碼問題
 		goto(`../game`, { replaceState: true, invalidateAll: true });
 	}
@@ -41,7 +40,6 @@
 		// 初始化完成後，檢查遊戲狀態
 		const status = $gameStatus;
 		if (status && status !== 'waiting' && status !== 'selecting') {
-			console.log('🎮 初始化後檢測到遊戲狀態:', status, '- 導向遊戲頁面');
 			goto(`../game`, { replaceState: true, invalidateAll: true });
 		}
 	});

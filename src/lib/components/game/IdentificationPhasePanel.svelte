@@ -46,17 +46,6 @@
 	// 過濾掉自己的玩家列表（用於投票選項）
 	$: otherPlayers = players.filter((p) => p.userId !== currentUser?.id);
 
-	// Debug: 檢查當前玩家和角色資訊
-	$: {
-		console.log('鑑人階段 - 當前玩家:', currentPlayer);
-		console.log('鑑人階段 - 當前角色:', currentPlayerRole);
-		console.log('鑑人階段 - 可投老朝奉:', canVoteLaoChaoFeng);
-		console.log('鑑人階段 - 可投許愿:', canVoteXuYuan);
-		console.log('鑑人階段 - 可投方震:', canVoteFangZhen);
-		console.log('鑑人階段 - 是鄭國渠:', zhengGuoQuRole);
-		console.log('鑑人階段 - 其他玩家數量:', otherPlayers.length);
-	}
-
 	// 獲取投票狀態
 	const fetchVotingStatus = async () => {
 		const token = getJWTToken();
@@ -78,12 +67,6 @@
 				totalEligibleVoters = data.totalEligibleVoters;
 				hasVoted = data.hasVoted;
 				allPlayersVoted = data.allVoted;
-				console.log('投票狀態已更新:', {
-					votedCount,
-					totalEligibleVoters,
-					hasVoted,
-					allPlayersVoted
-				});
 			}
 		} catch (error) {
 			console.error('獲取投票狀態錯誤:', error);

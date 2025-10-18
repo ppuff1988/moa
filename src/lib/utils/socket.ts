@@ -2,10 +2,20 @@ import { io, type Socket } from 'socket.io-client';
 import { getJWTToken } from './jwt';
 
 let socket: Socket | null = null;
+let isInitialized = false; // 追蹤是否已經初始化過監聽器
 
 export function initSocket(): Socket {
+	// 如果已經連接，直接返回（不重新初始化）
 	if (socket?.connected) {
 		return socket;
+	}
+
+	// 如果 socket 存在但未連接，先清理
+	if (socket && !socket.connected) {
+		socket.removeAllListeners();
+		socket.disconnect();
+		socket = null;
+		isInitialized = false;
 	}
 
 	const token = getJWTToken();
@@ -27,28 +37,22 @@ export function initSocket(): Socket {
 		transports: ['polling', 'websocket']
 	});
 
-	socket.on('connect', () => {
-		console.log('[🔌 Socket 連接] 已成功連接', {
-			socketId: socket?.id,
-			transport: socket?.io.engine.transport.name,
-			時間: new Date().toLocaleTimeString()
+	// 只在第一次初始化時註冊這些全局監聽器
+	if (!isInitialized) {
+		socket.on('connect', () => {
+			// Socket connected
 		});
-	});
 
-	socket.on('disconnect', (reason) => {
-		console.log('[🔌 Socket 斷線] 連接已斷開', {
-			原因: reason,
-			時間: new Date().toLocaleTimeString()
+		socket.on('disconnect', () => {
+			// Socket disconnected
 		});
-	});
 
-	socket.on('connect_error', (error) => {
-		console.error('[🔌 Socket 錯誤] 連接發生錯誤', {
-			錯誤訊息: error.message,
-			錯誤類型: error.name,
-			時間: new Date().toLocaleTimeString()
+		socket.on('connect_error', () => {
+			// Socket connection error
 		});
-	});
+
+		isInitialized = true;
+	}
 
 	return socket;
 }
@@ -64,8 +68,10 @@ export function getSocket(): Socket | null {
 
 export function disconnectSocket(): void {
 	if (socket) {
+		socket.removeAllListeners();
 		socket.disconnect();
 		socket = null;
+		isInitialized = false;
 	}
 }
 

@@ -48,8 +48,6 @@
 					? { password: roomPassword }
 					: { roomName: roomName.trim(), password: roomPassword };
 
-			console.log('準備傳送的資料:', body);
-
 			const response = await fetch(apiEndpoint, {
 				method: 'POST',
 				headers: {
@@ -59,11 +57,8 @@
 				body: JSON.stringify(body)
 			});
 
-			console.log('回應狀態:', response.status);
-
 			if (response.ok) {
 				const result = await response.json();
-				console.log(`${mode === 'create' ? '創建' : '加入'}房間成功:`, result);
 
 				// 成功後導向房間大廳 - 使用API返回的房間名稱
 				const targetRoomName = mode === 'create' ? result.roomName : roomName.trim();

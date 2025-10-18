@@ -160,6 +160,7 @@ export const POST: RequestHandler = async (event) => {
 			console.log(`[start-game] 所有檢查通過，開始執行 startGame`);
 
 			// 開始遊戲（第1回合）
+			// startGame 函數內部已經會廣播 game-started 事件，這裡不需要再次廣播
 			const result = await startGame(game.id);
 
 			console.log(`[start-game] startGame 執行完成`, {
@@ -168,30 +169,7 @@ export const POST: RequestHandler = async (event) => {
 				round: 1
 			});
 
-			// 檢查 Socket.IO 並廣播遊戲開始事件
-			try {
-				const { getSocketIO } = await import('$lib/server/socket');
-				const io = getSocketIO();
-
-				if (!io) {
-					console.error('[start-game] Socket.IO 未初始化！');
-				} else {
-					const roomSockets = await io.in(roomName!).fetchSockets();
-					console.log(
-						`[start-game] 準備廣播 game-started 到房間 ${roomName}，房間內有 ${roomSockets.length} 個連接`
-					);
-
-					io.to(roomName!).emit('game-started', {
-						gameId: result.gameId,
-						roundId: result.roundId,
-						round: 1
-					});
-
-					console.log(`[start-game] ✅ 已成功廣播 game-started 事件`);
-				}
-			} catch (error) {
-				console.error('[start-game] 發送 Socket 事件失敗:', error);
-			}
+			// 注意：game-started 事件已經在 startGame 函數內部廣播，不需要在這裡重複發送
 
 			return json(
 				{
