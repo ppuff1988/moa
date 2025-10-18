@@ -112,6 +112,20 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			})
 			.where(eq(gameRounds.id, currentRound.id));
 
+		// 發送 socket 事件通知所有玩家
+		try {
+			const { getSocketIO } = await import('$lib/server/socket');
+			const io = getSocketIO();
+			if (io) {
+				io.to(game.roomName).emit('player-assigned', {
+					nextPlayerId,
+					roomName: game.roomName
+				});
+			}
+		} catch (socketError) {
+			console.error('發送 socket 事件失敗:', socketError);
+		}
+
 		return json({
 			success: true,
 			nextPlayerId: nextPlayerId,

@@ -129,9 +129,7 @@
 				}
 			);
 
-			if (response.ok) {
-				addNotification('已公布鑑人結果', 'success');
-			} else {
+			if (!response.ok) {
 				const error = await response.json();
 				addNotification(error.message || '公布失敗', 'error');
 				isPublishing = false;
@@ -477,14 +475,6 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.95rem;
 		margin: 0;
-	}
-
-	.debug-info {
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.3);
-		padding: 0.75rem;
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
 	}
 
 	.no-vote-rights {

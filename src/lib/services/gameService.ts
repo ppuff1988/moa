@@ -60,6 +60,7 @@ export class GameService {
 		roleName: string | null;
 		skillActions: SkillActions | null;
 		performedActions: PerformedAction[];
+		canAction: boolean;
 	}> {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/my-role`, {
 			headers: { Authorization: `Bearer ${getJWTToken()}` }
@@ -72,10 +73,11 @@ export class GameService {
 			return {
 				roleName: data.hasRole && data.roleName ? data.roleName : null,
 				skillActions: data.skillActions || null,
-				performedActions: data.performedActions || []
+				performedActions: data.performedActions || [],
+				canAction: data.canAction !== undefined ? data.canAction : true
 			};
 		}
-		return { roleName: null, skillActions: null, performedActions: [] };
+		return { roleName: null, skillActions: null, performedActions: [], canAction: true };
 	}
 
 	async updatePlayersAndRound() {

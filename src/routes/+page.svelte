@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getJWTToken } from '$lib/utils/jwt';
+	import { leaveRoom } from '$lib/utils/room';
 	import RoomForm from '$lib/components/room/RoomForm.svelte';
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import UserArea from '$lib/components/ui/UserArea.svelte';
@@ -99,33 +100,11 @@
 		}
 	}
 
-	async function leaveRoom() {
-		if (!currentGame) return;
-
-		if (confirm(`確定要離開房間嗎？`)) {
-			try {
-				const token = getJWTToken();
-				const response = await fetch(
-					`/api/room/${encodeURIComponent(currentGame.roomName)}/leave`,
-					{
-						method: 'POST',
-						headers: {
-							Authorization: `Bearer ${token}`,
-							'Content-Type': 'application/json'
-						}
-					}
-				);
-
-				if (response.ok) {
-					currentGame = null;
-					alert('已成功離開房間');
-				} else {
-					const data = await response.json();
-					alert(data.message || '離開房間失敗');
-				}
-			} catch (error) {
-				console.error('離開房間錯誤:', error);
-				alert('離開房間時發生錯誤');
+	async function handleLeaveRoom() {
+		if (currentGame) {
+			const success = await leaveRoom(currentGame.roomName);
+			if (success) {
+				currentGame = null;
 			}
 		}
 	}
@@ -162,7 +141,7 @@
 					variant="destructive"
 					title="離開房間"
 					subtitle="離開當前房間"
-					onClick={leaveRoom}
+					onClick={handleLeaveRoom}
 				/>
 			{:else}
 				<!-- 玩家不在遊戲中：顯示創建和加入房間 -->
