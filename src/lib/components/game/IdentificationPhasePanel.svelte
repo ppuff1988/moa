@@ -238,9 +238,6 @@
 							<label class="player-option">
 								<input type="radio" name="xuYuan" value={player.id} bind:group={selectedXuYuan} />
 								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-								{#if player.roleName}
-									<span class="role-badge">{player.roleName}</span>
-								{/if}
 							</label>
 						{/each}
 					</div>
@@ -261,9 +258,6 @@
 									bind:group={selectedFangZhen}
 								/>
 								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-								{#if player.roleName}
-									<span class="role-badge">{player.roleName}</span>
-								{/if}
 							</label>
 						{/each}
 					</div>

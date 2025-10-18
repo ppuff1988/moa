@@ -131,6 +131,18 @@ export function useRoomLobby(roomName: string) {
 	function setupSocketListeners() {
 		if (!socket) return;
 
+		// 先移除所有舊的監聽器，避免重複註冊
+		socket.off('room-update');
+		socket.off('player-joined');
+		socket.off('player-left');
+		socket.off('player-kicked');
+		socket.off('game-started');
+		socket.off('selection-started');
+		socket.off('player-locked');
+		socket.off('player-unlocked');
+		socket.off('room-closed');
+		socket.off('error');
+
 		// Room update event
 		socket.on('room-update', (data: { game: GameData; players: Player[] }) => {
 			console.log('[📥 room-update] 收到房間更新廣播', {
@@ -219,10 +231,30 @@ export function useRoomLobby(roomName: string) {
 		});
 
 		// Selection started event
-		socket.on('selection-started', () => {
+		socket.on('selection-started', async () => {
 			console.log('[📥 selection-started] 選角階段開始');
 			gameStatus.set('selecting');
 			addNotification('選角階段已開始', 'success');
+
+			// 強制重新獲取房間狀態，確保所有玩家的 UI 都更新
+			try {
+				const roomResponse = await fetch(`/api/room/${encodeURIComponent(roomName)}`, {
+					credentials: 'include'
+				});
+
+				if (roomResponse.ok) {
+					const roomData = await roomResponse.json();
+					if (roomData && roomData.game) {
+						gameStatus.set(roomData.game.status);
+					}
+					if (roomData && roomData.players && Array.isArray(roomData.players)) {
+						players.set(roomData.players);
+					}
+					console.log('[📥 selection-started] 已重新獲取並更新房間狀態');
+				}
+			} catch (error) {
+				console.error('[📥 selection-started] 重新獲取房間狀態失敗:', error);
+			}
 		});
 
 		// Player locked role

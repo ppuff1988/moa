@@ -8,6 +8,7 @@
 	import PlayersGrid from '$lib/components/player/PlayersGrid.svelte';
 	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
 	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
+	import { currentGameStatus } from '$lib/stores/notifications';
 
 	const minPlayers = 6;
 	const maxPlayers = 8;
@@ -21,6 +22,11 @@
 
 	// 計算底部裝飾文字
 	$: footerText = $players.length < minPlayers ? '等待更多玩家加入' : '等待房主開始遊戲';
+
+	// 同步遊戲狀態到通知系統
+	$: if ($gameStatus) {
+		currentGameStatus.set($gameStatus);
+	}
 
 	// 監聽遊戲狀態變化，當不是 waiting 或 selecting 時導向遊戲頁面
 	$: if ($gameStatus && $gameStatus !== 'waiting' && $gameStatus !== 'selecting' && !$isLoading) {

@@ -9,6 +9,9 @@ export interface Notification {
 
 export const notifications = writable<Notification[]>([]);
 
+// 追蹤當前遊戲狀態，用於決定通知位置
+export const currentGameStatus = writable<string>('waiting');
+
 export function addNotification(
 	message: string,
 	type: 'success' | 'info' | 'warning' | 'error' = 'info',
