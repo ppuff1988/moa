@@ -103,7 +103,16 @@ jobs:
 
           while [ $attempt -le $max_attempts ]; do
             echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
-            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "
+            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "export DOCKER_USERNAME='$DOCKER_USERNAME' && \
+               export DATABASE_URL='$DATABASE_URL' && \
+               export JWT_SECRET='$JWT_SECRET' && \
+               export POSTGRES_USER='$POSTGRES_USER' && \
+               export POSTGRES_PASSWORD='$POSTGRES_PASSWORD' && \
+               export POSTGRES_DB='$POSTGRES_DB' && \
+               export PUBLIC_GTM_ID='$PUBLIC_GTM_ID' && \
+               export DEPLOY_PATH='$DEPLOY_PATH' && \
+               bash -c '
               set -euo pipefail
               
               # 載入 Node.js 環境（支援 nvm 或直接安裝的 Node.js）
@@ -117,8 +126,8 @@ jobs:
               
               # 驗證 Node.js 和 npm 可用
               if ! command -v node &> /dev/null; then
-                echo '❌ 錯誤：找不到 Node.js'
-                echo '請確保伺服器已安裝 Node.js'
+                echo \"❌ 錯誤：找不到 Node.js\"
+                echo \"請確保伺服器已安裝 Node.js\"
                 exit 1
               fi
               
@@ -126,9 +135,9 @@ jobs:
               echo \"✅ 當前 npm 版本: \$(npm -v)\"
               
               # 檢查 Node.js 版本是否符合要求（需要 >= 20.19）
-              NODE_VERSION=\$(node -v | cut -d'v' -f2)
-              NODE_MAJOR=\$(echo \$NODE_VERSION | cut -d'.' -f1)
-              NODE_MINOR=\$(echo \$NODE_VERSION | cut -d'.' -f2)
+              NODE_VERSION=\$(node -v | cut -d\"v\" -f2)
+              NODE_MAJOR=\$(echo \$NODE_VERSION | cut -d\".\" -f1)
+              NODE_MINOR=\$(echo \$NODE_VERSION | cut -d\".\" -f2)
               
               echo \"📊 檢測到 Node.js 主版本: \$NODE_MAJOR, 次版本: \$NODE_MINOR\"
               
@@ -166,29 +175,27 @@ jobs:
                 echo \"✅ Node.js 版本符合要求\"
               fi
               
-              cd $DEPLOY_PATH
-              echo '📥 拉取最新代碼...'
+              cd \$DEPLOY_PATH
+              echo \"📥 拉取最新代碼...\"
               git pull origin main
-              echo '📦 安裝 Node.js 依賴（用於執行 migrations）...'
+              echo \"📦 安裝 Node.js 依賴（用於執行 migrations）...\"
               npm ci --prefer-offline --no-audit
-              echo '⚙️ 設定環境變數...'
-              printf '%s\n' \
-                'DOCKER_USERNAME=\$DOCKER_USERNAME' \
-                'DATABASE_URL=\$DATABASE_URL' \
-                'JWT_SECRET=\$JWT_SECRET' \
-                'JWT_EXPIRES_IN=30d' \
-                'POSTGRES_USER=\$POSTGRES_USER' \
-                'POSTGRES_PASSWORD=\$POSTGRES_PASSWORD' \
-                'POSTGRES_USER=$POSTGRES_USER' \
-                'POSTGRES_PASSWORD=$POSTGRES_PASSWORD' \
-                'POSTGRES_DB=$POSTGRES_DB' \
-                'NODE_ENV=production' \
-                'PUBLIC_GTM_ID=\$PUBLIC_GTM_ID' \
-                > .env
-              echo '🚀 執行部署腳本（包含 migrations）...'
+              echo \"⚙️ 設定環境變數...\"
+              {
+                echo \"DOCKER_USERNAME=\$DOCKER_USERNAME\"
+                echo \"DATABASE_URL=\$DATABASE_URL\"
+                echo \"JWT_SECRET=\$JWT_SECRET\"
+                echo \"JWT_EXPIRES_IN=30d\"
+                echo \"POSTGRES_USER=\$POSTGRES_USER\"
+                echo \"POSTGRES_PASSWORD=\$POSTGRES_PASSWORD\"
+                echo \"POSTGRES_DB=\$POSTGRES_DB\"
+                echo \"NODE_ENV=production\"
+                echo \"PUBLIC_GTM_ID=\$PUBLIC_GTM_ID\"
+              } > .env
+              echo \"🚀 執行部署腳本（包含 migrations）...\"
               chmod +x deploy-prod.sh
               ./deploy-prod.sh
-            "; then
+            '"; then
               echo "✅ 部署成功！版本: $DEPLOY_VERSION"
               exit 0
             fi
