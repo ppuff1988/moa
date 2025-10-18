@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { leaveRoom } from '$lib/utils/room';
+	import ActionButton from '$lib/components/ui/ActionButton.svelte';
 
 	export let roomName: string;
 	export let currentUserNickname: string | undefined;
@@ -8,8 +9,8 @@
 	export let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
 	export let gameStatus: string = 'playing';
 
-	function handleLeaveRoom() {
-		goto('/', { invalidateAll: true });
+	async function handleLeaveRoom() {
+		await leaveRoom(roomName);
 	}
 </script>
 
@@ -43,7 +44,7 @@
 	<div class="header-actions">
 		<button class="history-btn" on:click={onOpenHistory}> 📜 查看行動歷史 </button>
 		{#if gameStatus === 'finished'}
-			<button class="leave-btn" on:click={handleLeaveRoom}> 🚪 離開房間 </button>
+			<ActionButton variant="destructive" title="離開房間" subtitle="" onClick={handleLeaveRoom} />
 		{/if}
 	</div>
 </div>
@@ -114,7 +115,21 @@
 	.header-actions {
 		display: flex;
 		gap: 1rem;
-		align-items: center;
+		align-items: flex-start;
+	}
+
+	.header-actions :global(.action-btn) {
+		padding: 0.625rem 1.25rem;
+		min-width: 120px;
+		font-size: 0.875rem;
+	}
+
+	.header-actions :global(.action-title) {
+		font-size: 1rem;
+	}
+
+	.header-actions :global(.action-subtitle) {
+		font-size: 0.7rem;
 	}
 
 	.history-btn {
@@ -135,27 +150,6 @@
 	.history-btn:hover {
 		background: rgba(255, 255, 255, 0.2);
 		border-color: rgba(212, 175, 55, 0.5);
-		transform: translateY(-2px);
-	}
-
-	.leave-btn {
-		padding: 0.625rem 1.25rem;
-		background: rgba(239, 68, 68, 0.15);
-		border: 1px solid rgba(239, 68, 68, 0.4);
-		border-radius: calc(var(--radius));
-		color: #ef4444;
-		font-weight: 600;
-		font-size: 0.875rem;
-		cursor: pointer;
-		transition: var(--transition-elegant);
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.leave-btn:hover {
-		background: rgba(239, 68, 68, 0.25);
-		border-color: rgba(239, 68, 68, 0.6);
 		transform: translateY(-2px);
 	}
 
