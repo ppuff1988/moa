@@ -119,7 +119,6 @@
 		.room-header {
 			flex-direction: column;
 			gap: 1rem;
-			text-align: center;
 		}
 
 		.header-actions {

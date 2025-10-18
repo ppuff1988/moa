@@ -3,6 +3,7 @@
 	export let type: 'success' | 'info' | 'warning' | 'error' = 'info';
 	export let duration: number = 3000;
 	export let onClose: () => void;
+	export let position: 'top' | 'bottom' = 'bottom';
 
 	let visible = true;
 
@@ -35,7 +36,13 @@
 </script>
 
 {#if visible}
-	<div class="notification-toast" class:visible style="--type-color: {typeColor}">
+	<div
+		class="notification-toast"
+		class:visible
+		class:position-top={position === 'top'}
+		class:position-bottom={position === 'bottom'}
+		style="--type-color: {typeColor}"
+	>
 		<div class="toast-icon" style="color: {typeColor}">
 			{typeIcon}
 		</div>
@@ -50,9 +57,6 @@
 
 <style>
 	.notification-toast {
-		position: fixed;
-		bottom: 2rem;
-		right: 2rem;
 		min-width: 320px;
 		max-width: 400px;
 		background: #1f1c19;
@@ -63,7 +67,6 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 0.75rem;
-		z-index: 1000;
 		transform: translateX(120%);
 		opacity: 0;
 		transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
@@ -117,9 +120,6 @@
 	/* 響應式設計 */
 	@media (max-width: 768px) {
 		.notification-toast {
-			bottom: 1rem;
-			right: 1rem;
-			left: 1rem;
 			min-width: auto;
 			max-width: none;
 		}

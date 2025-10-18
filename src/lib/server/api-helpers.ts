@@ -475,11 +475,12 @@ export async function restoreCanActionIfNeeded(
 	const { PERMANENT_BLOCK_ROUND } = await import('./constants');
 	const { gameActions, gameRounds } = await import('./db/schema');
 
-	const notPermanentBlock = blockedRound !== PERMANENT_BLOCK_ROUND;
+	const isPermanentBlock = blockedRound === PERMANENT_BLOCK_ROUND;
 	const isBlockedRound = blockedRound === currentRoundNumber;
 
-	if (!isBlockedRound || !notPermanentBlock) {
-		return; // 不在封鎖回合或永久封鎖，直接返回
+	// 如果不在封鎖回合且非永久封鎖，直接返回
+	if (!isBlockedRound && !isPermanentBlock) {
+		return;
 	}
 
 	// 查詢當前回合
@@ -546,7 +547,8 @@ export async function restoreCanActionIfNeeded(
 		swap: `${swapCount}/${maxSwap}`,
 		attack: `${attackCount}/${maxAttack}`,
 		block: `${blockCount}/${maxBlock}`,
-		allUsed: allSkillsUsed
+		allUsed: allSkillsUsed,
+		isPermanentBlock
 	});
 
 	if (allSkillsUsed) {

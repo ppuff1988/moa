@@ -4,7 +4,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification } from '$lib/stores/notifications';
+	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
 	import { GameService } from '$lib/services/gameService';
 	import { createGameState } from '$lib/stores/gameState';
 	import { initSocket, disconnectSocket } from '$lib/utils/socket';
@@ -77,6 +77,9 @@
 
 	// Update gameStatus based on roundPhase
 	$: gameStatus = $roundPhase === 'finished' ? 'finished' : 'playing';
+
+	// 同步遊戲狀態到通知系統
+	$: currentGameStatus.set(gameStatus);
 
 	// Initialize game service
 	$: if (roomName) {

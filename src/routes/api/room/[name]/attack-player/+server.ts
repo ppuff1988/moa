@@ -75,12 +75,22 @@ async function getPlayerByRoleName(
 /**
  * 更新玩家的行動狀態
  */
-async function disablePlayerAction(playerId: number, blockedRound?: number | null): Promise<void> {
-	const updateData: { canAction: boolean; blockedRound?: number } = { canAction: false };
+async function disablePlayerAction(
+	playerId: number,
+	blockedRound?: number | null,
+	isPermanentBlock: boolean = false
+): Promise<void> {
+	// 如果是永久封鎖（姬云浮），不設置 canAction = false，只設置 blockedRound
+	const updateData: { canAction?: boolean; blockedRound?: number } = {};
 
 	if (blockedRound !== undefined && blockedRound !== null) {
 		updateData.blockedRound = blockedRound;
 		console.log(`[攻擊] 設置玩家 ${playerId} 的 blockedRound 為:`, blockedRound);
+	}
+
+	// 只有非永久封鎖的情況才設置 canAction = false
+	if (!isPermanentBlock) {
+		updateData.canAction = false;
 	}
 
 	console.log(`[攻擊] 更新玩家 ${playerId} 的數據:`, updateData);
@@ -249,9 +259,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	// 禁用目标玩家的行动能力
-	await disablePlayerAction(targetPlayerId, blockedRoundValue);
+	await disablePlayerAction(targetPlayerId, blockedRoundValue, isPermanentBlock);
 
-	// 記錄受影響的玩家
+	// 記錄受影響的玩家（僅用於後端記錄，不返回給前端）
 	const affectedPlayers: AffectedPlayer[] = [
 		{ id: targetPlayerId, nickname: targetPlayer.nickname }
 	];
@@ -276,20 +286,21 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			const xuYuanHasActed = xuYuanActions.length > 0;
 			const xuYuanBlockedRound = xuYuanHasActed ? currentRound.round + 1 : currentRound.round;
 
-			// 許愿的封鎖邏輯與方震相同
+			// 許愿的封鎖邏輯與方震相同（但不對外顯示）
 			await disablePlayerAction(xuYuanPlayer.playerId, xuYuanBlockedRound);
 			affectedPlayers.push({
 				id: xuYuanPlayer.playerId,
 				nickname: xuYuanPlayer.nickname
 			});
-			console.log(`[攻擊] 方震被攻擊，連帶封鎖許愿到回合 ${xuYuanBlockedRound}`);
+			// 移除可能洩漏身分的日誌
+			console.log(`[攻擊] 方震被攻擊，連帶效果已處理`);
 		}
 	}
 
 	// 計算整個回合的行動順序
 	const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
 
-	// 記錄行動到 gameActions
+	// 記錄行動到 gameActions（包含完整的 affectedPlayers 供後端使用）
 	await db.insert(gameActions).values({
 		gameId: game.id,
 		roundId: currentRound.id,
@@ -307,11 +318,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 	});
 
-	// 構建回應消息
-	const message =
-		affectedPlayers.length > 1
-			? `成功攻擊 ${affectedPlayers.map((p) => p.nickname).join(' 和 ')}`
-			: `成功攻擊 ${targetPlayer.nickname}`;
+	// 構建回應消息 - 只顯示直接攻擊的目標，不洩漏連帶受影響的玩家
+	const message = `成功攻擊 ${targetPlayer.nickname}`;
 
 	return json({
 		success: true,
@@ -319,7 +327,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		targetPlayerId: targetPlayerId,
 		targetPlayerNickname: targetPlayer.nickname,
 		blockedRound: blockedRoundValue,
-		isPermanentBlock: isPermanentBlock,
-		affectedPlayers: affectedPlayers
+		isPermanentBlock: isPermanentBlock
+		// 移除 affectedPlayers，避免洩漏連帶受影響的玩家身分
 	});
 };
