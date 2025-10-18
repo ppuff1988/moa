@@ -12,9 +12,8 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - moa_pgdata_prod:/var/lib/postgresql/data
+      - ./migrations:/migrations
       - ./migrations/init_database.sql:/docker-entrypoint-initdb.d/01-init_database.sql
-      - ./migrations/remove_test_users.sql:/migrations/remove_test_users.sql
-      - ./migrations/reset_games.sql:/migrations/reset_games.sql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 10s

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '$lib/server/db';
 import { user, games, gamePlayers } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { API_BASE, createTestUser, createTestRoom, joinTestRoom } from './helpers';
 
 describe('Room Leave API', () => {
@@ -183,6 +183,44 @@ describe('Room Leave API', () => {
 			});
 
 			expect([403, 404]).toContain(response.status);
+		});
+
+		it('非 waiting 狀態離開時應更新 left_at 欄位', async () => {
+			// 創建房間
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+
+			// 第二個玩家加入
+			await joinTestRoom(testUsers[1].token, room.roomName, room.password);
+
+			// 模擬遊戲狀態為 playing
+			await db.update(games).set({ status: 'playing' }).where(eq(games.id, room.gameId));
+
+			// 第二個玩家離開
+			const response = await fetch(
+				`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/leave`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${testUsers[1].token}`,
+						'Content-Type': 'application/json'
+					}
+				}
+			);
+
+			expect(response.status).toBe(200);
+			const data = await response.json();
+			expect(data.message).toContain('離開');
+
+			// 驗證 left_at 欄位已更新（game_players table）
+			const playerRow = await db
+				.select()
+				.from(gamePlayers)
+				.where(
+					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
+				)
+				.limit(1);
+			expect(playerRow[0]?.leftAt).not.toBeNull();
 		});
 	});
 });
