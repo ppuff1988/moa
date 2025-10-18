@@ -487,14 +487,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.role-badge {
-		font-size: 0.75rem;
-		padding: 0.2rem 0.5rem;
-		background: rgba(59, 130, 246, 0.2);
-		border-radius: 0.25rem;
-		margin-left: 0.5rem;
-	}
-
 	.no-vote-rights {
 		text-align: center;
 		padding: 2rem;
