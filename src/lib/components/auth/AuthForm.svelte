@@ -70,8 +70,6 @@
 		try {
 			const body = mode === 'login' ? { email, password } : { email, password, nickname };
 
-			console.log('準備傳送的資料:', body); // 調試用
-
 			const response = await fetch(apiEndpoint, {
 				method: 'POST',
 				headers: {
@@ -80,11 +78,8 @@
 				body: JSON.stringify(body)
 			});
 
-			console.log('回應狀態:', response.status); // 調試用
-
 			if (response.ok) {
 				const result = await response.json();
-				console.log('註冊/登入成功:', result); // 調試用
 
 				// 儲存 JWT token 到 localStorage
 				if (result.token) {

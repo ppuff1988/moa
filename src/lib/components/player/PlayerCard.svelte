@@ -39,7 +39,6 @@
 
 	// 當遊戲狀態變為 selecting 時，立即獲取角色列表（無論是否為當前玩家）
 	$: if (gameStatus === 'selecting' && !hasLoadedRoles && !isLoadingRoles) {
-		console.log('[PlayerCard] 遊戲狀態變為 selecting，重新獲取角色列表');
 		fetchRoles();
 		hasLoadedRoles = true;
 	}

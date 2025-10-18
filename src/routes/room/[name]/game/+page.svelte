@@ -717,17 +717,11 @@
 
 					// Listen for voting-completed event
 					socket.on('voting-completed', async (data) => {
-						console.log('[📥 voting-completed] 收到投票完成廣播', {
-							phase: data.phase,
-							roundId: data.roundId,
-							round: data.round
-						});
 						addNotification('投票結果已公布', 'info', 3000);
 
 						// Update phase to result
 						if (data.phase) {
 							roundPhase.set(data.phase);
-							console.log('[📥 voting-completed] 更新階段為:', data.phase);
 						}
 
 						// Refresh artifacts to get voting results
@@ -737,18 +731,11 @@
 
 					// Listen for round-started event
 					socket.on('round-started', async (data) => {
-						console.log('[📥 round-started] 收到新回合開始廣播', {
-							round: data.round,
-							roundId: data.roundId,
-							firstPlayerId: data.firstPlayerId,
-							previousRoundCompleted: data.previousRoundCompleted
-						});
 						addNotification(`第 ${data.round} 回合已開始`, 'success', 3000);
 
 						// Update current round
 						if (data.round) {
 							currentRound.set(data.round);
-							console.log('[📥 round-started] 更新當前回合為:', data.round);
 						}
 
 						// Reset game state for new round
@@ -763,20 +750,11 @@
 
 					// Listen for enter-identification-phase event
 					socket.on('enter-identification-phase', async (data) => {
-						console.log('[📥 enter-identification-phase] 收到進入鑑人階段廣播', {
-							message: data.message,
-							genuineCount: data.genuineCount,
-							roundId: data.roundId
-						});
 						addNotification(data.message || '進入鑑人階段', 'info', 4000);
 
 						// Update phase and score
 						roundPhase.set('identification');
 						genuineScore.set(data.genuineCount || 0);
-						console.log(
-							'[📥 enter-identification-phase] 更新階段為 identification，真品數量:',
-							data.genuineCount
-						);
 
 						// Refresh data
 						await fetchRoundStatus();
@@ -784,19 +762,12 @@
 
 					// Listen for identification-completed event
 					socket.on('identification-completed', async (data) => {
-						console.log('[📥 identification-completed] 收到鑑人完成廣播', {
-							winner: data.winner,
-							goodTeamScore: data.goodTeamScore,
-							badTeamScore: data.badTeamScore,
-							finalResult: data
-						});
 						addNotification(`遊戲結束！${data.winner}獲勝！`, 'success', 5000);
 
 						// Update final result
 						finalResult.set(data);
 						roundPhase.set('finished');
 						isGameFinished.set(true);
-						console.log('[📥 identification-completed] 遊戲結束，勝利方:', data.winner);
 
 						// Refresh data
 						await fetchRoundStatus();
@@ -804,25 +775,16 @@
 
 					// Listen for game-finished event
 					socket.on('game-finished', async (data) => {
-						console.log('[📥 game-finished] 收到遊戲結束廣播', {
-							winner: data.winner,
-							goodTeamScore: data.goodTeamScore,
-							badTeamScore: data.badTeamScore,
-							finalResult: data
-						});
 						addNotification(`遊戲結束！${data.winner}獲勝！`, 'success', 5000);
 
 						// Update final result
 						finalResult.set(data);
 						roundPhase.set('finished');
 						isGameFinished.set(true);
-						console.log('[📥 game-finished] 遊戲結束，勝利方:', data.winner);
 
 						// Refresh data
 						await fetchRoundStatus();
 					});
-
-					console.log('Socket 已初始化並加入房間:', roomName);
 				} catch (socketError) {
 					console.error('Socket 初始化錯誤:', socketError);
 					// 不要因為 socket 錯誤而阻止遊戲載入
