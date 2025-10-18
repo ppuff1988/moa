@@ -24,7 +24,9 @@
 		"test": "npm run test:api && npm run test:e2e",
 		"test:e2e": "playwright test",
 		"db:start": "docker compose up",
-		"db:reset": "docker cp migrations/init_database.sql moa_postgres:/tmp/init_database.sql && docker exec -i moa_postgres psql -U moa_user -d moa_db -f /tmp/init_database.sql",
+		"db:migrate": "node scripts/run-migrations.js",
+		"db:migrate:create": "drizzle-kit generate",
+		"db:reset": "docker cp migrations/init_database.sql moa_postgres:/tmp/init_database.sql && docker exec -i moa_postgres psql -U moa_user -d moa_db -f /tmp/init_database.sql && docker cp migrations/init_test_users.sql moa_postgres:/tmp/init_test_users.sql && docker exec -i moa_postgres psql -U moa_user -d moa_db -f /tmp/init_test_users.sql",
 		"db:studio": "drizzle-kit studio"
 	},
 	"devDependencies": {
