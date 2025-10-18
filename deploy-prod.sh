@@ -79,11 +79,19 @@ SKIP_MIGRATION=${SKIP_MIGRATION:-false}
 
 if [ "$SKIP_MIGRATION" = "true" ]; then
     echo "   ⏭️  跳過 migrations（SKIP_MIGRATION=true）"
-elif [ ! -d "node_modules" ]; then
-    echo "   ⚠️  未找到 node_modules，跳過 migration"
-    echo "   請確保在部署前已執行 npm ci"
 else
-    if NODE_ENV=production npm run db:migrate; then
+    # 在 Docker 容器中執行 migrations，這樣可以訪問 Docker 網絡中的 'db' 主機
+    echo "   使用 Docker 容器執行 migrations..."
+    if docker run --rm \
+        --network moa_moa_network \
+        -v "$(pwd)/migrations:/app/migrations" \
+        -v "$(pwd)/scripts:/app/scripts" \
+        -v "$(pwd)/package.json:/app/package.json" \
+        -e DATABASE_URL="${DATABASE_URL}" \
+        -e NODE_ENV=production \
+        --workdir /app \
+        ${DOCKER_USERNAME}/moa:latest \
+        npm run db:migrate; then
         echo "✅ Migrations 執行成功"
     else
         echo "❌ Migrations 執行失敗！"
