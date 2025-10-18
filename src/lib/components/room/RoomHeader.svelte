@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ActionButton from '$lib/components/ui/ActionButton.svelte';
+
 	export let roomName: string;
 	export let gameStatus: string;
 	export let playerCount: number;
@@ -28,18 +30,19 @@
 
 	<div class="header-actions">
 		{#if gameStatus === 'waiting'}
-			<button class="leave-btn" on:click={onLeaveRoom}>離開房間</button>
+			<ActionButton variant="destructive" title="離開房間" subtitle="" onClick={onLeaveRoom} />
 		{/if}
 
 		{#if isHost}
 			{#if gameStatus === 'waiting'}
-				<button class="start-btn" on:click={onStartSelection} disabled={playerCount < minPlayers}>
-					選擇角色
-				</button>
+				<ActionButton variant="primary" title="選擇角色" subtitle="" onClick={onStartSelection} />
 			{:else if gameStatus === 'selecting'}
-				<button class="start-btn" on:click={onStartGame} disabled={!allPlayersReady}>
-					開始遊戲
-				</button>
+				<ActionButton
+					variant="primary"
+					title="開始遊戲"
+					subtitle={allPlayersReady ? '所有玩家已準備' : '等待玩家準備'}
+					onClick={onStartGame}
+				/>
 			{/if}
 		{/if}
 	</div>
@@ -76,54 +79,41 @@
 	.header-actions {
 		display: flex;
 		gap: 1rem;
+		align-items: flex-start;
 	}
 
-	.leave-btn,
-	.start-btn {
+	.header-actions :global(.button-container) {
+		gap: 0.5rem;
+	}
+
+	.header-actions :global(.action-btn) {
 		padding: 0.75rem 1.5rem;
-		border: none;
-		border-radius: calc(var(--radius));
-		font-weight: 600;
-		cursor: pointer;
-		transition: var(--transition-elegant);
+		min-width: 140px;
+		font-size: 1rem;
 	}
 
-	.leave-btn {
-		background: hsl(var(--destructive));
-		color: hsl(var(--destructive-foreground));
-	}
-
-	.leave-btn:hover {
-		background: hsl(var(--destructive) / 0.9);
-		transform: translateY(-1px);
-	}
-
-	.start-btn {
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
-	}
-
-	.start-btn:hover:not(:disabled) {
-		background: hsl(var(--secondary) / 0.9);
-		transform: translateY(-1px);
-	}
-
-	.start-btn:disabled {
-		background: hsl(var(--muted));
-		color: hsl(var(--muted-foreground));
-		cursor: not-allowed;
-		opacity: 0.5;
+	.header-actions :global(.button-subtitle) {
+		font-size: 0.75rem;
+		max-width: 140px;
 	}
 
 	@media (max-width: 768px) {
 		.room-header {
 			flex-direction: column;
 			gap: 1rem;
-			text-align: center;
 		}
 
 		.header-actions {
 			justify-content: center;
+			width: 100%;
+		}
+
+		.header-actions :global(.action-btn) {
+			min-width: 120px;
+		}
+
+		.header-actions :global(.button-subtitle) {
+			max-width: 120px;
 		}
 	}
 </style>

@@ -6,6 +6,11 @@ echo "   🚀 MOA Production 部署"
 echo "===================================="
 echo ""
 
+# 讀取版本號
+VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
+echo "📦 當前版本: $VERSION"
+echo ""
+
 # 檢測 Docker Compose 命令
 if command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"
@@ -26,59 +31,79 @@ if [ ! -f .env ]; then
     echo "請參考 DEPLOYMENT-QUICK-START.md 創建 .env 文件"
     exit 1
 fi
-
-# 檢查必要的環境變數
-echo "🔍 檢查環境變數..."
-required_vars=("DOCKER_USERNAME" "POSTGRES_PASSWORD" "JWT_SECRET" "DATABASE_URL")
-missing_vars=()
-
-for var in "${required_vars[@]}"; do
-    if ! grep -q "^$var=" .env || [ -z "$(grep "^$var=" .env | cut -d '=' -f2)" ]; then
-        missing_vars+=("$var")
-    fi
-done
-
-if [ ${#missing_vars[@]} -gt 0 ]; then
-    echo "❌ 錯誤：以下環境變數未設置或為空："
-    printf '   - %s\n' "${missing_vars[@]}"
-    echo ""
-    echo "請編輯 .env 文件並設置這些變數"
-    exit 1
-fi
-
-echo "✅ 環境變數檢查通過"
 echo ""
 
 # 拉取最新鏡像
-echo "📥 [1/4] 拉取最新 Docker 鏡像..."
+echo "📥 [1/5] 拉取最新 Docker 鏡像..."
 if $DOCKER_COMPOSE -f docker-compose.prod.yml pull; then
     echo "✅ 鏡像拉取成功"
 else
-    echo "❌ 鏡像拉取失敗，請檢查："
-    echo "   1. DOCKER_USERNAME 是否正確"
-    echo "   2. Docker Hub 上是否有該鏡像"
-    echo "   3. 網路連接是否正常"
+    echo "❌ 鏡像拉取失敗"
     exit 1
 fi
 echo ""
 
-# 停止舊服務
-echo "🛑 [2/4] 停止舊服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml down
-echo "✅ 舊服務已停止"
+# 確保資料庫服務正在運行
+echo "🔍 [2/5] 確保資料庫服務運行中..."
+if ! docker ps | grep -q moa_postgres_prod; then
+    echo "   資料庫容器未運行，正在啟動..."
+    $DOCKER_COMPOSE -f docker-compose.prod.yml up -d db
+    echo "   等待資料庫就緒..."
+    sleep 10
+
+    # 等待資料庫健康檢查通過
+    max_wait=30
+    waited=0
+    while [ $waited -lt $max_wait ]; do
+        if docker ps | grep -q "moa_postgres_prod.*healthy"; then
+            echo "✅ 資料庫已就緒"
+            break
+        fi
+        echo "   等待資料庫健康檢查... ($waited/$max_wait 秒)"
+        sleep 2
+        waited=$((waited + 2))
+    done
+else
+    echo "✅ 資料庫服務已在運行"
+fi
 echo ""
 
-# 啟動新服務
-echo "🚀 [3/4] 啟動新服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml up -d
-echo "✅ 新服務已啟動"
+# 停止舊的應用服務（保留資料庫）
+echo "🛑 [3/5] 停止舊應用服務..."
+$DOCKER_COMPOSE -f docker-compose.prod.yml stop app 2>/dev/null || echo "   應用服務未運行（可能是首次部署）"
 echo ""
 
-# 等待服務啟動
-echo "⏳ [4/4] 等待服務就緒..."
+# 執行資料庫 Migrations
+echo "🔄 [4/5] 執行資料庫 Migrations..."
+SKIP_MIGRATION=${SKIP_MIGRATION:-false}
+
+if [ "$SKIP_MIGRATION" = "true" ]; then
+    echo "   ⏭️  跳過 migrations（SKIP_MIGRATION=true）"
+elif [ ! -d "node_modules" ]; then
+    echo "   ⚠️  未找到 node_modules，跳過 migration"
+    echo "   請確保在部署前已執行 npm ci"
+else
+    if NODE_ENV=production npm run db:migrate; then
+        echo "✅ Migrations 執行成功"
+    else
+        echo "❌ Migrations 執行失敗！"
+        echo "   嘗試重啟舊版本應用..."
+        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app
+        exit 1
+    fi
+fi
+echo ""
+
+# 啟動應用服務
+echo "🚀 [5/5] 啟動應用服務..."
+$DOCKER_COMPOSE -f docker-compose.prod.yml up -d app
+echo "✅ 應用服務已啟動"
+echo ""
+
+# 等待服務就緒並檢查健康狀態
+echo "⏳ 等待服務就緒..."
 sleep 10
 
-# 檢查服務健康狀態
 echo "🏥 檢查服務健康狀態..."
 max_attempts=10
 attempt=0
@@ -99,24 +124,15 @@ while [ $attempt -lt $max_attempts ]; do
         sleep 2
     fi
 done
-echo ""
 
-# 檢查狀態
-echo "📊 服務狀態："
-$DOCKER_COMPOSE -f docker-compose.prod.yml ps
 echo ""
-
-# 顯示最近的日誌
-echo "📋 最近的應用日誌："
-$DOCKER_COMPOSE -f docker-compose.prod.yml logs --tail=20 app
-echo ""
-
 echo "===================================="
-echo "  ✅ 部署完成！"
+echo "   ✅ 部署完成！版本: $VERSION"
 echo "===================================="
 echo ""
-echo "📝 下一步："
-echo "1. 訪問: http://\$(curl -s ifconfig.me):5173"
-echo "2. 查看日誌: $DOCKER_COMPOSE -f docker-compose.prod.yml logs -f"
-echo "3. 檢查狀態: $DOCKER_COMPOSE -f docker-compose.prod.yml ps"
+echo "📊 查看服務狀態："
+echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml ps"
+echo ""
+echo "📋 查看應用日誌："
+echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml logs -f app"
 echo ""

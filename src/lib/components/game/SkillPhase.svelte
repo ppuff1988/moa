@@ -125,18 +125,17 @@
 					</div>
 					{#if remainingSkills && remainingSkills.block > 0}
 						<p class="skill-instruction">點擊上方的獸首進行封鎖</p>
-						{#if selectedBeastHead !== null}
-							<button
-								class="confirm-btn"
-								on:click={() => {
-									if (selectedBeastHead !== null) {
-										onBlockArtifact(selectedBeastHead);
-									}
-								}}
-							>
-								確認封鎖選定的獸首
-							</button>
-						{/if}
+						<button
+							class="confirm-btn"
+							disabled={selectedBeastHead === null}
+							on:click={() => {
+								if (selectedBeastHead !== null) {
+									onBlockArtifact(selectedBeastHead);
+								}
+							}}
+						>
+							{selectedBeastHead !== null ? '確認封鎖選定的獸首' : '請先選擇一個獸首'}
+						</button>
 					{:else}
 						<p class="skill-used-message">✓ 本回合已使用完畢</p>
 					{/if}
@@ -408,7 +407,13 @@
 		border: none;
 	}
 
-	.confirm-btn:hover {
+	.confirm-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+	}
+
+	.confirm-btn:not(:disabled):hover {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
 	}

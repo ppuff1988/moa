@@ -46,17 +46,6 @@
 	// 過濾掉自己的玩家列表（用於投票選項）
 	$: otherPlayers = players.filter((p) => p.userId !== currentUser?.id);
 
-	// Debug: 檢查當前玩家和角色資訊
-	$: {
-		console.log('鑑人階段 - 當前玩家:', currentPlayer);
-		console.log('鑑人階段 - 當前角色:', currentPlayerRole);
-		console.log('鑑人階段 - 可投老朝奉:', canVoteLaoChaoFeng);
-		console.log('鑑人階段 - 可投許愿:', canVoteXuYuan);
-		console.log('鑑人階段 - 可投方震:', canVoteFangZhen);
-		console.log('鑑人階段 - 是鄭國渠:', zhengGuoQuRole);
-		console.log('鑑人階段 - 其他玩家數量:', otherPlayers.length);
-	}
-
 	// 獲取投票狀態
 	const fetchVotingStatus = async () => {
 		const token = getJWTToken();
@@ -78,12 +67,6 @@
 				totalEligibleVoters = data.totalEligibleVoters;
 				hasVoted = data.hasVoted;
 				allPlayersVoted = data.allVoted;
-				console.log('投票狀態已更新:', {
-					votedCount,
-					totalEligibleVoters,
-					hasVoted,
-					allPlayersVoted
-				});
 			}
 		} catch (error) {
 			console.error('獲取投票狀態錯誤:', error);
@@ -146,9 +129,7 @@
 				}
 			);
 
-			if (response.ok) {
-				addNotification('已公布鑑人結果', 'success');
-			} else {
+			if (!response.ok) {
 				const error = await response.json();
 				addNotification(error.message || '公布失敗', 'error');
 				isPublishing = false;
@@ -238,9 +219,6 @@
 							<label class="player-option">
 								<input type="radio" name="xuYuan" value={player.id} bind:group={selectedXuYuan} />
 								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-								{#if player.roleName}
-									<span class="role-badge">{player.roleName}</span>
-								{/if}
 							</label>
 						{/each}
 					</div>
@@ -261,9 +239,6 @@
 									bind:group={selectedFangZhen}
 								/>
 								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-								{#if player.roleName}
-									<span class="role-badge">{player.roleName}</span>
-								{/if}
 							</label>
 						{/each}
 					</div>
@@ -500,22 +475,6 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.95rem;
 		margin: 0;
-	}
-
-	.debug-info {
-		background: rgba(251, 191, 36, 0.1);
-		border: 1px solid rgba(251, 191, 36, 0.3);
-		padding: 0.75rem;
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
-	}
-
-	.role-badge {
-		font-size: 0.75rem;
-		padding: 0.2rem 0.5rem;
-		background: rgba(59, 130, 246, 0.2);
-		border-radius: 0.25rem;
-		margin-left: 0.5rem;
 	}
 
 	.no-vote-rights {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	export let onClick: () => void;
-	export let variant: 'create' | 'join' = 'create';
+	export let variant: 'create' | 'join' | 'primary' | 'destructive' = 'create';
 	export let title: string;
 	export let subtitle: string;
 </script>
@@ -48,6 +48,26 @@
 	}
 
 	.join-btn:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
+	}
+
+	.primary-btn {
+		background: linear-gradient(135deg, #c6a664, #d4b875);
+		color: hsl(var(--card-foreground));
+	}
+
+	.primary-btn:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4);
+	}
+
+	.destructive-btn {
+		background: linear-gradient(135deg, hsl(var(--primary)), #b91c1c);
+		color: hsl(var(--primary-foreground));
+	}
+
+	.destructive-btn:hover {
 		transform: translateY(-3px);
 		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
 	}

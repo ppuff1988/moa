@@ -5,6 +5,8 @@ import { db } from './db';
 import { games, gamePlayers, gameRounds, roles } from './db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 
+// ==================== 類型定義 ====================
+
 type AuthResult = { error: Response } | { user: User };
 
 type PlayerInRoomResult =
@@ -31,60 +33,151 @@ type HostInRoomResult = { error: Response } | { user: User; game: Game; player: 
 
 type CanActionCheckResult = { canAct: true } | { canAct: false; error: Response };
 
-// 統一的身份驗證函數，只接受 Request 物件
-export async function verifyAuthToken(request: Request): Promise<AuthResult> {
+// ==================== 錯誤響應工廠函數 ====================
+
+const ErrorResponses = {
+	needAuth: () => json({ message: '需要認證' }, { status: 401 }),
+	tokenExpired: () => json({ message: '認證令牌已過期，請重新登入' }, { status: 401 }),
+	invalidToken: () => json({ message: '無效的認證令牌' }, { status: 401 }),
+	userNotFound: () => json({ message: '用戶不存在' }, { status: 401 }),
+	roomNotFound: () => json({ message: '房間不存在' }, { status: 404 }),
+	notInRoom: () => json({ message: '您不在此房間中' }, { status: 403 }),
+	notHost: () => json({ message: '只有房主可以執行此操作' }, { status: 403 }),
+	gameNotStarted: () => json({ message: '遊戲尚未開始' }, { status: 400 }),
+	roundNotFound: () => json({ message: '找不到當前回合資訊' }, { status: 404 }),
+	noRole: () => json({ success: false, message: '你還沒有選擇角色' }, { status: 400 }),
+	roleNotFound: () => json({ success: false, message: '角色不存在' }, { status: 400 }),
+	noCurrentRound: () => json({ success: false, message: '當前沒有進行中的回合' }, { status: 400 }),
+	blocked: () =>
+		json(
+			{ success: false, message: '你被攻擊封鎖，無法執行此操作', blocked: true },
+			{ status: 403 }
+		),
+	wrongStatus: (requiredStatus: string) => {
+		const statusMessages: Record<string, string> = {
+			waiting: '遊戲尚未開始',
+			selecting: '必須在選角階段才能執行此操作',
+			playing: '遊戲尚未開始',
+			finished: '遊戲已結束'
+		};
+		return json(
+			{ message: statusMessages[requiredStatus] || '遊戲狀態不符合要求' },
+			{ status: 400 }
+		);
+	},
+	wrongHostStatus: (requiredStatus: string) => {
+		const statusMessages: Record<string, string> = {
+			waiting: '只能在等待階段執行此操作',
+			selecting: '只能在選角階段執行此操作',
+			playing: '只能在遊戲進行中執行此操作',
+			finished: '遊戲已結束'
+		};
+		return json(
+			{ message: statusMessages[requiredStatus] || '遊戲狀態不符合要求' },
+			{ status: 400 }
+		);
+	}
+};
+
+// ==================== 輔助函數 ====================
+
+/**
+ * 從請求中提取 JWT Token
+ */
+function extractToken(request: Request): string | undefined {
 	const authHeader = request.headers.get('Authorization');
 
-	// Check for token in Authorization header or cookie
-	let token: string | undefined;
-
 	if (authHeader?.startsWith('Bearer ')) {
-		token = authHeader.substring(7); // Remove 'Bearer ' prefix
-	} else {
-		// Try to get token from cookie
-		const cookieHeader = request.headers.get('cookie');
-		if (cookieHeader) {
-			const cookies = cookieHeader.split(';').map((c) => c.trim());
-			const jwtCookie = cookies.find((c) => c.startsWith('jwt='));
-			if (jwtCookie) {
-				token = jwtCookie.substring(4); // Remove 'jwt=' prefix
-			}
+		return authHeader.substring(7);
+	}
+
+	const cookieHeader = request.headers.get('cookie');
+	if (cookieHeader) {
+		const cookies = cookieHeader.split(';').map((c) => c.trim());
+		const jwtCookie = cookies.find((c) => c.startsWith('jwt='));
+		if (jwtCookie) {
+			return jwtCookie.substring(4);
 		}
 	}
 
+	return undefined;
+}
+
+/**
+ * 根據房間名稱查找遊戲
+ */
+async function findGameByRoomName(roomName: string): Promise<Game | null> {
+	const [game] = await db
+		.select()
+		.from(games)
+		.where(eq(games.roomName, decodeURIComponent(roomName)))
+		.limit(1);
+
+	return game || null;
+}
+
+/**
+ * 查找玩家在遊戲中的記錄
+ */
+async function findPlayerInGame(
+	gameId: string,
+	userId: number
+): Promise<typeof gamePlayers.$inferSelect | null> {
+	const [player] = await db
+		.select()
+		.from(gamePlayers)
+		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
+		.limit(1);
+
+	return player || null;
+}
+
+/**
+ * 檢查遊戲狀態是否符合要求
+ */
+function validateGameStatus(
+	game: Game,
+	requiredStatus: string
+): { valid: true } | { valid: false; error: Response } {
+	if (game.status !== requiredStatus) {
+		return { valid: false, error: ErrorResponses.wrongStatus(requiredStatus) };
+	}
+	return { valid: true };
+}
+
+// ==================== 核心驗證函數 ====================
+
+/**
+ * 統一的身份驗證函數
+ */
+export async function verifyAuthToken(request: Request): Promise<AuthResult> {
+	const token = extractToken(request);
+
 	if (!token) {
-		return {
-			error: json({ message: '需要認證' }, { status: 401 })
-		};
+		return { error: ErrorResponses.needAuth() };
 	}
 
-	// 使用新的驗證函數來區分過期和無效
 	const verifyResult = verifyJWTWithError(token);
 
 	if (!verifyResult.payload) {
 		if (verifyResult.error === 'expired') {
-			return {
-				error: json({ message: '認證令牌已過期，請重新登入' }, { status: 401 })
-			};
+			return { error: ErrorResponses.tokenExpired() };
 		}
-		return {
-			error: json({ message: '無效的認證令牌' }, { status: 401 })
-		};
+		return { error: ErrorResponses.invalidToken() };
 	}
 
-	// 從資料庫獲取用戶資料
 	const user = await getUserFromJWT(token);
 
 	if (!user) {
-		return {
-			error: json({ message: '用戶不存在' }, { status: 401 })
-		};
+		return { error: ErrorResponses.userNotFound() };
 	}
 
 	return { user };
 }
 
-// 驗證玩家是否在房間中
+/**
+ * 驗證玩家是否在房間中
+ */
 export async function verifyPlayerInRoom(
 	request: Request,
 	roomName: string
@@ -95,36 +188,22 @@ export async function verifyPlayerInRoom(
 	}
 	const { user } = authResult;
 
-	// 查找房間
-	const [game] = await db
-		.select()
-		.from(games)
-		.where(eq(games.roomName, decodeURIComponent(roomName)))
-		.limit(1);
-
+	const game = await findGameByRoomName(roomName);
 	if (!game) {
-		return {
-			error: json({ message: '房間不存在' }, { status: 404 })
-		};
+		return { error: ErrorResponses.roomNotFound() };
 	}
 
-	// 檢查玩家是否在房間中
-	const [player] = await db
-		.select()
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, user.id)))
-		.limit(1);
-
+	const player = await findPlayerInGame(game.id, user.id);
 	if (!player) {
-		return {
-			error: json({ message: '您不在此房間中' }, { status: 403 })
-		};
+		return { error: ErrorResponses.notInRoom() };
 	}
 
 	return { user, game, player };
 }
 
-// 驗證房主權限
+/**
+ * 驗證房主權限
+ */
 export async function verifyHostPermission(
 	request: Request,
 	roomName: string
@@ -135,150 +214,70 @@ export async function verifyHostPermission(
 	}
 	const { user } = authResult;
 
-	// 查找房間
-	const [game] = await db
-		.select()
-		.from(games)
-		.where(eq(games.roomName, decodeURIComponent(roomName)))
-		.limit(1);
-
+	const game = await findGameByRoomName(roomName);
 	if (!game) {
-		return {
-			error: json({ message: '房間不存在' }, { status: 404 })
-		};
+		return { error: ErrorResponses.roomNotFound() };
 	}
 
-	// 檢查是否為房主
 	if (game.hostId !== user.id) {
-		return {
-			error: json({ message: '只有房主可以執行此操作' }, { status: 403 })
-		};
+		return { error: ErrorResponses.notHost() };
 	}
 
 	return { user, game };
 }
 
-// 驗證玩家在遊戲中且遊戲正在進行，並返回當前回合資訊
+/**
+ * 驗證玩家在遊戲中且遊戲正在進行，並返回當前回合資訊
+ */
 export async function verifyPlayerInGame(
 	request: Request,
 	roomName: string
 ): Promise<PlayerInGameResult> {
-	const authResult = await verifyAuthToken(request);
-	if ('error' in authResult) {
-		return authResult;
-	}
-	const { user } = authResult;
-
-	// 查找房間
-	const [game] = await db
-		.select()
-		.from(games)
-		.where(eq(games.roomName, decodeURIComponent(roomName)))
-		.limit(1);
-
-	if (!game) {
-		return {
-			error: json({ message: '房間不存在' }, { status: 404 })
-		};
+	const verifyResult = await verifyPlayerInRoom(request, roomName);
+	if ('error' in verifyResult) {
+		return verifyResult;
 	}
 
-	// 檢查玩家是否在房間中
-	const [player] = await db
-		.select()
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, user.id)))
-		.limit(1);
+	const { user, game, player } = verifyResult;
 
-	if (!player) {
-		return {
-			error: json({ message: '您不在此房間中' }, { status: 403 })
-		};
-	}
-
-	// 檢查遊戲狀態
 	if (game.status !== 'playing') {
-		return {
-			error: json({ message: '遊戲尚未開始' }, { status: 400 })
-		};
+		return { error: ErrorResponses.gameNotStarted() };
 	}
 
-	// 獲取當前回合資訊
-	const [currentRound] = await db
-		.select()
-		.from(gameRounds)
-		.where(eq(gameRounds.gameId, game.id))
-		.orderBy(desc(gameRounds.round))
-		.limit(1);
-
+	const currentRound = await getCurrentRound(game.id);
 	if (!currentRound) {
-		return {
-			error: json({ message: '找不到當前回合資訊' }, { status: 404 })
-		};
+		return { error: ErrorResponses.roundNotFound() };
 	}
 
 	return { user, game, player, currentRound };
 }
 
-// 驗證玩家在房間中且遊戲狀態符合指定狀態
+/**
+ * 驗證玩家在房間中且遊戲狀態符合指定狀態
+ */
 export async function verifyPlayerInRoomWithStatus(
 	request: Request,
 	roomName: string,
 	requiredStatus: string
 ): Promise<PlayerInRoomWithStatusResult> {
-	const authResult = await verifyAuthToken(request);
-	if ('error' in authResult) {
-		return authResult;
-	}
-	const { user } = authResult;
-
-	// 查找房間
-	const [game] = await db
-		.select()
-		.from(games)
-		.where(eq(games.roomName, decodeURIComponent(roomName)))
-		.limit(1);
-
-	if (!game) {
-		return {
-			error: json({ message: '房間不存在' }, { status: 404 })
-		};
+	const verifyResult = await verifyPlayerInRoom(request, roomName);
+	if ('error' in verifyResult) {
+		return verifyResult;
 	}
 
-	// 檢查玩家是否在房間中
-	const [player] = await db
-		.select()
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, user.id)))
-		.limit(1);
+	const { user, game, player } = verifyResult;
 
-	if (!player) {
-		return {
-			error: json({ message: '您不在此房間中' }, { status: 403 })
-		};
-	}
-
-	// 檢查遊戲狀態
-	if (game.status !== requiredStatus) {
-		const statusMessages: Record<string, string> = {
-			waiting: '遊戲尚未開始',
-			selecting: '必須在選角階段才能執行此操作',
-			playing: '遊戲尚未開始',
-			finished: '遊戲已結束'
-		};
-		return {
-			error: json(
-				{
-					message: statusMessages[requiredStatus] || '遊戲狀態不符合要求'
-				},
-				{ status: 400 }
-			)
-		};
+	const statusCheck = validateGameStatus(game, requiredStatus);
+	if (!statusCheck.valid) {
+		return { error: statusCheck.error };
 	}
 
 	return { user, game, player };
 }
 
-// 驗證房主權限並檢查遊戲狀態
+/**
+ * 驗證房主權限並檢查遊戲狀態
+ */
 export async function verifyHostWithStatus(
 	request: Request,
 	roomName: string,
@@ -290,48 +289,25 @@ export async function verifyHostWithStatus(
 	}
 	const { user } = authResult;
 
-	// 查找房間
-	const [game] = await db
-		.select()
-		.from(games)
-		.where(eq(games.roomName, decodeURIComponent(roomName)))
-		.limit(1);
-
+	const game = await findGameByRoomName(roomName);
 	if (!game) {
-		return {
-			error: json({ message: '房間不存在' }, { status: 404 })
-		};
+		return { error: ErrorResponses.roomNotFound() };
 	}
 
-	// 檢查是否為房主
 	if (game.hostId !== user.id) {
-		return {
-			error: json({ message: '只有房主可以執行此操作' }, { status: 403 })
-		};
+		return { error: ErrorResponses.notHost() };
 	}
 
-	// 如果需要檢查遊戲狀態
 	if (requiredStatus && game.status !== requiredStatus) {
-		const statusMessages: Record<string, string> = {
-			waiting: '只能在等待階段執行此操作',
-			selecting: '只能在選角階段執行此操作',
-			playing: '只能在遊戲進行中執行此操作',
-			finished: '遊戲已結束'
-		};
-		return {
-			error: json(
-				{
-					message: statusMessages[requiredStatus] || '遊戲狀態不符合要求'
-				},
-				{ status: 400 }
-			)
-		};
+		return { error: ErrorResponses.wrongHostStatus(requiredStatus) };
 	}
 
 	return { user, game };
 }
 
-// 驗證玩家角色（統一處理角色驗證邏輯）
+/**
+ * 驗證玩家角色（統一處理角色驗證邏輯）
+ */
 export async function verifyPlayerRole(
 	request: Request,
 	roomName: string
@@ -343,38 +319,22 @@ export async function verifyPlayerRole(
 
 	const { user, game, player } = verifyResult;
 
-	// 檢查玩家是否有角色
 	if (!player.roleId) {
-		return {
-			error: json(
-				{
-					success: false,
-					message: '你還沒有選擇角色'
-				},
-				{ status: 400 }
-			)
-		};
+		return { error: ErrorResponses.noRole() };
 	}
 
-	// 獲取玩家角色資訊
 	const [role] = await db.select().from(roles).where(eq(roles.id, player.roleId)).limit(1);
 
 	if (!role) {
-		return {
-			error: json(
-				{
-					success: false,
-					message: '角色不存在'
-				},
-				{ status: 400 }
-			)
-		};
+		return { error: ErrorResponses.roleNotFound() };
 	}
 
 	return { user, game, player, role };
 }
 
-// 驗證房主權限（在房間中且為房主）
+/**
+ * 驗證房主權限（在房間中且為房主）
+ */
 export async function verifyHostInRoom(
 	request: Request,
 	roomName: string
@@ -386,22 +346,18 @@ export async function verifyHostInRoom(
 
 	const { user, game, player } = verifyResult;
 
-	// 檢查是否為房主
 	if (!player.isHost) {
-		return {
-			error: json(
-				{
-					error: '只有房主可以執行此操作'
-				},
-				{ status: 403 }
-			)
-		};
+		return { error: ErrorResponses.notHost() };
 	}
 
 	return { user, game, player };
 }
 
-// 獲取當前回合
+// ==================== 回合相關函數 ====================
+
+/**
+ * 獲取當前回合
+ */
 export async function getCurrentRound(gameId: string): Promise<GameRound | null> {
 	const [currentRound] = await db
 		.select()
@@ -413,34 +369,25 @@ export async function getCurrentRound(gameId: string): Promise<GameRound | null>
 	return currentRound || null;
 }
 
-// 獲取當前回合，如果不存在則返回錯誤 Response
+/**
+ * 獲取當前回合，如果不存在則返回錯誤 Response
+ */
 export async function getCurrentRoundOrError(
 	gameId: string
 ): Promise<{ round: GameRound } | { error: Response }> {
 	const currentRound = await getCurrentRound(gameId);
 
 	if (!currentRound) {
-		return {
-			error: json(
-				{
-					success: false,
-					message: '當前沒有進行中的回合'
-				},
-				{ status: 400 }
-			)
-		};
+		return { error: ErrorResponses.noCurrentRound() };
 	}
 
 	return { round: currentRound };
 }
 
+// ==================== 行動相關函數 ====================
+
 /**
  * 計算下一個行動的順序編號
- * 查詢整個回合中所有玩家的行動記錄，返回下一個應該使用的 ordering 值
- *
- * @param gameId - 遊戲 ID
- * @param roundId - 回合 ID
- * @returns 下一個行動的順序編號（從 1 開始）
  */
 export async function getNextActionOrdering(gameId: string, roundId: number): Promise<number> {
 	const { gameActions } = await import('./db/schema');
@@ -454,17 +401,114 @@ export async function getNextActionOrdering(gameId: string, roundId: number): Pr
 }
 
 /**
- * 檢查是否需要還原 canAction
- * 在玩家行動結束（指派下一位玩家）時調用
- * 條件：
- * 1. 所有技能都用完（鑑定 + 其他技能如交換、攻擊、封鎖等）
- * 2. 當前回合等於封鎖回合（blocked_round）
- * 3. 不是永久封鎖
- *
- * @param playerId - 玩家 ID
- * @param blockedRound - 封鎖回合
- * @param currentRoundNumber - 當前回合號碼
- * @param roleSkill - 角色技能配置
+ * 檢查玩家是否能執行行動
+ */
+export function checkPlayerCanAction(player: { canAction: boolean | null }): CanActionCheckResult {
+	if (player.canAction === false) {
+		return { canAct: false, error: ErrorResponses.blocked() };
+	}
+
+	return { canAct: true };
+}
+
+/**
+ * 檢查玩家是否已經執行過某種類型的行動
+ */
+export function hasPerformedAction(
+	existingActions: Array<{ actionData: unknown }>,
+	actionType: string
+): boolean {
+	return existingActions.some((action) => {
+		const actionData = action.actionData as { type?: string } | null;
+		return actionData?.type === actionType;
+	});
+}
+
+/**
+ * 統計玩家執行某種行動的次數
+ */
+export function countActionsByType(
+	existingActions: Array<{ actionData: unknown }>,
+	actionType: string
+): number {
+	return existingActions.filter((action) => {
+		const actionData = action.actionData as { type?: string } | null;
+		return actionData?.type === actionType;
+	}).length;
+}
+
+/**
+ * 統計玩家在當前回合的技能使用情況
+ */
+interface SkillUsageCount {
+	identifyArtifact: number;
+	identifyPlayer: number;
+	swap: number;
+	attack: number;
+	block: number;
+}
+
+export function countSkillUsage(actions: Array<{ actionData: unknown }>): SkillUsageCount {
+	const counts: SkillUsageCount = {
+		identifyArtifact: 0,
+		identifyPlayer: 0,
+		swap: 0,
+		attack: 0,
+		block: 0
+	};
+
+	for (const action of actions) {
+		const data = action.actionData as { type?: string } | null;
+		if (!data?.type) continue;
+
+		switch (data.type) {
+			case 'identify_artifact':
+				counts.identifyArtifact++;
+				break;
+			case 'identify_player':
+				counts.identifyPlayer++;
+				break;
+			case 'swap_artifacts':
+				counts.swap++;
+				break;
+			case 'attack_player':
+				counts.attack++;
+				break;
+			case 'block_artifact':
+				counts.block++;
+				break;
+		}
+	}
+
+	return counts;
+}
+
+/**
+ * 檢查所有技能是否都已用完
+ */
+export function areAllSkillsUsed(
+	usageCounts: SkillUsageCount,
+	roleSkill: Record<string, number> | null
+): boolean {
+	if (!roleSkill) return false;
+
+	const maxCheckArtifact = roleSkill.checkArtifact || 0;
+	const maxCheckPeople = roleSkill.checkPeople || 0;
+	const maxSwap = roleSkill.swap || 0;
+	const maxAttack = roleSkill.attack || 0;
+	const maxBlock = roleSkill.block || 0;
+
+	return (
+		usageCounts.identifyArtifact >= maxCheckArtifact &&
+		usageCounts.identifyPlayer >= maxCheckPeople &&
+		usageCounts.swap >= maxSwap &&
+		usageCounts.attack >= maxAttack &&
+		usageCounts.block >= maxBlock
+	);
+}
+
+/**
+ * 還原玩家的行動能力（如果符合條件）
  */
 export async function restoreCanActionIfNeeded(
 	playerId: number,
@@ -473,13 +517,14 @@ export async function restoreCanActionIfNeeded(
 	roleSkill: Record<string, number> | null
 ): Promise<void> {
 	const { PERMANENT_BLOCK_ROUND } = await import('./constants');
-	const { gameActions, gameRounds } = await import('./db/schema');
+	const { gameActions } = await import('./db/schema');
 
-	const notPermanentBlock = blockedRound !== PERMANENT_BLOCK_ROUND;
+	const isPermanentBlock = blockedRound === PERMANENT_BLOCK_ROUND;
 	const isBlockedRound = blockedRound === currentRoundNumber;
 
-	if (!isBlockedRound || !notPermanentBlock) {
-		return; // 不在封鎖回合或永久封鎖，直接返回
+	// 如果不在封鎖回合且非永久封鎖，直接返回
+	if (!isBlockedRound && !isPermanentBlock) {
+		return;
 	}
 
 	// 查詢當前回合
@@ -497,121 +542,14 @@ export async function restoreCanActionIfNeeded(
 		.from(gameActions)
 		.where(and(eq(gameActions.playerId, playerId), eq(gameActions.roundId, currentRound.id)));
 
-	// 統計各種技能使用次數
-	const identifyArtifactCount = actions.filter((a) => {
-		const data = a.actionData as { type?: string } | null;
-		return data?.type === 'identify_artifact';
-	}).length;
+	// 統計技能使用情況
+	const usageCounts = countSkillUsage(actions);
 
-	const identifyPlayerCount = actions.filter((a) => {
-		const data = a.actionData as { type?: string } | null;
-		return data?.type === 'identify_player';
-	}).length;
-
-	const swapCount = actions.filter((a) => {
-		const data = a.actionData as { type?: string } | null;
-		return data?.type === 'swap_artifacts';
-	}).length;
-
-	const attackCount = actions.filter((a) => {
-		const data = a.actionData as { type?: string } | null;
-		return data?.type === 'attack_player';
-	}).length;
-
-	const blockCount = actions.filter((a) => {
-		const data = a.actionData as { type?: string } | null;
-		return data?.type === 'block_artifact';
-	}).length;
-
-	// 檢查所有技能是否都達到上限
-	const maxCheckArtifact = roleSkill?.checkArtifact || 0;
-	const maxCheckPeople = roleSkill?.checkPeople || 0;
-	const maxSwap = roleSkill?.swap || 0;
-	const maxAttack = roleSkill?.attack || 0;
-	const maxBlock = roleSkill?.block || 0;
-
-	const identifyArtifactUsed = identifyArtifactCount >= maxCheckArtifact;
-	const identifyPlayerUsed = identifyPlayerCount >= maxCheckPeople;
-	const swapUsed = swapCount >= maxSwap;
-	const attackUsed = attackCount >= maxAttack;
-	const blockUsed = blockCount >= maxBlock;
-
-	// 所有技能都用完才能還原
-	const allSkillsUsed =
-		identifyArtifactUsed && identifyPlayerUsed && swapUsed && attackUsed && blockUsed;
-
-	console.log(`[還原行動檢查] 玩家 ${playerId} 在回合 ${currentRoundNumber} 行動結束，技能使用:`, {
-		identifyArtifact: `${identifyArtifactCount}/${maxCheckArtifact}`,
-		identifyPlayer: `${identifyPlayerCount}/${maxCheckPeople}`,
-		swap: `${swapCount}/${maxSwap}`,
-		attack: `${attackCount}/${maxAttack}`,
-		block: `${blockCount}/${maxBlock}`,
-		allUsed: allSkillsUsed
-	});
-
-	if (allSkillsUsed) {
+	// 檢查所有技能是否都用完
+	if (areAllSkillsUsed(usageCounts, roleSkill)) {
 		console.log(`[還原行動] 玩家 ${playerId} 所有技能用完，還原 can_action`);
 		await db.update(gamePlayers).set({ canAction: true }).where(eq(gamePlayers.id, playerId));
 	} else {
 		console.log(`[還原行動] 玩家 ${playerId} 還有技能未用完，不還原 can_action`);
 	}
-}
-
-/**
- * 檢查玩家是否能執行行動
- * 檢查 canAction 狀態，如果為 false 則返回錯誤響應
- *
- * @param player - 玩家對象
- * @returns 如果可以行動返回 { canAct: true }，否則返回 { canAct: false, error: Response }
- */
-export function checkPlayerCanAction(player: { canAction: boolean | null }): CanActionCheckResult {
-	if (player.canAction === false) {
-		return {
-			canAct: false,
-			error: json(
-				{
-					success: false,
-					message: '你被攻擊封鎖，無法執行此操作',
-					blocked: true
-				},
-				{ status: 403 }
-			)
-		};
-	}
-
-	return { canAct: true };
-}
-
-/**
- * 檢查玩家是否已經執行過某種類型的行動
- *
- * @param existingActions - 現有的行動記錄
- * @param actionType - 要檢查的行動類型
- * @returns 如果已執行過該行動返回 true
- */
-export function hasPerformedAction(
-	existingActions: Array<{ actionData: unknown }>,
-	actionType: string
-): boolean {
-	return existingActions.some((action) => {
-		const actionData = action.actionData as { type?: string } | null;
-		return actionData?.type === actionType;
-	});
-}
-
-/**
- * 統計玩家執行某種行動的次數
- *
- * @param existingActions - 現有的行動記錄
- * @param actionType - 要統計的行動類型
- * @returns 行動次數
- */
-export function countActionsByType(
-	existingActions: Array<{ actionData: unknown }>,
-	actionType: string
-): number {
-	return existingActions.filter((action) => {
-		const actionData = action.actionData as { type?: string } | null;
-		return actionData?.type === actionType;
-	}).length;
 }

@@ -83,6 +83,7 @@ CREATE TABLE game_players (
     can_action BOOLEAN DEFAULT TRUE,
     blocked_round INTEGER,
     joined_at TIMESTAMP DEFAULT NOW(),
+    left_at TIMESTAMP,
     last_active_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(game_id, user_id),
     UNIQUE(game_id, color)
@@ -159,7 +160,7 @@ CREATE INDEX identification_votes_player_id_idx ON identification_votes(player_i
 -- ==========================================
 
 INSERT INTO roles (name, camp, skill, can_check_artifact, can_swap, can_check_people, can_attack, can_block, can_fool) VALUES
-('許愿', 'good', '{"checkArtifact": 2}'::jsonb, true, false, false, false, false, false),
+('許愿', 'good', '{"checkArtifact": 2}'::jsonb, true, false, false, false, false, true),
 ('方震', 'good', '{"checkPeople": 1}'::jsonb, false, false, true, false, false, true),
 ('黃煙煙', 'good', '{"checkArtifact": 1}'::jsonb, true, false, false, false, false, true),
 ('木戶加奈', 'good', '{"checkArtifact": 1}'::jsonb, true, false, false, false, false, true),

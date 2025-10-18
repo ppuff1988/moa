@@ -4,7 +4,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification } from '$lib/stores/notifications';
+	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
 	import { GameService } from '$lib/services/gameService';
 	import { createGameState } from '$lib/stores/gameState';
 	import { initSocket, disconnectSocket } from '$lib/utils/socket';
@@ -24,6 +24,7 @@
 	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
 	import IdentificationPhasePanel from '$lib/components/game/IdentificationPhasePanel.svelte';
 	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
+	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
 
 	import type { User, ActionedPlayer } from '$lib/types/game';
 
@@ -63,6 +64,7 @@
 	let gameService: GameService;
 	let socket: Socket | null = null;
 	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
+	let showBlockedModal = false;
 
 	$: roomName = $page.params.name || '';
 	$: isMyTurn =
@@ -77,6 +79,9 @@
 
 	// Update gameStatus based on roundPhase
 	$: gameStatus = $roundPhase === 'finished' ? 'finished' : 'playing';
+
+	// 同步遊戲狀態到通知系統
+	$: currentGameStatus.set(gameStatus);
 
 	// Initialize game service
 	$: if (roomName) {
@@ -98,7 +103,8 @@
 		const {
 			roleName,
 			skillActions: skills,
-			performedActions: actions
+			performedActions: actions,
+			canAction: playerCanAction
 		} = await gameService.fetchMyRole();
 
 		if (roleName) {
@@ -114,6 +120,11 @@
 
 		if (actions && actions.length > 0) {
 			performedActions.set(actions);
+		}
+
+		// 檢查 canAction 狀態，如果是我的回合但無法行動，顯示 modal
+		if (playerCanAction === false && isMyTurn) {
+			showBlockedModal = true;
 		}
 	}
 
@@ -245,10 +256,20 @@
 			(action) => action.type === 'identify_artifact'
 		);
 
-		if (identifyActions.length > 0 && $beastHeads.length > 0) {
-			let successfulCount = 0;
-			let blockedCount = 0;
+		// 恢復封鎖的獸首
+		const blockActions = $performedActions.filter((action) => action.type === 'block_artifact');
+		if (blockActions.length > 0 && $beastHeads.length > 0) {
+			blockActions.forEach((blockAction) => {
+				if (blockAction.data && blockAction.data.artifactId) {
+					const artifactId = blockAction.data.artifactId as number;
+					if (!$blockedArtifacts.includes(artifactId)) {
+						blockedArtifacts.update((list) => [...list, artifactId]);
+					}
+				}
+			});
+		}
 
+		if (identifyActions.length > 0 && $beastHeads.length > 0) {
 			identifyActions.forEach((identifyAction) => {
 				if (identifyAction.data) {
 					const artifactName = (identifyAction.data.artifactName as string)?.replace('首', '');
@@ -260,12 +281,10 @@
 						if (isBlocked) {
 							if (!$failedIdentifications.includes(identifiedBeast.id)) {
 								failedIdentifications.update((list) => [...list, identifiedBeast.id]);
-								blockedCount++;
 							}
 						} else {
 							if (!$identifiedArtifacts.includes(identifiedBeast.id)) {
 								identifiedArtifacts.update((list) => [...list, identifiedBeast.id]);
-								successfulCount++;
 
 								beastHeads.update((heads) => {
 									const index = heads.findIndex((b) => b.id === identifiedBeast.id);
@@ -282,18 +301,6 @@
 					}
 				}
 			});
-
-			if (successfulCount > 0 && blockedCount > 0) {
-				addNotification(
-					`已恢復 ${successfulCount} 個鑑定結果和 ${blockedCount} 個被封鎖的鑑定`,
-					'info',
-					3000
-				);
-			} else if (successfulCount > 0) {
-				addNotification(`已恢復 ${successfulCount} 個鑑定結果`, 'info', 3000);
-			} else if (blockedCount > 0) {
-				addNotification(`已恢復 ${blockedCount} 個被封鎖的鑑定`, 'info', 3000);
-			}
 		}
 
 		if ($identifiedPlayers.length > 0) {
@@ -714,17 +721,11 @@
 
 					// Listen for voting-completed event
 					socket.on('voting-completed', async (data) => {
-						console.log('[📥 voting-completed] 收到投票完成廣播', {
-							phase: data.phase,
-							roundId: data.roundId,
-							round: data.round
-						});
 						addNotification('投票結果已公布', 'info', 3000);
 
 						// Update phase to result
 						if (data.phase) {
 							roundPhase.set(data.phase);
-							console.log('[📥 voting-completed] 更新階段為:', data.phase);
 						}
 
 						// Refresh artifacts to get voting results
@@ -734,18 +735,11 @@
 
 					// Listen for round-started event
 					socket.on('round-started', async (data) => {
-						console.log('[📥 round-started] 收到新回合開始廣播', {
-							round: data.round,
-							roundId: data.roundId,
-							firstPlayerId: data.firstPlayerId,
-							previousRoundCompleted: data.previousRoundCompleted
-						});
 						addNotification(`第 ${data.round} 回合已開始`, 'success', 3000);
 
 						// Update current round
 						if (data.round) {
 							currentRound.set(data.round);
-							console.log('[📥 round-started] 更新當前回合為:', data.round);
 						}
 
 						// Reset game state for new round
@@ -758,22 +752,43 @@
 						await fetchMyRole();
 					});
 
+					// Listen for player-assigned event (when a new player is assigned to act)
+					socket.on('player-assigned', async () => {
+						// Refresh player data to check if it's my turn
+						await updatePlayersAndRound();
+
+						// Check if it's my turn now
+						const myPlayer = $players.find((p) => p.nickname === currentUser?.nickname);
+						const isNowMyTurn = $currentActionPlayer?.id === myPlayer?.id;
+
+						if (isNowMyTurn) {
+							// Fetch role info to check canAction status
+							const roleData = await gameService.fetchMyRole();
+
+							// If canAction is false, show blocked modal
+							if (roleData.canAction === false) {
+								showBlockedModal = true;
+							}
+
+							// Update skill actions if available
+							if (roleData.skillActions) {
+								skillActions.set(roleData.skillActions);
+								hasLoadedSkills.set(true);
+							}
+
+							if (roleData.performedActions && roleData.performedActions.length > 0) {
+								performedActions.set(roleData.performedActions);
+							}
+						}
+					});
+
 					// Listen for enter-identification-phase event
 					socket.on('enter-identification-phase', async (data) => {
-						console.log('[📥 enter-identification-phase] 收到進入鑑人階段廣播', {
-							message: data.message,
-							genuineCount: data.genuineCount,
-							roundId: data.roundId
-						});
 						addNotification(data.message || '進入鑑人階段', 'info', 4000);
 
 						// Update phase and score
 						roundPhase.set('identification');
 						genuineScore.set(data.genuineCount || 0);
-						console.log(
-							'[📥 enter-identification-phase] 更新階段為 identification，真品數量:',
-							data.genuineCount
-						);
 
 						// Refresh data
 						await fetchRoundStatus();
@@ -781,19 +796,12 @@
 
 					// Listen for identification-completed event
 					socket.on('identification-completed', async (data) => {
-						console.log('[📥 identification-completed] 收到鑑人完成廣播', {
-							winner: data.winner,
-							goodTeamScore: data.goodTeamScore,
-							badTeamScore: data.badTeamScore,
-							finalResult: data
-						});
 						addNotification(`遊戲結束！${data.winner}獲勝！`, 'success', 5000);
 
 						// Update final result
 						finalResult.set(data);
 						roundPhase.set('finished');
 						isGameFinished.set(true);
-						console.log('[📥 identification-completed] 遊戲結束，勝利方:', data.winner);
 
 						// Refresh data
 						await fetchRoundStatus();
@@ -801,25 +809,16 @@
 
 					// Listen for game-finished event
 					socket.on('game-finished', async (data) => {
-						console.log('[📥 game-finished] 收到遊戲結束廣播', {
-							winner: data.winner,
-							goodTeamScore: data.goodTeamScore,
-							badTeamScore: data.badTeamScore,
-							finalResult: data
-						});
 						addNotification(`遊戲結束！${data.winner}獲勝！`, 'success', 5000);
 
 						// Update final result
 						finalResult.set(data);
 						roundPhase.set('finished');
 						isGameFinished.set(true);
-						console.log('[📥 game-finished] 遊戲結束，勝利方:', data.winner);
 
 						// Refresh data
 						await fetchRoundStatus();
 					});
-
-					console.log('Socket 已初始化並加入房間:', roomName);
 				} catch (socketError) {
 					console.error('Socket 初始化錯誤:', socketError);
 					// 不要因為 socket 錯誤而阻止遊戲載入
@@ -1061,6 +1060,12 @@
 
 	<NotificationManager />
 	<ActionSequence {roomName} bind:isOpen={isActionHistoryOpen} />
+	<BlockedActionModal
+		bind:isOpen={showBlockedModal}
+		onConfirm={() => {
+			showBlockedModal = false;
+		}}
+	/>
 {/if}
 
 <style>

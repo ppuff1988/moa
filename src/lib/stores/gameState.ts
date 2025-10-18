@@ -25,6 +25,7 @@ export function createGameState() {
 	const currentPlayerRole = writable<string | null>(null);
 	const skillActions = writable<SkillActions | null>(null);
 	const hasLoadedSkills = writable<boolean>(false);
+	const canAction = writable<boolean>(true);
 
 	// Skill usage tracking
 	const usedSkills = writable<UsedSkills>({
@@ -120,6 +121,7 @@ export function createGameState() {
 		currentPlayerRole,
 		skillActions,
 		hasLoadedSkills,
+		canAction,
 		usedSkills,
 		identifiedArtifacts,
 		blockedArtifacts,
@@ -148,6 +150,7 @@ export function createGameState() {
 			});
 			skillActions.set(null);
 			hasLoadedSkills.set(false);
+			canAction.set(true);
 			gamePhase.set('identification');
 			selectedBeastHead.set(null);
 			identifiedPlayers.set([]);
