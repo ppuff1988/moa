@@ -83,6 +83,7 @@ CREATE TABLE game_players (
     can_action BOOLEAN DEFAULT TRUE,
     blocked_round INTEGER,
     joined_at TIMESTAMP DEFAULT NOW(),
+    left_at TIMESTAMP,
     last_active_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(game_id, user_id),
     UNIQUE(game_id, color)
