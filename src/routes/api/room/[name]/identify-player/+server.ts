@@ -240,67 +240,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 12.2 檢查目標玩家是否被封鎖
-	// 檢查目標玩家是否被封鎖
-	// 1. 如果是姬云浮且 attackedRounds 有任何值，永久無法被鑑定
-	// 2. 檢查是否因被攻擊而無法被鑑定（attackedRounds 包含當前回合）
-	// 3. 檢查是否因天生技能而無法被鑑定（blockedRound 等於當前回合）
-
-	// 查詢目標玩家的角色資訊以判斷是否為姬云浮
-	const targetAttackedRounds = (targetPlayer.attackedRounds as number[]) || [];
-	const isJiYunfu = targetRole.name === '姬云浮';
-
-	// 姬云浮的永久封鎖：只要 attackedRounds 有值就永久無法被鑑定
-	const isPermanentlyBlocked = isJiYunfu && targetAttackedRounds.length > 0;
-	const isAttackedThisRound = targetAttackedRounds.includes(currentRound.round);
-	const isNaturallyBlocked = targetPlayer.blockedRound === currentRound.round;
-
-	const isBlocked = isPermanentlyBlocked || isAttackedThisRound || isNaturallyBlocked;
-
-	// ===== 13. 處理封鎖情況 =====
-	if (isBlocked) {
-		// 確定封鎖原因
-		let blockReason = 'player_blocked';
-		if (isPermanentlyBlocked) {
-			blockReason = 'permanently_blocked'; // 姬云浮被攻擊後永久無法被鑑定
-		} else if (isAttackedThisRound) {
-			blockReason = 'attacked_this_round'; // 本回合被攻擊
-		} else if (isNaturallyBlocked) {
-			blockReason = 'naturally_blocked'; // 黃煙煙或木戶加奈的天生封鎖回合
-		}
-
-		// 記錄失敗的鑑定動作（消耗次數）
-		await db.insert(gameActions).values({
-			gameId: game.id,
-			roundId: currentRound.id,
-			playerId: player.id,
-			ordering: nextOrdering,
-			actionData: {
-				type: 'identify_player',
-				targetPlayerId: targetPlayerId,
-				targetPlayerNickname: targetPlayer.nickname,
-				blocked: true,
-				reason: blockReason,
-				roleName: role.name,
-				round: currentRound.round
-			}
-		});
-
-		return json(
-			{
-				success: false,
-				message: '無法鑑定',
-				blocked: true,
-				actionRecorded: true
-			},
-			{ status: 403 }
-		);
-	}
-
-	// ===== 14. 獲取鑑定結果（目標玩家的真實陣營）=====
+	// ===== 13. 獲取鑑定結果（目標玩家的真實陣營）=====
 	const targetCamp = targetRole.camp;
 
-	// ===== 15. 記錄成功的鑑定動作 =====
+	// ===== 14. 記錄成功的鑑定動作 =====
 	await db.insert(gameActions).values({
 		gameId: game.id,
 		roundId: currentRound.id,
