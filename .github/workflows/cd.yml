@@ -179,7 +179,29 @@ jobs:
               echo \"📥 拉取最新代碼...\"
               git pull origin main
               echo \"📦 安裝 Node.js 依賴（用於執行 migrations）...\"
-              npm ci --prefer-offline --no-audit
+              
+              # 清理可能損壞的 node_modules 和 package-lock
+              if [ -d \"node_modules\" ]; then
+                echo \"🧹 清理現有 node_modules...\"
+                rm -rf node_modules
+              fi
+              
+              # 使用 timeout 命令防止 npm 安裝卡住
+              # 設置 10 分鐘超時，並添加更多標誌來加速安裝
+              if timeout 360 npm ci --prefer-offline --no-audit --legacy-peer-deps 2>&1; then
+                echo \"✅ npm 依賴安裝成功\"
+              else
+                EXIT_CODE=\$?
+                if [ \$EXIT_CODE -eq 124 ]; then
+                  echo \"❌ npm 安裝超時（超過 6 分鐘）\"
+                  echo \"🔄 嘗試使用 npm install 代替...\"
+                  timeout 600 npm install --prefer-offline --no-audit --legacy-peer_deps
+                else
+                  echo \"❌ npm 安裝失敗，退出碼: \$EXIT_CODE\"
+                  exit \$EXIT_CODE
+                fi
+              fi
+              
               echo \"⚙️ 設定環境變數...\"
               {
                 echo \"DOCKER_USERNAME=\$DOCKER_USERNAME\"
