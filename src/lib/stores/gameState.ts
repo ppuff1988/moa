@@ -153,11 +153,11 @@ export function createGameState() {
 			canAction.set(true);
 			gamePhase.set('identification');
 			selectedBeastHead.set(null);
-			identifiedPlayers.set([]);
-			identifiedArtifacts.set([]);
-			blockedArtifacts.set([]);
-			failedIdentifications.set([]);
-			performedActions.set([]);
+			// identifiedPlayers.set([]);
+			// identifiedArtifacts.set([]);
+			// blockedArtifacts.set([]);
+			// failedIdentifications.set([]);
+			// performedActions.set([]);
 		}
 	};
 }
