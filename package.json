@@ -71,7 +71,6 @@
 		"dotenv-flow": "^4.1.0",
 		"express": "^5.1.0",
 		"jsonwebtoken": "^9.0.2",
-		"lucia": "^3.2.2",
 		"pg": "^8.16.3",
 		"postgres": "^3.4.5",
 		"socket.io": "^4.8.1",
