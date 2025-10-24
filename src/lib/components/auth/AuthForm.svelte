@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getJWTToken } from '$lib/utils/jwt';
+	import PasswordInput from '$lib/components/ui/PasswordInput.svelte';
 
 	export let mode: 'login' | 'register' = 'login';
 	export let apiEndpoint: string;
@@ -114,7 +115,6 @@
 					type="text"
 					bind:value={nickname}
 					required
-					minlength="2"
 					disabled={isLoading}
 					autocomplete="nickname"
 					placeholder="請輸入暱稱"
@@ -135,32 +135,24 @@
 			/>
 		</div>
 
-		<div class="form-group">
-			<label for="password">密碼</label>
-			<input
-				id="password"
-				type="password"
-				bind:value={password}
-				required
-				disabled={isLoading}
-				autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
-				placeholder="請輸入密碼"
-			/>
-		</div>
+		<PasswordInput
+			id="password"
+			bind:value={password}
+			label="密碼"
+			placeholder={mode === 'register' ? '請輸入密碼（至少 6 個字元）' : '請輸入密碼'}
+			disabled={isLoading}
+			autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
+		/>
 
 		{#if mode === 'register'}
-			<div class="form-group">
-				<label for="confirmPassword">確認密碼</label>
-				<input
-					id="confirmPassword"
-					type="password"
-					bind:value={confirmPassword}
-					required
-					disabled={isLoading}
-					autocomplete="new-password"
-					placeholder="請再次輸入密碼"
-				/>
-			</div>
+			<PasswordInput
+				id="confirmPassword"
+				bind:value={confirmPassword}
+				label="確認密碼"
+				placeholder="請再次輸入密碼以確認"
+				disabled={isLoading}
+				autocomplete="new-password"
+			/>
 		{/if}
 
 		{#if error}
@@ -237,28 +229,27 @@
 		cursor: not-allowed;
 	}
 
+	/* 移除瀏覽器自動填入時的背景色 */
+	input:-webkit-autofill,
+	input:-webkit-autofill:hover,
+	input:-webkit-autofill:focus,
+	input:-webkit-autofill:active {
+		-webkit-box-shadow: 0 0 0 30px var(--gradient-antique) inset !important;
+		-webkit-text-fill-color: hsl(var(--card-foreground)) !important;
+		transition: background-color 5000s ease-in-out 0s;
+	}
 	.error-message {
 		color: hsl(var(--destructive));
-		background: none;
-		border: none;
+		background: hsl(var(--destructive) / 0.1);
+		border: 1px solid hsl(var(--destructive) / 0.3);
 		border-radius: calc(var(--radius));
 		padding: 0.75rem 1rem;
 		font-size: 0.9rem;
 		text-align: center;
-		margin-bottom: 0.5rem;
-		opacity: 0;
-		transform: translateY(-10px);
-		animation: fadeInError 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-	}
-
-	@keyframes fadeInError {
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
 	}
 
 	.submit-btn {
+		width: 100%;
 		padding: 0.875rem 1rem;
 		border: none;
 		border-radius: calc(var(--radius));
@@ -268,7 +259,6 @@
 		font-weight: 600;
 		cursor: pointer;
 		transition: var(--transition-elegant);
-		margin-top: 0.5rem;
 		box-shadow: var(--shadow-antique);
 	}
 
@@ -290,32 +280,18 @@
 	}
 
 	.form-footer {
-		text-align: center;
 		margin-top: 1.5rem;
-		padding-top: 1.5rem;
-		border-top: 1px solid hsl(var(--border));
+		text-align: center;
 	}
 
 	.form-footer a {
-		color: hsl(var(--accent));
+		color: hsl(var(--primary));
 		text-decoration: none;
 		font-size: 0.9rem;
 		transition: var(--transition-elegant);
 	}
 
 	.form-footer a:hover {
-		color: hsl(var(--accent) / 0.8);
 		text-decoration: underline;
-	}
-
-	/* 響應式設計 */
-	@media (max-width: 480px) {
-		.auth-container {
-			padding: 1rem;
-		}
-
-		h1 {
-			font-size: 1.5rem;
-		}
 	}
 </style>

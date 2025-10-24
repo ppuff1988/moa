@@ -18,7 +18,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 	const { game, player, role } = verifyResult;
 
-	// ===== 2. 檢查角色能力 =====
+	// ===== 2. 移除提前的封鎖檢查，讓被攻擊的玩家也能記錄 action log =====
+	// 檢查玩家是否被封鎖的邏輯移到後面統一處理
+
+	// ===== 3. 檢查角色能力 =====
 	if (!role.canCheckPeople) {
 		return json(
 			{
@@ -29,7 +32,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 3. 解析請求參數 =====
+	// ===== 4. 解析請求參數 =====
 	const body = await request.json();
 	const { targetPlayerId } = body;
 
@@ -53,7 +56,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 4. 查詢目標玩家資訊 =====
+	// ===== 5. 查詢目標玩家資訊 =====
 	const targetPlayerData = await db
 		.select({
 			playerId: gamePlayers.id,
@@ -61,7 +64,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			nickname: user.nickname,
 			roleId: gamePlayers.roleId,
 			canAction: gamePlayers.canAction,
-			blockedRound: gamePlayers.blockedRound
+			blockedRound: gamePlayers.blockedRound,
+			attackedRounds: gamePlayers.attackedRounds
 		})
 		.from(gamePlayers)
 		.innerJoin(user, eq(gamePlayers.userId, user.id))
@@ -90,7 +94,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 5. 查詢目標玩家角色 =====
+	// ===== 6. 查詢目標玩家角色 =====
 	const [targetRole] = await db
 		.select()
 		.from(roles)
@@ -107,14 +111,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 6. 獲取當前回合 =====
+	// ===== 7. 獲取當前回合 =====
 	const roundResult = await getCurrentRoundOrError(game.id);
 	if ('error' in roundResult) {
 		return roundResult.error;
 	}
 	const currentRound = roundResult.round;
 
-	// ===== 7. 查詢本回合已執行的動作 =====
+	// ===== 8. 查詢本回合已執行的動作 =====
 	const existingActions = await db
 		.select()
 		.from(gameActions)
@@ -126,7 +130,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			)
 		);
 
-	// ===== 8. 統計鑑定次數與檢查重複鑑定 =====
+	// ===== 9. 統計鑑定次數與檢查重複鑑定 =====
 	let identifyCount = 0;
 	let alreadyIdentifiedThis = false;
 	let previousResult: {
@@ -160,8 +164,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 	}
 
-	// ===== 9. 處理重複鑑定 =====
-	// 9.1 已成功鑑定過，返回之前的結果
+	// ===== 10. 處理重複鑑定 =====
+	// 10.1 已成功鑑定過，返回之前的結果
 	if (alreadyIdentifiedThis && previousResult) {
 		return json(
 			{
@@ -174,7 +178,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 9.2 已嘗試但被封鎖，不允許再次嘗試同一個目標
+	// 10.2 已嘗試但被封鎖，不允許再次嘗試同一個目標
 	if (alreadyIdentifiedThis && !previousResult) {
 		return json(
 			{
@@ -186,7 +190,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 10. 檢查鑑定次數上限 =====
+	// ===== 11. 檢查鑑定次數上限 =====
 	const skillData = role.skill as Record<string, number> | null;
 	const maxCheckPeople = skillData?.checkPeople || 0;
 
@@ -200,13 +204,71 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 11. 檢查封鎖狀態 =====
+	// ===== 12. 檢查封鎖狀態 =====
 	// 計算整個回合的行動順序
 	const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
-	const isBlocked = !player.canAction;
 
-	// ===== 12. 處理封鎖情況 =====
+	// 12.1 先檢查執行鑑定的玩家自己是否被攻擊而無法行動
+	const executorBlockReason = player.canAction === false ? 'player_blocked' : null;
+
+	if (executorBlockReason) {
+		// 記錄被封鎖的鑑定動作
+		await db.insert(gameActions).values({
+			gameId: game.id,
+			roundId: currentRound.id,
+			playerId: player.id,
+			ordering: nextOrdering,
+			actionData: {
+				type: 'identify_player',
+				targetPlayerId: targetPlayerId,
+				targetPlayerNickname: targetPlayer.nickname,
+				blocked: true,
+				reason: executorBlockReason,
+				roleName: role.name,
+				round: currentRound.round
+			}
+		});
+
+		return json(
+			{
+				success: false,
+				message: '你被攻擊了，無法執行鑑定',
+				blocked: true,
+				actionRecorded: true
+			},
+			{ status: 403 }
+		);
+	}
+
+	// 12.2 檢查目標玩家是否被封鎖
+	// 檢查目標玩家是否被封鎖
+	// 1. 如果是姬云浮且 attackedRounds 有任何值，永久無法被鑑定
+	// 2. 檢查是否因被攻擊而無法被鑑定（attackedRounds 包含當前回合）
+	// 3. 檢查是否因天生技能而無法被鑑定（blockedRound 等於當前回合）
+
+	// 查詢目標玩家的角色資訊以判斷是否為姬云浮
+	const targetAttackedRounds = (targetPlayer.attackedRounds as number[]) || [];
+	const isJiYunfu = targetRole.name === '姬云浮';
+
+	// 姬云浮的永久封鎖：只要 attackedRounds 有值就永久無法被鑑定
+	const isPermanentlyBlocked = isJiYunfu && targetAttackedRounds.length > 0;
+	const isAttackedThisRound = targetAttackedRounds.includes(currentRound.round);
+	const isNaturallyBlocked = targetPlayer.blockedRound === currentRound.round;
+
+	const isBlocked = isPermanentlyBlocked || isAttackedThisRound || isNaturallyBlocked;
+
+	// ===== 13. 處理封鎖情況 =====
 	if (isBlocked) {
+		// 確定封鎖原因
+		let blockReason = 'player_blocked';
+		if (isPermanentlyBlocked) {
+			blockReason = 'permanently_blocked'; // 姬云浮被攻擊後永久無法被鑑定
+		} else if (isAttackedThisRound) {
+			blockReason = 'attacked_this_round'; // 本回合被攻擊
+		} else if (isNaturallyBlocked) {
+			blockReason = 'naturally_blocked'; // 黃煙煙或木戶加奈的天生封鎖回合
+		}
+
 		// 記錄失敗的鑑定動作（消耗次數）
 		await db.insert(gameActions).values({
 			gameId: game.id,
@@ -218,7 +280,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				targetPlayerId: targetPlayerId,
 				targetPlayerNickname: targetPlayer.nickname,
 				blocked: true,
-				reason: 'player_blocked',
+				reason: blockReason,
 				roleName: role.name,
 				round: currentRound.round
 			}
@@ -235,10 +297,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// ===== 13. 獲取鑑定結果（目標玩家的真實陣營）=====
+	// ===== 14. 獲取鑑定結果（目標玩家的真實陣營）=====
 	const targetCamp = targetRole.camp;
 
-	// ===== 14. 記錄成功的鑑定動作 =====
+	// ===== 15. 記錄成功的鑑定動作 =====
 	await db.insert(gameActions).values({
 		gameId: game.id,
 		roundId: currentRound.id,

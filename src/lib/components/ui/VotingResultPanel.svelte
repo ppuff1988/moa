@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getJWTToken } from '$lib/utils/jwt';
 	import { addNotification } from '$lib/stores/notifications';
+	import { chineseNumeral } from '$lib/utils/round';
 	import SettlementButton from '$lib/components/game/SettlementButton.svelte';
 
 	interface BeastHead {
@@ -27,9 +28,6 @@
 			return 0;
 		});
 
-	// 獲取第二名
-	$: secondPlace = topTwo.find((b) => b.voteRank === 2);
-
 	// 獲取排名徽章
 	function getRankBadge(voteRank: number | null | undefined): string {
 		if (voteRank === 1) return '🥇'; // 第一名
@@ -54,7 +52,7 @@
 			});
 
 			if (response.ok) {
-				addNotification(`第 ${nextRound} 回合已開始`, 'success');
+				// 移除本地通知，因為 socket 事件 'round-started' 會通知所有玩家
 				onNextRound();
 			} else {
 				const error = await response.json();
@@ -93,23 +91,23 @@
 			{/each}
 		</div>
 
-		{#if secondPlace}
-			<div class="announcement">
-				<div class="announcement-icon">📢</div>
-				<p class="announcement-text">
-					第二名 <strong>{secondPlace.animal}首</strong> 為
-					<strong class:genuine={secondPlace.isGenuine} class:fake={!secondPlace.isGenuine}>
-						{secondPlace.isGenuine ? '真品' : '贗品'}
-					</strong>
-				</p>
-			</div>
-		{/if}
+		<!--{#if secondPlace}-->
+		<!--	<div class="announcement">-->
+		<!--		<div class="announcement-icon">📢</div>-->
+		<!--		<p class="announcement-text">-->
+		<!--			第二名 <strong>{secondPlace.animal}首</strong> 為-->
+		<!--			<strong class:genuine={secondPlace.isGenuine} class:fake={!secondPlace.isGenuine}>-->
+		<!--				{secondPlace.isGenuine ? '真品' : '贗品'}-->
+		<!--			</strong>-->
+		<!--		</p>-->
+		<!--	</div>-->
+		<!--{/if}-->
 
 		{#if isHost}
 			<div class="host-actions">
 				{#if currentRound < 3}
 					<button class="primary-btn start-round-btn" on:click={startNextRound}>
-						開始第 {currentRound + 1} 回合
+						開始第{chineseNumeral(currentRound + 1)}回合
 					</button>
 				{:else}
 					<SettlementButton {roomName} {currentRound} {isHost} />
@@ -234,21 +232,24 @@
 	}
 
 	.beast-status-large {
-		font-size: 1.5rem;
-		font-weight: 700;
+		font-size: 1.25rem;
+		font-weight: 600;
 		padding: 0.75rem 1.5rem;
 		border-radius: 12px;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		white-space: nowrap;
 	}
 
 	.beast-status-large.is-real {
 		background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
 		color: white;
+		font-weight: 700;
 	}
 
 	.beast-status-large:not(.is-real) {
 		background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 		color: white;
+		font-weight: 700;
 	}
 
 	.beast-status-pending {
@@ -259,19 +260,7 @@
 		border-radius: 12px;
 		background: rgba(255, 255, 255, 0.1);
 		border: 2px dashed rgba(255, 255, 255, 0.3);
-	}
-
-	.announcement {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.15) 100%);
-		border: 2px solid rgba(59, 130, 246, 0.4);
-		border-radius: 12px;
-		padding: 1.5rem 2rem;
-		max-width: 600px;
-		box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-		animation: slideIn 0.5s ease-out;
+		white-space: nowrap;
 	}
 
 	@keyframes slideIn {
@@ -283,31 +272,6 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
-	}
-
-	.announcement-icon {
-		font-size: 2rem;
-		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-	}
-
-	.announcement-text {
-		color: hsl(var(--foreground));
-		font-size: 1.125rem;
-		font-weight: 600;
-		margin: 0;
-		line-height: 1.6;
-	}
-
-	.announcement-text strong {
-		font-weight: 700;
-	}
-
-	.announcement-text .genuine {
-		color: #22c55e;
-	}
-
-	.announcement-text .fake {
-		color: #ef4444;
 	}
 
 	.host-actions {
@@ -365,17 +329,38 @@
 
 	@media (max-width: 768px) {
 		.top-two-results {
-			flex-direction: column;
-			gap: 1.5rem;
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 1rem;
 		}
 
 		.result-card {
-			min-width: 100%;
+			min-width: unset;
+			padding: 1rem;
 		}
 
-		.announcement {
-			flex-direction: column;
-			text-align: center;
+		.rank-badge-large {
+			font-size: 2.5rem;
+		}
+
+		.beast-name {
+			font-size: 1.25rem;
+		}
+
+		.vote-count {
+			font-size: 1rem;
+		}
+
+		.beast-status-large {
+			font-size: 0.875rem;
+			padding: 0.5rem 0.75rem;
+			white-space: nowrap;
+		}
+
+		.beast-status-pending {
+			font-size: 0.875rem;
+			padding: 0.5rem 0.75rem;
+			white-space: nowrap;
 		}
 	}
 </style>

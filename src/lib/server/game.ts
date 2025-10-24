@@ -700,6 +700,25 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 		})
 		.returning();
 
+	// 獲取遊戲信息以取得 roomName
+	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+
+	// 通知房間內所有玩家新回合已開始
+	if (game) {
+		const { getSocketIO } = await import('./socket');
+		const io = getSocketIO();
+		if (io) {
+			io.to(game.roomName).emit('round-started', {
+				gameId,
+				roundId: newRound.id,
+				round: roundNumber,
+				phase: 'action',
+				firstPlayerId: lastPlayerId,
+				roomName: game.roomName
+			});
+		}
+	}
+
 	return {
 		roundId: newRound.id,
 		round: roundNumber,

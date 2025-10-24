@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gameRounds, gameActions, roles } from '$lib/server/db/schema';
+import { gameRounds, gameActions, roles, gamePlayers } from '$lib/server/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
 
 // 獲取玩家的所有回合行動歷史
@@ -15,6 +15,17 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const { game, player } = verifyResult;
 
 	try {
+		// 獲取玩家的 attackedRounds 資訊
+		const [playerData] = await db
+			.select({
+				attackedRounds: gamePlayers.attackedRounds
+			})
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, player.userId)))
+			.limit(1);
+
+		const attackedRounds = (playerData?.attackedRounds as number[]) || [];
+
 		// 獲取遊戲的所有回合，按回合數排序
 		const rounds = await db
 			.select({
@@ -66,15 +77,24 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				const actionOrder = (round.actionOrder as number[]) || [];
 				const myOrderIndex = actionOrder.indexOf(player.id);
 
+				// actionOrder 是倒序的（最新行動的在前面），需要轉換為正序
+				// 例如：8人遊戲，第1個行動的玩家在 index 7，應該顯示為第 1 位
+				// 計算公式：正序位置 = 總人數 - 倒序索引
+				const myActualOrder = myOrderIndex >= 0 ? actionOrder.length - myOrderIndex : null;
+
+				// 檢查該回合是否被攻擊
+				const isAttacked = attackedRounds.includes(round.round);
+
 				return {
 					roundNumber: round.round,
 					phase: round.phase,
 					startedAt: round.startedAt,
 					completedAt: round.completedAt,
-					myOrderIndex: myOrderIndex >= 0 ? myOrderIndex + 1 : null, // 轉換為 1-based
+					myOrderIndex: myActualOrder, // 使用正確的正序位置
 					totalPlayers: actionOrder.length,
 					actions: parsedActions,
-					isCompleted: round.completedAt !== null
+					isCompleted: round.completedAt !== null,
+					isAttacked: isAttacked // 新增：是否在此回合被攻擊
 				};
 			})
 		);

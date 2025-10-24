@@ -6,7 +6,6 @@ import {
 	getNextActionOrdering,
 	checkPlayerCanAction
 } from '$lib/server/api-helpers';
-import { PERMANENT_BLOCK_ROUND } from '$lib/server/constants';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameActions, user, roles } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -73,40 +72,30 @@ async function getPlayerByRoleName(
 }
 
 /**
- * 更新玩家的行動狀態
+ * 更新玩家的行動狀態和被攻擊記錄
  */
-async function disablePlayerAction(
-	playerId: number,
-	blockedRound?: number | null,
-	isPermanentBlock: boolean = false
-): Promise<void> {
-	// 如果是永久封鎖（姬云浮），不設置 canAction = false，只設置 blockedRound
-	const updateData: { canAction?: boolean; blockedRound?: number } = {};
-
-	if (blockedRound !== undefined && blockedRound !== null) {
-		updateData.blockedRound = blockedRound;
-		console.log(`[攻擊] 設置玩家 ${playerId} 的 blockedRound 為:`, blockedRound);
-	}
-
-	// 只有非永久封鎖的情況才設置 canAction = false
-	if (!isPermanentBlock) {
-		updateData.canAction = false;
-	}
-
-	console.log(`[攻擊] 更新玩家 ${playerId} 的數據:`, updateData);
-
-	await db.update(gamePlayers).set(updateData).where(eq(gamePlayers.id, playerId));
-
-	// 驗證更新結果
-	const [updated] = await db
+async function updatePlayerAttackedStatus(playerId: number, attackedRound: number): Promise<void> {
+	// 獲取當前玩家資料
+	const [currentPlayer] = await db
 		.select()
 		.from(gamePlayers)
 		.where(eq(gamePlayers.id, playerId))
 		.limit(1);
-	console.log(`[攻擊] 更新後玩家 ${playerId} 的狀態:`, {
-		canAction: updated.canAction,
-		blockedRound: updated.blockedRound
-	});
+
+	if (!currentPlayer) return;
+
+	// 更新被攻擊回合記錄
+	const updatedAttackedRounds = [...(currentPlayer.attackedRounds || []), attackedRound];
+
+	// 如果是永久封鎖（姬云浮），設置 canAction = false 但不修改 blockedRound
+	// 如果不是永久封鎖，也設置 canAction = false，但同樣不修改 blockedRound
+	// blockedRound 只用於記錄黃煙煙和木戶加奈天生的被封鎖回合
+	const updateData = {
+		canAction: false,
+		attackedRounds: updatedAttackedRounds
+	};
+
+	await db.update(gamePlayers).set(updateData).where(eq(gamePlayers.id, playerId));
 }
 
 /**
@@ -239,27 +228,21 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const targetHasActed = targetPlayerActions.length > 0;
 
 	// 处理攻击效果
-	// 如果目标是姬云浮，设置永久封锁
 	const isPermanentBlock = targetRole?.name === '姬云浮';
 
-	// 計算封鎖回合數
-	// 1. 姬云浮：永久封鎖
-	// 2. 目標已行動：封鎖到下一回合 (currentRound + 1)
-	// 3. 目標未行動：封鎖當前回合 (currentRound)
-	let blockedRoundValue: number;
-	if (isPermanentBlock) {
-		blockedRoundValue = PERMANENT_BLOCK_ROUND;
-		console.log('[攻擊] 目標是姬云浮，設置永久封鎖 PERMANENT_BLOCK_ROUND:', PERMANENT_BLOCK_ROUND);
-	} else if (targetHasActed) {
-		blockedRoundValue = currentRound.round + 1;
-		console.log(`[攻擊] 目標玩家 ${targetPlayerId} 已行動，封鎖到下一回合:`, blockedRoundValue);
+	// 計算被攻擊的回合數
+	// 姬云浮也根據是否行動過記錄對應的回合，不設定為 999
+	// - 目標已行動：記錄為下一回合 (currentRound + 1)
+	// - 目標未行動：記錄為當前回合 (currentRound)
+	let attackedRoundValue: number;
+	if (targetHasActed) {
+		attackedRoundValue = currentRound.round + 1;
 	} else {
-		blockedRoundValue = currentRound.round;
-		console.log(`[攻擊] 目標玩家 ${targetPlayerId} 未行動，封鎖當前回合:`, blockedRoundValue);
+		attackedRoundValue = currentRound.round;
 	}
 
-	// 禁用目标玩家的行动能力
-	await disablePlayerAction(targetPlayerId, blockedRoundValue, isPermanentBlock);
+	// 更新目标玩家的被攻擊狀態
+	await updatePlayerAttackedStatus(targetPlayerId, attackedRoundValue);
 
 	// 記錄受影響的玩家（僅用於後端記錄，不返回給前端）
 	const affectedPlayers: AffectedPlayer[] = [
@@ -284,16 +267,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				);
 
 			const xuYuanHasActed = xuYuanActions.length > 0;
-			const xuYuanBlockedRound = xuYuanHasActed ? currentRound.round + 1 : currentRound.round;
+			const xuYuanAttackedRound = xuYuanHasActed ? currentRound.round + 1 : currentRound.round;
 
-			// 許愿的封鎖邏輯與方震相同（但不對外顯示）
-			await disablePlayerAction(xuYuanPlayer.playerId, xuYuanBlockedRound);
+			// 許愿的被攻擊記錄邏輯與方震相同
+			await updatePlayerAttackedStatus(xuYuanPlayer.playerId, xuYuanAttackedRound);
 			affectedPlayers.push({
 				id: xuYuanPlayer.playerId,
 				nickname: xuYuanPlayer.nickname
 			});
-			// 移除可能洩漏身分的日誌
-			console.log(`[攻擊] 方震被攻擊，連帶效果已處理`);
 		}
 	}
 
@@ -310,7 +291,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			type: 'attack_player',
 			targetPlayerId: targetPlayerId,
 			targetPlayerNickname: targetPlayer.nickname,
-			blockedRound: blockedRoundValue,
+			attackedRound: attackedRoundValue,
 			isPermanentBlock: isPermanentBlock,
 			roleName: role.name,
 			round: currentRound.round,
@@ -326,7 +307,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		message: message,
 		targetPlayerId: targetPlayerId,
 		targetPlayerNickname: targetPlayer.nickname,
-		blockedRound: blockedRoundValue,
+		attackedRound: attackedRoundValue,
 		isPermanentBlock: isPermanentBlock
 		// 移除 affectedPlayers，避免洩漏連帶受影響的玩家身分
 	});

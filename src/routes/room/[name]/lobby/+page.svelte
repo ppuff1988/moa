@@ -30,8 +30,8 @@
 
 	// 監聽遊戲狀態變化，當遊戲已經開始或完成時導向遊戲頁面
 	$: if ($gameStatus && ($gameStatus === 'playing' || $gameStatus === 'finished') && !$isLoading) {
-		// 使用相對路徑導航到遊戲頁面，避免 URL 編碼問題
-		goto(`../game`, { replaceState: true, invalidateAll: true });
+		// 使用絕對路徑導航到遊戲頁面
+		goto(`/room/${encodeURIComponent(roomName)}/game`, { replaceState: true, invalidateAll: true });
 	}
 
 	onMount(async () => {
@@ -40,7 +40,10 @@
 		// 初始化完成後，檢查遊戲狀態，如果已經開始或完成就導向 game
 		const status = $gameStatus;
 		if (status && (status === 'playing' || status === 'finished')) {
-			goto(`../game`, { replaceState: true, invalidateAll: true });
+			goto(`/room/${encodeURIComponent(roomName)}/game`, {
+				replaceState: true,
+				invalidateAll: true
+			});
 		}
 	});
 
@@ -65,6 +68,7 @@
 			{minPlayers}
 			isHost={$isHost}
 			allPlayersReady={$allPlayersReady}
+			players={$players}
 			onLeaveRoom={roomLobby.leaveRoom}
 			onStartSelection={roomLobby.startSelection}
 			onStartGame={roomLobby.startGame}

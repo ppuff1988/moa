@@ -1,4 +1,6 @@
 <script lang="ts">
+	import PasswordInput from '$lib/components/ui/PasswordInput.svelte';
+
 	export let mode: 'create' | 'join' = 'create';
 	export let onCancel: () => void;
 
@@ -34,8 +36,8 @@
 			return;
 		}
 
-		if (roomPassword.length < 1) {
-			error = '房間密碼至少需要 1 個字元';
+		if (roomPassword.length < 3) {
+			error = '房間密碼至少需要 3 個字元';
 			return;
 		}
 
@@ -97,18 +99,14 @@
 				</div>
 			{/if}
 
-			<div class="form-group">
-				<label for="roomPassword">房間密碼</label>
-				<input
-					id="roomPassword"
-					type="password"
-					bind:value={roomPassword}
-					required
-					disabled={isLoading}
-					autocomplete="new-password"
-					placeholder="請輸入房間密碼"
-				/>
-			</div>
+			<PasswordInput
+				id="roomPassword"
+				bind:value={roomPassword}
+				label="房間密碼"
+				placeholder="請輸入房間密碼"
+				disabled={isLoading}
+				autocomplete="new-password"
+			/>
 
 			{#if mode === 'create'}
 				<div class="info-message">

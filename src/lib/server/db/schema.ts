@@ -69,7 +69,8 @@ export const gamePlayers = pgTable('game_players', {
 	isReady: boolean('is_ready').default(false),
 	isOnline: boolean('is_online').default(true),
 	canAction: boolean('can_action').default(true), // 當前是否能行動
-	blockedRound: integer('blocked_round'), // 記錄無法行動的回合（木戶加奈、黃煙煙技能效果）
+	attackedRounds: integer('attacked_rounds').array().default([]), // 記錄第幾回合被攻擊
+	blockedRound: integer('blocked_round'), // 記錄黃煙煙和木戶加奈天生的無法行動回合（1-3隨機）
 	joinedAt: timestamp('joined_at').defaultNow(),
 	lastActiveAt: timestamp('last_active_at').defaultNow(),
 	leftAt: timestamp('left_at') // 玩家離開時間

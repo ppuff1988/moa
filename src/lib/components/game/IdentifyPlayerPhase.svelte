@@ -21,7 +21,6 @@
 	export let roomName: string;
 	export let players: Player[] = [];
 	export let currentUser: CurrentUser | null = null;
-	export let genuineScore: number = 0;
 
 	let selectedLaoChaoFeng: number | null = null;
 	let selectedXuYuan: number | null = null;
@@ -150,6 +149,12 @@
 			(data: { votedCount: number; totalEligibleVoters: number; playerId: number }) => {
 				votedCount = data.votedCount;
 				totalEligibleVoters = data.totalEligibleVoters;
+
+				// 檢查是否所有人都投票了
+				if (data.votedCount >= data.totalEligibleVoters) {
+					allPlayersVoted = true;
+				}
+
 				addNotification(
 					`有玩家完成投票 (${data.votedCount}/${data.totalEligibleVoters})`,
 					'info',
@@ -179,7 +184,7 @@
 <div class="identification-phase">
 	<div class="phase-header">
 		<h3>🔍 鑑人階段</h3>
-		<p class="score-info">真品得分: <strong>{genuineScore}</strong> / 6</p>
+		<p class="phase-description">並未找出全部真品，投票找出目標角色</p>
 		<div class="vote-progress">
 			<span>投票進度: {votedCount} / {totalEligibleVoters}</span>
 			{#if allPlayersVoted && isHost}
@@ -304,15 +309,10 @@
 		margin: 0 0 0.5rem 0;
 	}
 
-	.score-info {
+	.phase-description {
 		color: hsl(var(--muted-foreground));
-		font-size: 1.125rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.score-info strong {
-		color: #fbbf24;
-		font-size: 1.5rem;
+		font-size: 0.95rem;
+		margin-bottom: 1rem;
 	}
 
 	.vote-progress {
@@ -340,16 +340,15 @@
 	}
 
 	.vote-group {
-		background: rgba(255, 255, 255, 0.05);
 		padding: 1.5rem;
 		border-radius: 0.75rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.vote-group h4 {
 		color: hsl(var(--foreground));
 		font-size: 1.25rem;
 		margin: 0 0 0.5rem 0;
+		white-space: nowrap;
 	}
 
 	.vote-hint {
@@ -489,5 +488,74 @@
 		color: hsl(var(--foreground));
 		font-size: 1.125rem;
 		margin: 0.5rem 0;
+	}
+
+	/* 手機版響應式樣式 */
+	@media (max-width: 768px) {
+		.identification-phase {
+			padding: 1rem;
+		}
+
+		.phase-header h3 {
+			font-size: 1.5rem;
+		}
+
+		.vote-group {
+			padding: 1rem;
+		}
+
+		.vote-group h4 {
+			font-size: 1rem;
+			white-space: normal;
+			word-break: keep-all;
+		}
+
+		.vote-hint {
+			font-size: 0.8rem;
+		}
+
+		.player-selection {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 0.5rem;
+		}
+
+		.player-option {
+			padding: 0.5rem;
+			font-size: 0.9rem;
+		}
+
+		.player-name {
+			font-size: 0.9rem;
+		}
+
+		.submit-btn {
+			font-size: 1rem;
+			padding: 0.875rem 1.5rem;
+		}
+
+		.waiting-message {
+			padding: 2rem 1rem;
+		}
+
+		.waiting-message p {
+			font-size: 1rem;
+		}
+
+		.host-actions {
+			padding: 1rem;
+		}
+
+		.publish-btn {
+			font-size: 1rem;
+			padding: 0.875rem 1.5rem;
+		}
+
+		.no-vote-rights {
+			padding: 1.5rem 1rem;
+		}
+
+		.no-vote-rights p {
+			font-size: 1rem;
+		}
 	}
 </style>

@@ -29,18 +29,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 檢查玩家是否被封鎖（被攻擊後無法行動）
-	if (player.canAction === false) {
-		return json(
-			{
-				success: false,
-				message: '你被攻擊封鎖，無法執行交換真偽',
-				blocked: true
-			},
-			{ status: 403 }
-		);
-	}
-
 	// 獲取當前回合
 	const roundResult = await getCurrentRoundOrError(game.id);
 	if ('error' in roundResult) {
@@ -73,6 +61,37 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				message: '你已經在本回合使用過交換真偽了'
 			},
 			{ status: 400 }
+		);
+	}
+
+	// 檢查執行者是否被攻擊而無法行動
+	if (player.canAction === false) {
+		// 計算行動順序
+		const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
+
+		// 記錄被封鎖的交換動作
+		await db.insert(gameActions).values({
+			gameId: game.id,
+			roundId: currentRound.id,
+			playerId: player.id,
+			ordering: nextOrdering,
+			actionData: {
+				type: 'swap_artifacts',
+				blocked: true,
+				reason: 'player_blocked',
+				roleName: role.name,
+				round: currentRound.round
+			}
+		});
+
+		return json(
+			{
+				success: false,
+				message: '你被攻擊了，無法執行交換真偽',
+				blocked: true,
+				actionRecorded: true
+			},
+			{ status: 403 }
 		);
 	}
 

@@ -19,10 +19,10 @@
 	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 	import GameHeader from '$lib/components/game/GameHeader.svelte';
 	import PhaseIndicator from '$lib/components/game/PhaseIndicator.svelte';
-	import IdentificationPhase from '$lib/components/game/IdentificationPhase.svelte';
+	import IdentifyArtifactPhase from '$lib/components/game/IdentifyArtifactPhase.svelte';
 	import SkillPhase from '$lib/components/game/SkillPhase.svelte';
 	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
-	import IdentificationPhasePanel from '$lib/components/game/IdentificationPhasePanel.svelte';
+	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
 	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
 	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
 
@@ -51,7 +51,6 @@
 		performedActions,
 		remainingSkills,
 		hasActualSkills,
-		genuineScore,
 		finalResult,
 		isGameFinished
 	} = gameState;
@@ -82,6 +81,44 @@
 
 	// 同步遊戲狀態到通知系統
 	$: currentGameStatus.set(gameStatus);
+
+	// 自動跳過鑑定階段：當玩家沒有鑑定能力時，直接進入技能階段
+	$: if (
+		isMyTurn &&
+		$gamePhase === 'identification' &&
+		$skillActions &&
+		$skillActions.checkArtifact === 0 &&
+		$roundPhase === 'action'
+	) {
+		// 檢查是否有其他技能，如果有就進入技能階段，否則進入指派階段
+		if ($hasActualSkills) {
+			gamePhase.set('skill');
+		} else {
+			gamePhase.set('assign-next');
+			addNotification('請指派下一位玩家', 'info', 3000);
+		}
+	}
+
+	// 自動完成技能階段：當所有技能都用完時，自動進入指派階段
+	$: if (
+		isMyTurn &&
+		$gamePhase === 'skill' &&
+		$skillActions &&
+		$remainingSkills &&
+		$roundPhase === 'action'
+	) {
+		// 檢查是否所有技能都已用完
+		const allSkillsUsed =
+			$remainingSkills.checkPeople === 0 &&
+			$remainingSkills.block === 0 &&
+			$remainingSkills.attack === 0 &&
+			$remainingSkills.swap === 0;
+
+		if (allSkillsUsed) {
+			gamePhase.set('assign-next');
+			selectedBeastHead.set(null);
+		}
+	}
 
 	// Initialize game service
 	$: if (roomName) {
@@ -123,7 +160,8 @@
 		}
 
 		// 檢查 canAction 狀態，如果是我的回合但無法行動，顯示 modal
-		if (playerCanAction === false && isMyTurn) {
+		// 只在行動階段（action phase）才顯示被攻擊 modal，其他階段不顯示
+		if (playerCanAction === false && isMyTurn && $roundPhase === 'action') {
 			showBlockedModal = true;
 		}
 	}
@@ -303,21 +341,47 @@
 			});
 		}
 
-		if ($identifiedPlayers.length > 0) {
-			addNotification(`已恢復 ${$identifiedPlayers.length} 位玩家的鑑定資訊`, 'info', 3000);
+		// 根據後端的 roundPhase 來判斷，而不是自己推測
+		// 如果不是在 action 階段，不需要設置 gamePhase
+		if ($roundPhase !== 'action') {
+			return;
 		}
 
+		// 只有在 action 階段且 skillActions 已加載的情況下才設置遊戲階段
+		if (!$skillActions) {
+			// skillActions 尚未加載，不設置 gamePhase，等待後續更新
+			return;
+		}
+
+		// 檢查是否還有剩餘的鑑定次數
+		const hasRemainingIdentifications =
+			$skillActions.checkArtifact > 0 && $usedSkills.checkArtifact < $skillActions.checkArtifact;
+
+		// 優先判斷鑑定階段：如果還有鑑定次數，保持在 identification 階段
+		if (hasRemainingIdentifications) {
+			// 保持在 identification 階段，不設置 gamePhase
+			return;
+		}
+
+		// 只有在是我的回合時才設置階段和顯示通知
+		if (!isMyTurn) {
+			return;
+		}
+
+		// 鑑定次數用完後，根據其他技能使用情況決定階段
 		if (hasUsedSkills) {
 			gamePhase.set('assign-next');
 			addNotification('請指派下一位玩家', 'info', 3000);
 		} else if (identifyActions.length > 0) {
+			// 已完成鑑定但沒有其他技能使用記錄
 			if ($hasActualSkills) {
 				gamePhase.set('skill');
 			} else {
 				gamePhase.set('assign-next');
 				addNotification('請指派下一位玩家', 'info', 3000);
 			}
-		} else if ($skillActions && $skillActions.checkArtifact === 0) {
+		} else if ($skillActions.checkArtifact === 0) {
+			// 沒有鑑定能力，直接進入技能階段
 			gamePhase.set('skill');
 		}
 	}
@@ -367,7 +431,6 @@
 					setTimeout(() => {
 						if (!$hasActualSkills) {
 							gamePhase.set('assign-next');
-							addNotification('你沒有可用的技能，請指派下一位玩家', 'info', 3000);
 							updatePlayersAndRound();
 						} else {
 							gamePhase.set('skill');
@@ -389,7 +452,6 @@
 					setTimeout(() => {
 						if (!$hasActualSkills) {
 							gamePhase.set('assign-next');
-							addNotification('你沒有可用的技能，請指派下一位玩家', 'info', 3000);
 							updatePlayersAndRound();
 						} else {
 							gamePhase.set('skill');
@@ -701,16 +763,21 @@
 					}
 				} else {
 					// 遊戲進行中，正常載入遊戲資料
-					await updatePlayersAndRound();
+					// 首先獲取回合狀態，確保 roundPhase 被正確設置
 					await fetchRoundStatus();
+					// 然後更新玩家和回合資料（可能會觸發 fetchMyRole）
+					await updatePlayersAndRound();
 					await fetchArtifacts();
-					await fetchMyRole();
 					await fetchTeammateInfo();
+
+					// 確保在恢復狀態之前先獲取角色信息（即使不是玩家回合也要獲取）
+					if (!$hasLoadedSkills) {
+						await fetchMyRole();
+					}
+
 					restoreUsedSkills();
 					restoreIdentifiedState();
 				}
-
-				addNotification(`進入遊戲！房間：${roomName}`, 'success', 3000);
 
 				// Initialize socket connection
 				try {
@@ -766,7 +833,8 @@
 							const roleData = await gameService.fetchMyRole();
 
 							// If canAction is false, show blocked modal
-							if (roleData.canAction === false) {
+							// 只在行動階段（action phase）才顯示被攻擊 modal
+							if (roleData.canAction === false && $roundPhase === 'action') {
 								showBlockedModal = true;
 							}
 
@@ -786,9 +854,8 @@
 					socket.on('enter-identification-phase', async (data) => {
 						addNotification(data.message || '進入鑑人階段', 'info', 4000);
 
-						// Update phase and score
+						// Update phase
 						roundPhase.set('identification');
-						genuineScore.set(data.genuineCount || 0);
 
 						// Refresh data
 						await fetchRoundStatus();
@@ -879,11 +946,11 @@
 			onOpenHistory={() => (isActionHistoryOpen = true)}
 		/>
 
-		{#if $roundPhase !== 'identification' && $roundPhase !== 'finished'}
+		{#if !['identification', 'finished', 'discussion', 'voting', 'result'].includes($roundPhase)}
 			<PlayerOrderDisplay
 				currentRound={$currentRound}
-				actionedPlayers={$actionedPlayers}
 				currentActionPlayer={$currentActionPlayer}
+				actionedPlayers={$actionedPlayers}
 			/>
 		{/if}
 
@@ -901,6 +968,7 @@
 						canIdentify={$remainingSkills ? $remainingSkills.checkArtifact > 0 : false}
 						canBlock={$remainingSkills ? $remainingSkills.block > 0 : false}
 						showVotingResults={$roundPhase === 'voting' || $roundPhase === 'result'}
+						currentRound={$currentRound}
 						onBeastClick={(beastId) => {
 							if (
 								$gamePhase === 'identification' &&
@@ -921,7 +989,9 @@
 					/>
 				{/if}
 
-				<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
+				{#if $roundPhase === 'action'}
+					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
+				{/if}
 
 				{#if $roundPhase === 'discussion'}
 					<div class="action-area">
@@ -977,12 +1047,7 @@
 				{:else if $roundPhase === 'identification'}
 					<div class="action-area">
 						<div class="action-content">
-							<IdentificationPhasePanel
-								{roomName}
-								players={$players}
-								{currentUser}
-								genuineScore={$genuineScore}
-							/>
+							<IdentifyPlayerPhase {roomName} players={$players} {currentUser} />
 						</div>
 					</div>
 				{:else if $roundPhase === 'finished'}
@@ -1008,7 +1073,7 @@
 					<div class="action-area">
 						<div class="action-content">
 							{#if $gamePhase === 'identification'}
-								<IdentificationPhase
+								<IdentifyArtifactPhase
 									skillActions={$skillActions}
 									usedSkills={$usedSkills}
 									onIdentify={identifyBeastHead}

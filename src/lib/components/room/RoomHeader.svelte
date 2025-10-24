@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
+	import type { Player } from '$lib/types/game';
 
 	export let roomName: string;
 	export let gameStatus: string;
@@ -8,9 +9,14 @@
 	export let minPlayers: number;
 	export let isHost: boolean;
 	export let allPlayersReady: boolean;
+	export let players: Player[] = [];
 	export let onLeaveRoom: () => void;
 	export let onStartSelection: () => void;
 	export let onStartGame: () => void;
+
+	// 計算已選擇角色的玩家數量
+	$: readyCount = players.filter((p) => p.isReady).length;
+	$: readyCountText = `已選擇人數 ${readyCount}/${playerCount}`;
 </script>
 
 <div class="room-header" data-testid="room-info">
@@ -25,6 +31,10 @@
 					（已滿足開始條件）
 				{/if}
 			</p>
+		{:else if gameStatus === 'selecting'}
+			<p class="room-subtitle">
+				{readyCountText}
+			</p>
 		{/if}
 	</div>
 
@@ -35,12 +45,19 @@
 
 		{#if isHost}
 			{#if gameStatus === 'waiting'}
-				<ActionButton variant="primary" title="選擇角色" subtitle="" onClick={onStartSelection} />
+				<ActionButton
+					variant="primary"
+					title="選擇角色"
+					subtitle=""
+					disabled={playerCount < minPlayers}
+					onClick={onStartSelection}
+				/>
 			{:else if gameStatus === 'selecting'}
 				<ActionButton
 					variant="primary"
 					title="開始遊戲"
-					subtitle={allPlayersReady ? '所有玩家已準備' : '等待玩家準備'}
+					subtitle=""
+					disabled={!allPlayersReady}
 					onClick={onStartGame}
 				/>
 			{/if}
@@ -104,7 +121,7 @@
 		}
 
 		.header-actions {
-			justify-content: center;
+			justify-content: flex-start;
 			width: 100%;
 		}
 

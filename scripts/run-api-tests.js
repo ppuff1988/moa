@@ -2,7 +2,7 @@ import dotenvFlow from 'dotenv-flow';
 import dotenvExpand from 'dotenv-expand';
 import { spawn } from 'child_process';
 
-// 先加载环境变量，再展开变量替换
+// 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 

@@ -122,6 +122,17 @@
 			addNotification('提交投票失敗，請檢查網路連接', 'error');
 		}
 	}
+
+	// 處理投票輸入變更，確保數值>=0
+	function handleVoteInput(beastId: number, event: Event) {
+		const target = event.target as HTMLInputElement;
+		const value = +target.value;
+		if (value < 0 || isNaN(value)) {
+			voteInputs[beastId] = 0;
+		} else {
+			voteInputs[beastId] = Math.floor(value); // 確保是整數
+		}
+	}
 </script>
 
 <div class="voting-panel">
@@ -147,6 +158,7 @@
 							class="vote-input"
 							bind:value={voteInputs[beast.id]}
 							placeholder="0"
+							on:input={(e) => handleVoteInput(beast.id, e)}
 						/>
 					</div>
 				{/each}
@@ -162,23 +174,9 @@
 
 <!-- 確認對話框 -->
 {#if showConfirmDialog}
-	<div
-		class="modal-overlay"
-		on:click={cancelSubmit}
-		on:keydown={(e) => e.key === 'Escape' && cancelSubmit()}
-		role="button"
-		tabindex="0"
-	>
-		<div
-			class="modal-content"
-			on:click|stopPropagation
-			on:keydown={() => {}}
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-		>
-			<h3 class="modal-title">確認提交投票結果</h3>
-			<div class="modal-body">
+	<div class="modal-overlay">
+		<div class="modal-container">
+			<div class="confirm-dialog-content">
 				<p class="modal-description">請確認以下投票結果：</p>
 				<div class="vote-summary">
 					{#each beastHeads
@@ -189,7 +187,7 @@
 							if (votesB !== votesA) {
 								return votesB - votesA; // 票數降序
 							}
-							// 同票數���，按生肖順序
+							// 同票數時，按生肖順序
 							const orderA = ZODIAC_ORDER.indexOf(a.animal);
 							const orderB = ZODIAC_ORDER.indexOf(b.animal);
 							return orderA - orderB;
@@ -208,11 +206,11 @@
 						</div>
 					{/each}
 				</div>
-				<p class="modal-warning">提交後將公布排名第二的獸首真偽，確定要提交嗎？</p>
-			</div>
-			<div class="modal-actions">
-				<button class="secondary-btn" on:click={cancelSubmit}>取消</button>
-				<button class="primary-btn" on:click={confirmSubmit}>確認提交</button>
+				<p class="modal-warning">⚠️ 提交後將公布排名第二的獸首真偽</p>
+				<div class="modal-actions">
+					<button class="secondary-btn" on:click={cancelSubmit}>取消</button>
+					<button class="primary-btn" on:click={confirmSubmit}>確認提交</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -264,7 +262,7 @@
 
 	@media (max-width: 768px) {
 		.voting-grid {
-			grid-template-columns: 1fr;
+			grid-template-columns: repeat(2, 1fr);
 			max-width: 400px;
 		}
 	}
@@ -380,7 +378,6 @@
 		margin: 0;
 	}
 
-	/* 確認對話框樣式 */
 	.modal-overlay {
 		position: fixed;
 		top: 0;
@@ -395,7 +392,7 @@
 		backdrop-filter: blur(6px);
 	}
 
-	.modal-content {
+	.modal-container {
 		background: linear-gradient(135deg, #f5f0e8 0%, #ebe4d8 100%);
 		border: 3px solid #b8975a;
 		border-radius: 20px;
@@ -405,17 +402,11 @@
 		box-shadow: 0 25px 70px rgba(0, 0, 0, 0.6);
 	}
 
-	.modal-title {
-		color: #3a3226;
-		font-size: 1.625rem;
-		font-weight: 700;
-		margin: 0 0 1.25rem 0;
-		text-align: center;
-		text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-	}
-
-	.modal-body {
-		margin-bottom: 1.75rem;
+	/* Modal 內容樣式 */
+	.confirm-dialog-content {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
 
 	.modal-description {
@@ -498,6 +489,7 @@
 		display: flex;
 		gap: 1rem;
 		justify-content: center;
+		margin-top: 1.5rem;
 	}
 
 	.secondary-btn {
@@ -547,23 +539,46 @@
 		box-shadow: none;
 	}
 
-	.submit-votes-btn {
-		margin-top: 1rem;
-		min-width: 200px;
-		padding: 1rem 2rem;
-		font-size: 1.0625rem;
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-	}
+	/* 手機版響應式樣式 */
+	@media (max-width: 768px) {
+		.modal-container {
+			padding: 1.5rem;
+			max-width: 90%;
+		}
 
-	.submit-votes-btn:hover:not(:disabled) {
-		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
-	}
+		.modal-actions {
+			flex-direction: row;
+			gap: 0.75rem;
+			width: 100%;
+		}
 
-	.action-hint {
-		color: hsl(var(--muted-foreground));
-		text-align: center;
-		padding: 2rem;
-		font-size: 1rem;
-		margin: 0;
+		.secondary-btn,
+		.primary-btn {
+			flex: 1;
+			padding: 0.75rem 1rem;
+			font-size: 0.9375rem;
+			white-space: nowrap;
+			min-width: 0;
+		}
+
+		.summary-beast-name {
+			font-size: 1rem;
+		}
+
+		.summary-votes {
+			font-size: 1.125rem;
+		}
+
+		.rank-badge-large {
+			font-size: 1.5rem;
+		}
+
+		.modal-description {
+			font-size: 0.9375rem;
+		}
+
+		.modal-warning {
+			font-size: 0.875rem;
+		}
 	}
 </style>

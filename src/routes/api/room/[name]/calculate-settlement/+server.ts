@@ -136,13 +136,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		// 廣播進入鑑人階段
 		emitToRoom(params.name!, 'enter-identification-phase', {
-			genuineCount,
-			message: `真品數: ${genuineCount}/6，進入鑑人階段`
+			message: `進入鑑人階段`
 		});
 
 		return json({
 			message: '進入鑑人階段',
-			genuineCount,
 			needIdentification: true
 		});
 	} catch (error) {

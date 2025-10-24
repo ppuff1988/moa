@@ -4,12 +4,12 @@ import express from 'express';
 import { createServer } from 'http';
 import { createServer as createViteServer } from 'vite';
 
-// 先加载环境变量，再展开变量替换
+// 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
-// 调试：检查环境变量
-console.log('🔍 环境变量调试:');
+// 调试：检查環境變數量
+console.log('🔍 環境變數量调试:');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 console.log('POSTGRES_HOST:', process.env.POSTGRES_HOST);

@@ -403,7 +403,19 @@ export async function getNextActionOrdering(gameId: string, roundId: number): Pr
 /**
  * 檢查玩家是否能執行行動
  */
-export function checkPlayerCanAction(player: { canAction: boolean | null }): CanActionCheckResult {
+export function checkPlayerCanAction(
+	player: {
+		canAction: boolean | null;
+		attackedRounds?: number[] | null;
+	},
+	roleName?: string
+): CanActionCheckResult {
+	// 姬云浮特殊規則：被攻擊後永遠無法行動
+	if (roleName === '姬云浮' && player.attackedRounds && player.attackedRounds.length > 0) {
+		return { canAct: false, error: ErrorResponses.blocked() };
+	}
+
+	// 一般玩家的封鎖檢查
 	if (player.canAction === false) {
 		return { canAct: false, error: ErrorResponses.blocked() };
 	}
@@ -513,17 +525,19 @@ export function areAllSkillsUsed(
 export async function restoreCanActionIfNeeded(
 	playerId: number,
 	blockedRound: number | null,
+	attackedRounds: number[] | null,
 	currentRoundNumber: number,
 	roleSkill: Record<string, number> | null
 ): Promise<void> {
-	const { PERMANENT_BLOCK_ROUND } = await import('./constants');
 	const { gameActions } = await import('./db/schema');
 
-	const isPermanentBlock = blockedRound === PERMANENT_BLOCK_ROUND;
-	const isBlockedRound = blockedRound === currentRoundNumber;
+	const isAttackedThisRound = attackedRounds?.includes(currentRoundNumber) ?? false;
 
-	// 如果不在封鎖回合且非永久封鎖，直接返回
-	if (!isBlockedRound && !isPermanentBlock) {
+	// 檢查是否因為天生技能（黃煙煙、木戶加奈）而被封鎖
+	const isNaturalBlockedRound = blockedRound === currentRoundNumber;
+
+	// 如果不在任何封鎖回合，直接返回
+	if (!isAttackedThisRound && !isNaturalBlockedRound) {
 		return;
 	}
 
@@ -547,9 +561,8 @@ export async function restoreCanActionIfNeeded(
 
 	// 檢查所有技能是否都用完
 	if (areAllSkillsUsed(usageCounts, roleSkill)) {
-		console.log(`[還原行動] 玩家 ${playerId} 所有技能用完，還原 can_action`);
+		// 恢復 canAction，讓玩家可以在下一回合行動
+		// 注意：姬云浮如果被攻擊過，attackedRounds 會有值，在鑑定時會被永久封鎖
 		await db.update(gamePlayers).set({ canAction: true }).where(eq(gamePlayers.id, playerId));
-	} else {
-		console.log(`[還原行動] 玩家 ${playerId} 還有技能未用完，不還原 can_action`);
 	}
 }

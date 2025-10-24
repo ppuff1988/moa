@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 
-// 先加载环境变量，再展开变量替换
+// 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 

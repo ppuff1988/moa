@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { chineseNumeral } from '$lib/utils/round';
+
 	interface BeastHead {
 		id: number;
 		animal: string;
@@ -19,6 +21,7 @@
 		canBlock?: boolean;
 		onBeastClick?: (beastId: number) => void;
 		showVotingResults?: boolean; // 是否顯示投票結果
+		currentRound?: number; // 當前回合數
 	}
 
 	let {
@@ -32,7 +35,8 @@
 		canIdentify = false,
 		canBlock = false,
 		onBeastClick = () => {},
-		showVotingResults = false
+		showVotingResults = false,
+		currentRound = 1
 	}: Props = $props();
 
 	// Map zodiac animal names to image numbers (1-12)
@@ -102,7 +106,7 @@
 </script>
 
 <div class="beast-heads-section">
-	<h3 class="section-title">本回合獸首</h3>
+	<h3 class="section-title">第{chineseNumeral(currentRound)}回合獸首</h3>
 	<div class="beast-heads-grid">
 		{#each beastHeads as beast (beast.id)}
 			<div

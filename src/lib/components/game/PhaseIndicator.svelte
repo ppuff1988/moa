@@ -65,6 +65,7 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
 		font-weight: 500;
+		white-space: nowrap;
 	}
 
 	.step.active {
@@ -76,5 +77,29 @@
 	.step-arrow {
 		color: hsl(var(--muted-foreground));
 		font-size: 1.25rem;
+	}
+
+	@media (max-width: 768px) {
+		.phase-indicator {
+			padding: 0.75rem 1rem;
+		}
+
+		.phase-title {
+			font-size: 1rem;
+			margin-bottom: 0.5rem;
+		}
+
+		.phase-steps {
+			gap: 0.25rem;
+		}
+
+		.step {
+			font-size: 1rem;
+			padding: 0.4rem 0.6rem;
+		}
+
+		.step-arrow {
+			font-size: 1rem;
+		}
 	}
 </style>
