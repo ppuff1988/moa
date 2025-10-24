@@ -4,7 +4,7 @@ import { verifyPlayerInRoomWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameRounds, gamePlayers, roles, identificationVotes } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { emitToRoom } from '$lib/server/socket';
+import { emitToRoom, getSocketIO } from '$lib/server/socket';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	try {
@@ -105,12 +105,20 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			.from(identificationVotes)
 			.where(eq(identificationVotes.gameId, game.id));
 
+		// 檢查 Socket.IO 是否可用
+		const socketIO = getSocketIO();
+		if (!socketIO) {
+			console.error('[submit-identification] ⚠️ Socket.IO 未初始化！');
+		}
+
 		// 通知房間有玩家完成投票
-		emitToRoom(params.name!, 'player-voted-identification', {
+		const eventData = {
 			playerId: player.id,
 			votedCount: allVotes.length,
 			totalEligibleVoters: totalEligibleVoters
-		});
+		};
+
+		emitToRoom(params.name!, 'player-voted-identification', eventData);
 
 		// 如果所有有投票權的玩家都投票了，通知房主可以公布結果
 		if (allVotes.length >= totalEligibleVoters) {

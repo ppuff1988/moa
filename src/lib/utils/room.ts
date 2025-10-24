@@ -26,7 +26,6 @@ export async function leaveRoom(roomName: string): Promise<boolean> {
 		});
 
 		if (response.ok) {
-			alert('已成功離開房間');
 			await goto('/', { invalidateAll: true });
 			return true;
 		} else {

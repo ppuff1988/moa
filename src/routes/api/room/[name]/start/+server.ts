@@ -5,6 +5,7 @@ import { verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameRounds, gameActions, roles } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { chineseNumeral } from '$lib/utils/round';
 
 export const POST: RequestHandler = async (event) => {
 	// 驗證房主權限
@@ -59,8 +60,6 @@ export const POST: RequestHandler = async (event) => {
 
 		// 如果遊戲在選角階段，開始第1回合
 		if (game.status === 'selecting') {
-			console.log(`[start-game] 房間 ${roomName} 準備開始遊戲`);
-
 			// 檢查玩家人數
 			if (players.length < 6 || players.length > 8) {
 				console.error(`[start-game] 玩家人數不正確: ${players.length} 人`);
@@ -157,17 +156,9 @@ export const POST: RequestHandler = async (event) => {
 				);
 			}
 
-			console.log(`[start-game] 所有檢查通過，開始執行 startGame`);
-
 			// 開始遊戲（第1回合）
 			// startGame 函數內部已經會廣播 game-started 事件，這裡不需要再次廣播
 			const result = await startGame(game.id);
-
-			console.log(`[start-game] startGame 執行完成`, {
-				gameId: result.gameId,
-				roundId: result.roundId,
-				round: 1
-			});
 
 			// 注意：game-started 事件已經在 startGame 函數內部廣播，不需要在這裡重複發送
 
@@ -293,7 +284,7 @@ export const POST: RequestHandler = async (event) => {
 				roundId: newRound.id,
 				round: nextRoundNumber,
 				firstPlayerId: lastPlayerId,
-				message: `第 ${nextRoundNumber} 回合已開始`
+				message: `第${chineseNumeral(nextRoundNumber)}回合已開始`
 			});
 		}
 

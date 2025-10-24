@@ -5,7 +5,6 @@ import {
 	getCurrentRoundOrError,
 	getNextActionOrdering
 } from '$lib/server/api-helpers';
-import { PERMANENT_BLOCK_ROUND } from '$lib/server/constants';
 import { db } from '$lib/server/db';
 import { gameArtifacts, gameActions } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -49,8 +48,8 @@ function isPlayerBlockedInRound(
 	}
 
 	if (player.blockedRound !== null) {
-		// 永久封鎖 或 當前回合被封鎖
-		if (player.blockedRound === PERMANENT_BLOCK_ROUND || player.blockedRound === currentRound) {
+		// 當前回合被封鎖（黃煙煙、木戶加奈的天生封鎖回合）
+		if (player.blockedRound === currentRound) {
 			return 'role_blocked';
 		}
 	}
@@ -175,14 +174,17 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 	const { game, player, role } = verifyResult;
 
-	// 2. 獲取當前回合
+	// 2. 移除提前的封鎖檢查，讓被攻擊的玩家也能記錄 action log
+	// 檢查玩家是否被封鎖的邏輯移到後面統一處理
+
+	// 3. 獲取當前回合
 	const roundResult = await getCurrentRoundOrError(game.id);
 	if ('error' in roundResult) {
 		return roundResult.error;
 	}
 	const currentRound = roundResult.round;
 
-	// 3. 解析請求參數
+	// 4. 解析請求參數
 	const body = await request.json();
 	const { artifactName } = body;
 
@@ -199,7 +201,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const animalName = artifactName.replace('首', '');
 	const fullArtifactName = getArtifactFullName(animalName);
 
-	// 4. 查詢目標獸首
+	// 5. 查詢目標獸首
 	const [artifact] = await db
 		.select()
 		.from(gameArtifacts)
@@ -222,7 +224,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 5. 查詢本回合已執行的動作
+	// 6. 查詢本回合已執行的動作
 	const existingActions = await db
 		.select()
 		.from(gameActions)
@@ -234,13 +236,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			)
 		);
 
-	// 6. 分析歷史行動
+	// 7. 分析歷史行動
 	const { identifyCount, alreadyIdentifiedThis, previousResult } = analyzePlayerActions(
 		existingActions,
 		fullArtifactName
 	);
 
-	// 7. 處理重複鑑定
+	// 8. 處理重複鑑定
 	if (alreadyIdentifiedThis) {
 		if (previousResult) {
 			// 已成功鑑定過，返回之前的結果
@@ -262,7 +264,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 8. 檢查鑑定次數上限
+	// 9. 檢查鑑定次數上限
 	const skillData = role.skill as Record<string, number> | null;
 	const maxCheckArtifact = skillData?.checkArtifact || 0;
 
@@ -276,16 +278,28 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 9. 檢查封鎖狀態
+	// 10. 檢查封鎖狀態
 	const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
+
+	// 10.1 先檢查執行者自己是否被攻擊而無法行動
+	// 特別處理：姬云浮被攻擊後永遠無法鑑定獸首
+	const executorAttackedRounds = (player.attackedRounds as number[]) || [];
+	const isExecutorJiYunfu = role.name === '姬云浮';
+	const isExecutorPermanentlyBlocked = isExecutorJiYunfu && executorAttackedRounds.length > 0;
+
 	let blockReason = isPlayerBlockedInRound(player, currentRound.round);
+
+	// 如果是姬云浮且曾被攻擊，覆蓋為永久封鎖
+	if (isExecutorPermanentlyBlocked) {
+		blockReason = 'player_blocked'; // 使用 player_blocked 但記錄時會特別標註
+	}
 
 	// 只有在玩家自身沒有被封鎖的情況下，才檢查獸首是否被封鎖
 	if (!blockReason && artifact.isBlocked) {
 		blockReason = 'artifact_blocked';
 	}
 
-	// 10. 處理封鎖情況
+	// 11. 處理封鎖情況
 	if (blockReason) {
 		await recordBlockedAction(
 			game.id,
@@ -298,10 +312,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			role.name
 		);
 
+		const errorMessage = isExecutorPermanentlyBlocked
+			? '姬云浮被攻擊後永久無法鑑定獸首'
+			: '無法鑑定';
+
 		return json(
 			{
 				success: false,
-				message: '無法鑑定',
+				message: errorMessage,
 				blocked: true,
 				actionRecorded: true
 			},
@@ -309,10 +327,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 11. 計算鑑定結果
+	// 12. 計算鑑定結果
 	const identificationResult = calculateIdentificationResult(role, artifact);
 
-	// 12. 記錄成功的鑑定動作
+	// 13. 記錄成功的鑑定動作
 	await recordSuccessfulAction(
 		game.id,
 		currentRound.id,

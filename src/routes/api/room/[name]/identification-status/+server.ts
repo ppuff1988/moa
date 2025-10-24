@@ -1,20 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyPlayerInRoom } from '$lib/server/api-helpers';
+import { verifyPlayerInRoomWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameRounds, gamePlayers, roles, identificationVotes } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 
-// 獲取鑑人階段投票狀態
 export const GET: RequestHandler = async ({ request, params }) => {
-	const verifyResult = await verifyPlayerInRoom(request, params.name!);
-	if ('error' in verifyResult) {
-		return verifyResult.error;
-	}
-
-	const { game, player } = verifyResult;
-
 	try {
+		const verifyResult = await verifyPlayerInRoomWithStatus(request, params.name!, 'playing');
+		if ('error' in verifyResult) {
+			return verifyResult.error;
+		}
+
+		const { game, player } = verifyResult;
+
 		// 檢查當前是否在鑑人階段
 		const currentRound = await db
 			.select()
@@ -30,6 +29,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		const allPlayersWithRoles = await db
 			.select({
 				playerId: gamePlayers.id,
+				userId: gamePlayers.userId,
 				roleName: roles.name
 			})
 			.from(gamePlayers)
@@ -47,21 +47,16 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			.where(eq(identificationVotes.gameId, game.id));
 
 		// 檢查當前玩家是否已投票
-		const hasVoted = allVotes.some((v) => v.playerId === player.id);
-
-		// 檢查當前玩家是否為鄭國渠
-		const currentPlayerRole = allPlayersWithRoles.find((p) => p.playerId === player.id);
-		const isZhengGuoQu = currentPlayerRole?.roleName === '鄭國渠';
+		const hasVoted = allVotes.some((vote) => vote.playerId === player.id);
 
 		return json({
 			votedCount: allVotes.length,
 			totalEligibleVoters: totalEligibleVoters,
 			hasVoted: hasVoted,
-			isZhengGuoQu: isZhengGuoQu,
 			allVoted: allVotes.length >= totalEligibleVoters
 		});
 	} catch (error) {
-		console.error('獲取鑑人投票狀態錯誤:', error);
+		console.error('獲取投票狀態錯誤:', error);
 		return json({ message: '獲取狀態失敗' }, { status: 500 });
 	}
 };

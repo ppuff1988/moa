@@ -4,7 +4,6 @@ import {
 	verifyPlayerRole,
 	getCurrentRoundOrError,
 	getNextActionOrdering,
-	checkPlayerCanAction,
 	countActionsByType
 } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
@@ -31,11 +30,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 檢查玩家是否被封鎖（被攻擊後無法行動）
-	const canActionCheck = checkPlayerCanAction(player);
-	if (!canActionCheck.canAct) {
-		return canActionCheck.error;
-	}
+	// 移除提前的封鎖檢查，讓被攻擊的玩家也能記錄 action log
 
 	// 獲取當前回合
 	const roundResult = await getCurrentRoundOrError(game.id);
@@ -118,6 +113,39 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				message: '你已經用完所有封鎖次數'
 			},
 			{ status: 400 }
+		);
+	}
+
+	// 檢查執行者是否被攻擊而無法行動
+	if (player.canAction === false) {
+		// 計算行動順序
+		const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
+
+		// 記錄被封鎖的封鎖獸首動作
+		await db.insert(gameActions).values({
+			gameId: game.id,
+			roundId: currentRound.id,
+			playerId: player.id,
+			ordering: nextOrdering,
+			actionData: {
+				type: 'block_artifact',
+				artifactId: artifact.id,
+				artifactName: `${artifact.animal}首`,
+				blocked: true,
+				reason: 'player_blocked',
+				roleName: role.name,
+				round: currentRound.round
+			}
+		});
+
+		return json(
+			{
+				success: false,
+				message: '你被攻擊了，無法執行封鎖獸首',
+				blocked: true,
+				actionRecorded: true
+			},
+			{ status: 403 }
 		);
 	}
 

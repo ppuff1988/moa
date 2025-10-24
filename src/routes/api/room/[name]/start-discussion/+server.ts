@@ -44,9 +44,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				.limit(1);
 
 			if (currentActionPlayer) {
-				// 檢查是否需要還原 canAction（處理被封鎖的情況）
-				if (currentActionPlayer.canAction === false && currentActionPlayer.blockedRound !== null) {
-					if (currentActionPlayer.blockedRound == currentRound.round) {
+				// 檢查是否需要還原 canAction（處理被攻擊的情況）
+				// attackedRounds 記錄了所有被攻擊的回合
+				if (currentActionPlayer.canAction === false && currentActionPlayer.attackedRounds) {
+					const attackedRounds = currentActionPlayer.attackedRounds as number[];
+
+					// 如果當前回合在被攻擊回合列表中，且該玩家已完成行動，則還原 canAction
+					// 注意：即使包含 999（永久封鎖），canAction 也會恢復，但鑑定時會被阻擋
+					if (attackedRounds.includes(currentRound.round)) {
 						await db
 							.update(gamePlayers)
 							.set({ canAction: true })
@@ -66,9 +71,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 						const roleSkill = currentRole.skill as Record<string, number> | null;
 
 						// 檢查是否需要還原 can_action（行動完畢時）
+						// blockedRound 只用於黃煙煙和木戶加奈的天生封鎖回合
 						await restoreCanActionIfNeeded(
 							currentActionPlayer.id,
 							currentActionPlayer.blockedRound,
+							currentActionPlayer.attackedRounds as number[] | null,
 							currentRound.round,
 							roleSkill
 						);

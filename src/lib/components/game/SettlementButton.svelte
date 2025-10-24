@@ -33,8 +33,9 @@
 			if (response.ok) {
 				const data = await response.json();
 
+				// 只在遊戲結束時顯示通知，進入鑑人階段的通知由 Socket.IO 事件統一處理
 				if (data.needIdentification) {
-					addNotification(`真品數: ${data.genuineCount}/6，進入鑑人階段`, 'info', 4000);
+					// Socket.IO 會廣播 enter-identification-phase 事件，不需要重複通知
 				} else {
 					addNotification(`${data.winner}獲勝！`, 'success', 5000);
 				}

@@ -3,10 +3,11 @@
 	export let variant: 'create' | 'join' | 'primary' | 'destructive' = 'create';
 	export let title: string;
 	export let subtitle: string;
+	export let disabled: boolean = false;
 </script>
 
 <div class="button-container">
-	<button on:click={onClick} class="action-btn {variant}-btn">
+	<button on:click={onClick} class="action-btn {variant}-btn" {disabled}>
 		{title}
 	</button>
 	<p class="button-subtitle">{subtitle}</p>
@@ -30,6 +31,12 @@
 		transition: var(--transition-elegant);
 		min-width: 280px;
 		box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		transform: none !important;
 	}
 
 	.create-btn {

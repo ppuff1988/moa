@@ -67,9 +67,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	try {
 		// 在指派下一位玩家之前，檢查當前玩家是否需要還原 canAction
 		// 當前玩家指派下一位玩家時，代表當前玩家的行動已完成
-		// 只有當 blockedRound <= 當前回合時，才恢復 canAction（表示封鎖期已過或當前回合）
-		if (currentPlayer.canAction === false && currentPlayer.blockedRound !== null) {
-			if (currentPlayer.blockedRound <= currentRound.round) {
+		// 檢查是否因為攻擊而被封鎖（使用 attackedRounds）
+		if (currentPlayer.canAction === false && currentPlayer.attackedRounds) {
+			const attackedRounds = currentPlayer.attackedRounds as number[];
+
+			// 如果當前回合在被攻擊回合列表中，或過去的回合被攻擊過，說明封鎖期已過
+			if (
+				attackedRounds.includes(currentRound.round) ||
+				attackedRounds.some((round) => round < currentRound.round)
+			) {
 				await db
 					.update(gamePlayers)
 					.set({ canAction: true })
@@ -89,9 +95,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				const roleSkill = currentRole.skill as Record<string, number> | null;
 
 				// 檢查是否需要還原 can_action（行動完畢時）
+				// blockedRound 只用於黃煙煙和木戶加奈的天生封鎖回合
 				await restoreCanActionIfNeeded(
 					currentPlayer.id,
 					currentPlayer.blockedRound,
+					currentPlayer.attackedRounds as number[] | null,
 					currentRound.round,
 					roleSkill
 				);

@@ -21,6 +21,7 @@
 		totalPlayers: number;
 		actions: Action[];
 		isCompleted: boolean;
+		isAttacked: boolean; // 新增：是否在此回合被攻擊
 	}
 
 	interface PlayerInfo {
@@ -81,6 +82,7 @@
 			block_artifact: '封鎖寶物',
 			swap_artifacts: '交換真偽',
 			fool_player: '迷惑玩家',
+			blocked_by_attack: '被攻擊無法行動',
 			skip: '跳過',
 			unknown: '未知行動'
 		};
@@ -99,15 +101,6 @@
 		return phaseMap[phase] || phase;
 	}
 
-	function formatTimestamp(timestamp: Date | string): string {
-		const date = new Date(timestamp);
-		return date.toLocaleTimeString('zh-TW', {
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit'
-		});
-	}
-
 	// 新增：格式化行動詳情
 	function getActionDetails(action: Action): string[] {
 		const details: string[] = [];
@@ -118,11 +111,10 @@
 				if (action.data.artifactName) {
 					details.push(`寶物：${action.data.artifactName}`);
 				}
-				if (action.data.result !== undefined) {
-					details.push(`結果：${action.data.result ? '真品 ✓' : '贗品 ✗'}`);
-				}
 				if (action.data.blocked) {
-					details.push('❌ 被封鎖，無法鑑定');
+					details.push('❌ 無法鑑定');
+				} else if (action.data.result !== undefined) {
+					details.push(`結果：${action.data.result ? '真品 ✓' : '贗品 ✗'}`);
 				}
 				break;
 
@@ -130,7 +122,9 @@
 				if (action.data.targetPlayerNickname) {
 					details.push(`目標玩家：${action.data.targetPlayerNickname}`);
 				}
-				if (action.data.camp) {
+				if (action.data.blocked) {
+					details.push('❌ 被攻擊無法鑑定');
+				} else if (action.data.camp) {
 					const campText =
 						action.data.camp === 'good'
 							? '許愿陣營 👼'
@@ -139,20 +133,16 @@
 								: String(action.data.camp);
 					details.push(`鑑定結果：${campText}`);
 				}
-				if (action.data.blocked) {
-					details.push('❌ 被封鎖，無法鑑定');
-					// 隱藏原因debug用
-					// if (action.data.reason) {
-					// 	details.push(`原因：${action.data.reason}`);
-					// }
-				}
 				break;
 
 			case 'attack_player':
 				if (action.data.targetPlayerNickname) {
 					details.push(`目標玩家：${action.data.targetPlayerNickname}`);
 				}
-				if (action.data.blockedRound) {
+				if (action.data.attackedRound) {
+					details.push(`將在第 ${action.data.attackedRound} 回合受影響`);
+				} else if (action.data.blockedRound) {
+					// 向後兼容舊的 blockedRound 欄位
 					details.push(`該玩家將在第 ${action.data.blockedRound} 回合無法行動`);
 				}
 				break;
@@ -161,12 +151,18 @@
 				if (action.data.artifactName) {
 					details.push(`寶物：${action.data.artifactName}`);
 				}
-				details.push('該寶物已被封鎖');
+				if (action.data.blocked) {
+					details.push('❌ 被攻擊無法封鎖');
+				} else {
+					details.push('該寶物已被封鎖');
+				}
 				break;
 
 			case 'swap_artifacts':
-				if (action.data.swappedArtifacts && Array.isArray(action.data.swappedArtifacts)) {
-					details.push(`交換了 ${(action.data.swappedArtifacts as unknown[]).length} 個寶物的真偽`);
+				if (action.data.blocked) {
+					details.push('❌ 被攻擊無法交換真偽');
+				} else if (action.data.artifactNames && Array.isArray(action.data.artifactNames)) {
+					details.push(`交換了 ${(action.data.artifactNames as unknown[]).length} 個寶物的真偽`);
 				} else {
 					details.push('交換了本回合寶物的真偽');
 				}
@@ -177,6 +173,12 @@
 					details.push(`目標玩家：${action.data.targetPlayerNickname}`);
 				}
 				details.push('該玩家被迷惑');
+				break;
+
+			case 'blocked_by_attack':
+				if (action.data.reason) {
+					details.push(String(action.data.reason));
+				}
 				break;
 		}
 
@@ -270,6 +272,14 @@
 									</div>
 								{/if}
 
+								<!-- 新增：顯示被攻擊狀態（只有在輪到玩家後才顯示） -->
+								{#if round.isAttacked && round.actions.length > 0}
+									<div class="attacked-warning">
+										<span class="warning-icon">⚠️</span>
+										<span>本回合你被攻擊了，無法執行任何行動！</span>
+									</div>
+								{/if}
+
 								{#if round.actions.length > 0}
 									<div class="actions-list">
 										<h4>已執行的行動：</h4>
@@ -277,7 +287,7 @@
 											<div class="action-item">
 												<div class="action-header">
 													<span class="action-type">{getActionTypeText(action.type)}</span>
-													<span class="action-time">{formatTimestamp(action.timestamp)}</span>
+													<!--													<span class="action-time">{formatTimestamp(action.timestamp)}</span>-->
 												</div>
 												<!-- 新增：顯示更詳細的行動資訊 -->
 												{#if getActionDetails(action).length > 0}
@@ -290,16 +300,19 @@
 											</div>
 										{/each}
 									</div>
+								{:else if round.isAttacked && round.myOrderIndex !== null}
+									<!-- 如果被攻擊且沒有行動，顯示特別提示 -->
+									<div class="no-actions">因被攻擊而無法行動</div>
 								{:else}
 									<div class="no-actions">尚未執行任何行動</div>
 								{/if}
 
-								<div class="round-footer">
-									<span class="timestamp">開始時間: {formatTimestamp(round.startedAt)}</span>
-									{#if round.completedAt}
-										<span class="timestamp">結束時間: {formatTimestamp(round.completedAt)}</span>
-									{/if}
-								</div>
+								<!--								<div class="round-footer">-->
+								<!--									<span class="timestamp">開始時間: {formatTimestamp(round.startedAt)}</span>-->
+								<!--									{#if round.completedAt}-->
+								<!--										<span class="timestamp">結束時間: {formatTimestamp(round.completedAt)}</span>-->
+								<!--									{/if}-->
+								<!--								</div>-->
 							</div>
 						{/each}
 
@@ -550,24 +563,6 @@
 		font-size: 0.9rem;
 	}
 
-	.action-time {
-		color: #64748b;
-		font-size: 0.75rem;
-	}
-
-	.round-footer {
-		display: flex;
-		justify-content: space-between;
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
-	}
-
-	.timestamp {
-		color: #64748b;
-		font-size: 0.75rem;
-	}
-
 	/* 滾動條樣式 */
 	.modal-body::-webkit-scrollbar {
 		width: 8px;
@@ -610,5 +605,26 @@
 		height: 0.4rem;
 		border-radius: 50%;
 		background: #60a5fa;
+	}
+
+	.attacked-warning {
+		background: rgba(239, 68, 68, 0.1);
+		border-left: 3px solid #ef4444;
+		padding: 0.75rem;
+		border-radius: 8px;
+		margin-bottom: 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.warning-icon {
+		font-size: 1.25rem;
+		color: #ef4444;
+	}
+
+	.attacked-warning span {
+		font-size: 0.9rem;
+		font-weight: 500;
 	}
 </style>

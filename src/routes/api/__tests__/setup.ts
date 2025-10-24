@@ -12,7 +12,7 @@ dotenvExpand.expand(myEnv);
 beforeAll(async () => {
 	console.log('🧪 開始 API 測試...');
 	console.log('📝 請確保開發服務器正在運行：npm run dev');
-	console.log('🗄️  請確保數據庫正在運行：npm run db:start');
+	console.log('🗄️ 請確保數據庫正在運行：npm run db:start');
 
 	// 等待服務器啟動
 	await new Promise((resolve) => setTimeout(resolve, 2000));
