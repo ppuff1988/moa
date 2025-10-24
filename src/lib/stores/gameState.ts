@@ -154,6 +154,10 @@ export function createGameState() {
 			gamePhase.set('identification');
 			selectedBeastHead.set(null);
 			identifiedPlayers.set([]);
+			identifiedArtifacts.set([]);
+			blockedArtifacts.set([]);
+			failedIdentifications.set([]);
+			performedActions.set([]);
 		}
 	};
 }

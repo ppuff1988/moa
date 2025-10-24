@@ -123,7 +123,8 @@
 					details.push(`目標玩家：${action.data.targetPlayerNickname}`);
 				}
 				if (action.data.blocked) {
-					details.push('❌ 被攻擊無法鑑定');
+					// 只有自己被攻擊才會無法鑑定
+					details.push('❌ 自己被攻擊無法鑑定');
 				} else if (action.data.camp) {
 					const campText =
 						action.data.camp === 'good'
