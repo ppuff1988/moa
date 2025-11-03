@@ -8,7 +8,7 @@
 	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
 	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
-	import Modal from '$lib/components/ui/Modal.svelte';
+	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
 	interface User {
 		nickname: string;
@@ -127,30 +127,19 @@
 		</div>
 	{/if}
 
-	<Modal isOpen={$showLeaveConfirmModal} title="確認離開房間" onClose={closeLeaveConfirmModal}>
-		<div class="modal-body">
-			<p>確定要離開房間嗎？</p>
-			<div class="modal-actions">
-				<button class="btn btn-cancel" on:click={closeLeaveConfirmModal} disabled={$isLeavingRoom}>
-					取消
-				</button>
-				<button
-					class="btn btn-confirm"
-					on:click={() =>
-						handleConfirmLeave(currentGame?.roomName || '', () => {
-							currentGame = null;
-						})}
-					disabled={$isLeavingRoom}
-				>
-					{#if $isLeavingRoom}
-						處理中...
-					{:else}
-						確認離開
-					{/if}
-				</button>
-			</div>
-		</div>
-	</Modal>
+	<ConfirmModal
+		isOpen={$showLeaveConfirmModal}
+		title="確認離開房間"
+		message="確定要離開房間嗎？"
+		confirmText="確認離開"
+		cancelText="取消"
+		isProcessing={$isLeavingRoom}
+		onConfirm={() =>
+			handleConfirmLeave(currentGame?.roomName || '', () => {
+				currentGame = null;
+			})}
+		onCancel={closeLeaveConfirmModal}
+	/>
 
 	<UserArea nickname={user.nickname} onLogout={logout} />
 
@@ -220,60 +209,6 @@
 		justify-content: center;
 		align-items: center;
 		z-index: 100;
-	}
-
-	.modal-body {
-		padding: 1.5rem;
-		text-align: center;
-	}
-
-	.modal-body p {
-		margin: 0 0 1.5rem 0;
-		font-size: 1rem;
-		color: #e8e8e8;
-		line-height: 1.6;
-	}
-
-	.modal-actions {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-		margin-top: 1.5rem;
-	}
-
-	.btn {
-		padding: 0.75rem 1.5rem;
-		border: none;
-		border-radius: 6px;
-		font-size: 0.9rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		min-width: 100px;
-	}
-
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.btn-cancel {
-		background-color: #4a4a4a;
-		color: #e8e8e8;
-	}
-
-	.btn-cancel:hover:not(:disabled) {
-		background-color: #5a5a5a;
-	}
-
-	.btn-confirm {
-		background-color: #d4af37;
-		color: #1a0f0a;
-	}
-
-	.btn-confirm:hover:not(:disabled) {
-		background-color: #e6c547;
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
 	}
 
 	@media (max-width: 1024px) {
