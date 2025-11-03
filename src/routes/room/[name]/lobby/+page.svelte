@@ -69,7 +69,6 @@
 			isHost={$isHost}
 			allPlayersReady={$allPlayersReady}
 			players={$players}
-			onLeaveRoom={roomLobby.leaveRoom}
 			onStartSelection={roomLobby.startSelection}
 			onStartGame={roomLobby.startGame}
 		/>
@@ -92,7 +91,6 @@
 <style>
 	.lobby-container {
 		position: relative;
-		z-index: 1;
 		min-height: 100vh;
 		padding: 2rem;
 		max-width: 1400px;

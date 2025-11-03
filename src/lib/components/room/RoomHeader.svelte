@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActionButton from '$lib/components/ui/ActionButton.svelte';
+	import HeaderActions from '$lib/components/shared/HeaderActions.svelte';
 	import type { Player } from '$lib/types/game';
 
 	export let roomName: string;
@@ -10,11 +10,9 @@
 	export let isHost: boolean;
 	export let allPlayersReady: boolean;
 	export let players: Player[] = [];
-	export let onLeaveRoom: () => void;
 	export let onStartSelection: () => void;
 	export let onStartGame: () => void;
 
-	// 計算已選擇角色的玩家數量
 	$: readyCount = players.filter((p) => p.isReady).length;
 	$: readyCountText = `已選擇人數 ${readyCount}/${playerCount}`;
 </script>
@@ -38,31 +36,16 @@
 		{/if}
 	</div>
 
-	<div class="header-actions">
-		{#if gameStatus === 'waiting'}
-			<ActionButton variant="destructive" title="離開房間" subtitle="" onClick={onLeaveRoom} />
-		{/if}
-
-		{#if isHost}
-			{#if gameStatus === 'waiting'}
-				<ActionButton
-					variant="primary"
-					title="選擇角色"
-					subtitle=""
-					disabled={playerCount < minPlayers}
-					onClick={onStartSelection}
-				/>
-			{:else if gameStatus === 'selecting'}
-				<ActionButton
-					variant="primary"
-					title="開始遊戲"
-					subtitle=""
-					disabled={!allPlayersReady}
-					onClick={onStartGame}
-				/>
-			{/if}
-		{/if}
-	</div>
+	<HeaderActions
+		{roomName}
+		{gameStatus}
+		{playerCount}
+		{minPlayers}
+		{isHost}
+		{allPlayersReady}
+		{onStartSelection}
+		{onStartGame}
+	/>
 </div>
 
 <style>
@@ -81,7 +64,7 @@
 
 	.room-title {
 		color: hsl(var(--foreground));
-		font-size: 2rem;
+		font-size: 1.5rem;
 		font-weight: 600;
 		margin: 0;
 		text-shadow: 0 2px 4px hsl(var(--background) / 0.8);
@@ -90,47 +73,13 @@
 	.room-subtitle {
 		color: hsl(var(--muted-foreground));
 		margin: 0.5rem 0 0 0;
-		font-size: 1rem;
-	}
-
-	.header-actions {
-		display: flex;
-		gap: 1rem;
-		align-items: flex-start;
-	}
-
-	.header-actions :global(.button-container) {
-		gap: 0.5rem;
-	}
-
-	.header-actions :global(.action-btn) {
-		padding: 0.75rem 1.5rem;
-		min-width: 140px;
-		font-size: 1rem;
-	}
-
-	.header-actions :global(.button-subtitle) {
-		font-size: 0.75rem;
-		max-width: 140px;
+		font-size: 0.9rem;
 	}
 
 	@media (max-width: 768px) {
 		.room-header {
 			flex-direction: column;
 			gap: 1rem;
-		}
-
-		.header-actions {
-			justify-content: flex-start;
-			width: 100%;
-		}
-
-		.header-actions :global(.action-btn) {
-			min-width: 120px;
-		}
-
-		.header-actions :global(.button-subtitle) {
-			max-width: 120px;
 		}
 	}
 </style>

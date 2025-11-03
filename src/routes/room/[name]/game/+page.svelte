@@ -25,6 +25,7 @@
 	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
 	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
 	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
+	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
 	import type { User, ActionedPlayer } from '$lib/types/game';
 
@@ -64,6 +65,9 @@
 	let socket: Socket | null = null;
 	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
 	let showBlockedModal = false;
+	let showIdentifyConfirmModal = false;
+	let pendingIdentifyBeastId: number | null = null;
+	let isIdentifying = false;
 
 	$: roomName = $page.params.name || '';
 	$: isMyTurn =
@@ -388,7 +392,7 @@
 
 	// ==================== Game Actions ====================
 
-	async function identifyBeastHead(beastId: number) {
+	function openIdentifyConfirm(beastId: number) {
 		if (!isMyTurn || $gamePhase !== 'identification') return;
 		if (!$skillActions || $skillActions.checkArtifact === 0) {
 			addNotification('你的角色無法鑑定獸首', 'error');
@@ -405,6 +409,19 @@
 			addNotification('此獸首無法鑑定', 'error');
 			return;
 		}
+
+		pendingIdentifyBeastId = beastId;
+		showIdentifyConfirmModal = true;
+	}
+
+	async function confirmIdentifyBeastHead() {
+		if (pendingIdentifyBeastId === null) return;
+
+		const beastId = pendingIdentifyBeastId;
+		const beast = $beastHeads.find((b) => b.id === beastId);
+		if (!beast) return;
+
+		isIdentifying = true;
 
 		try {
 			const { ok, data } = await gameService.identifyArtifact(`${beast.animal}首`);
@@ -427,7 +444,7 @@
 					4000
 				);
 
-				if ($usedSkills.checkArtifact >= $skillActions.checkArtifact) {
+				if ($skillActions && $usedSkills.checkArtifact >= $skillActions.checkArtifact) {
 					setTimeout(() => {
 						if (!$hasActualSkills) {
 							gamePhase.set('assign-next');
@@ -436,7 +453,7 @@
 							gamePhase.set('skill');
 						}
 					}, 1500);
-				} else {
+				} else if ($skillActions) {
 					addNotification(
 						`你還可以再鑑定 ${$skillActions.checkArtifact - $usedSkills.checkArtifact} 次`,
 						'info',
@@ -448,7 +465,7 @@
 				usedSkills.update((s) => ({ ...s, checkArtifact: s.checkArtifact + 1 }));
 				addNotification(`${beast.animal}首無法鑑定`, 'warning', 3000);
 
-				if ($usedSkills.checkArtifact >= $skillActions.checkArtifact) {
+				if ($skillActions && $usedSkills.checkArtifact >= $skillActions.checkArtifact) {
 					setTimeout(() => {
 						if (!$hasActualSkills) {
 							gamePhase.set('assign-next');
@@ -457,7 +474,7 @@
 							gamePhase.set('skill');
 						}
 					}, 1500);
-				} else {
+				} else if ($skillActions) {
 					addNotification(
 						`你還可以再鑑定 ${$skillActions.checkArtifact - $usedSkills.checkArtifact} 次`,
 						'info',
@@ -468,7 +485,17 @@
 		} catch (error) {
 			console.error('鑑定獸首錯誤:', error);
 			addNotification('鑑定獸首失敗，請檢查網路連接', 'error');
+		} finally {
+			showIdentifyConfirmModal = false;
+			pendingIdentifyBeastId = null;
+			isIdentifying = false;
 		}
+	}
+
+	function closeIdentifyConfirmModal() {
+		showIdentifyConfirmModal = false;
+		pendingIdentifyBeastId = null;
+		isIdentifying = false;
 	}
 
 	async function checkPlayer(playerId: number | string) {
@@ -976,7 +1003,7 @@
 								$remainingSkills &&
 								$remainingSkills.checkArtifact > 0
 							) {
-								identifyBeastHead(beastId);
+								openIdentifyConfirm(beastId);
 							} else if (
 								$gamePhase === 'skill' &&
 								isMyTurn &&
@@ -1076,7 +1103,7 @@
 								<IdentifyArtifactPhase
 									skillActions={$skillActions}
 									usedSkills={$usedSkills}
-									onIdentify={identifyBeastHead}
+									onIdentify={openIdentifyConfirm}
 									onSkipToSkill={() => gamePhase.set('skill')}
 								/>
 							{:else if $gamePhase === 'skill'}
@@ -1130,6 +1157,18 @@
 		onConfirm={() => {
 			showBlockedModal = false;
 		}}
+	/>
+	<ConfirmModal
+		isOpen={showIdentifyConfirmModal}
+		title="確認鑑定"
+		message={pendingIdentifyBeastId !== null
+			? `確定要鑑定 ${$beastHeads.find((b) => b.id === pendingIdentifyBeastId)?.animal}首 嗎？`
+			: '確定要鑑定此獸首嗎？'}
+		confirmText="確認"
+		cancelText="取消"
+		isProcessing={isIdentifying}
+		onConfirm={confirmIdentifyBeastHead}
+		onCancel={closeIdentifyConfirmModal}
 	/>
 {/if}
 

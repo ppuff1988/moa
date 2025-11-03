@@ -4,13 +4,21 @@
 	export let title: string;
 	export let subtitle: string;
 	export let disabled: boolean = false;
+	export let size: 'default' | 'compact' = 'default';
 </script>
 
-<div class="button-container">
-	<button on:click={onClick} class="action-btn {variant}-btn" {disabled}>
+<div class="button-container" class:compact={size === 'compact'}>
+	<button
+		on:click={onClick}
+		class="action-btn {variant}-btn"
+		class:compact={size === 'compact'}
+		{disabled}
+	>
 		{title}
 	</button>
-	<p class="button-subtitle">{subtitle}</p>
+	{#if subtitle}
+		<p class="button-subtitle">{subtitle}</p>
+	{/if}
 </div>
 
 <style>
@@ -19,6 +27,10 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 2rem;
+	}
+
+	.button-container.compact {
+		gap: 0;
 	}
 
 	.action-btn {
@@ -31,6 +43,14 @@
 		transition: var(--transition-elegant);
 		min-width: 280px;
 		box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
+	}
+
+	.action-btn.compact {
+		padding: 0.625rem 1.25rem;
+		font-size: 0.875rem;
+		min-width: auto;
+		border-radius: calc(var(--radius));
+		box-shadow: none;
 	}
 
 	.action-btn:disabled {
@@ -49,6 +69,11 @@
 		box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4);
 	}
 
+	.create-btn.compact:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+	}
+
 	.join-btn {
 		background: linear-gradient(135deg, hsl(var(--primary)), #b91c1c);
 		color: hsl(var(--primary-foreground));
@@ -57,6 +82,11 @@
 	.join-btn:hover {
 		transform: translateY(-3px);
 		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
+	}
+
+	.join-btn.compact:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(165, 36, 34, 0.3);
 	}
 
 	.primary-btn {
@@ -69,6 +99,11 @@
 		box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4);
 	}
 
+	.primary-btn.compact:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+	}
+
 	.destructive-btn {
 		background: linear-gradient(135deg, hsl(var(--primary)), #b91c1c);
 		color: hsl(var(--primary-foreground));
@@ -77,6 +112,11 @@
 	.destructive-btn:hover {
 		transform: translateY(-3px);
 		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
+	}
+
+	.destructive-btn.compact:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(165, 36, 34, 0.3);
 	}
 
 	.button-subtitle {
@@ -92,6 +132,11 @@
 		.action-btn {
 			min-width: 250px;
 			font-size: 1.2rem;
+		}
+
+		.action-btn.compact {
+			min-width: auto;
+			font-size: 0.875rem;
 		}
 
 		.button-subtitle {

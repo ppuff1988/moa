@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getJWTToken } from '$lib/utils/jwt';
-	import { leaveRoom } from '$lib/utils/room';
+	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
 	import RoomForm from '$lib/components/room/RoomForm.svelte';
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import UserArea from '$lib/components/ui/UserArea.svelte';
 	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
 	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
+	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
 	interface User {
 		nickname: string;
@@ -26,6 +27,14 @@
 	let isLoading = true;
 	let showRoomForm = false;
 	let roomFormMode: 'create' | 'join' = 'create';
+
+	const {
+		showLeaveConfirmModal,
+		isLeavingRoom,
+		handleLeaveRoom,
+		closeLeaveConfirmModal,
+		handleConfirmLeave
+	} = useLeaveRoom();
 
 	onMount(async () => {
 		const token = getJWTToken();
@@ -95,18 +104,13 @@
 	}
 
 	function backToRoom() {
-		if (currentGame) {
-			window.location.href = `/room/${encodeURIComponent(currentGame.roomName)}`;
-		}
-	}
+		if (!currentGame) return;
 
-	async function handleLeaveRoom() {
-		if (currentGame) {
-			const success = await leaveRoom(currentGame.roomName);
-			if (success) {
-				currentGame = null;
-			}
-		}
+		const { roomName, status } = currentGame;
+		const basePath = `/room/${encodeURIComponent(roomName)}`;
+		window.location.href = ['waiting', 'selection'].includes(status)
+			? `${basePath}/lobby`
+			: `${basePath}/game`;
 	}
 </script>
 
@@ -123,6 +127,20 @@
 		</div>
 	{/if}
 
+	<ConfirmModal
+		isOpen={$showLeaveConfirmModal}
+		title="確認離開房間"
+		message="確定要離開房間嗎？"
+		confirmText="確認離開"
+		cancelText="取消"
+		isProcessing={$isLeavingRoom}
+		onConfirm={() =>
+			handleConfirmLeave(currentGame?.roomName || '', () => {
+				currentGame = null;
+			})}
+		onCancel={closeLeaveConfirmModal}
+	/>
+
 	<UserArea nickname={user.nickname} onLogout={logout} />
 
 	<div class="main-content">
@@ -131,16 +149,11 @@
 		<div class="buttons-section">
 			{#if currentGame}
 				<!-- 玩家在遊戲中：顯示回到房間和離開房間 -->
-				<ActionButton
-					variant="primary"
-					title="回到房間"
-					subtitle="返回房間繼續遊戲"
-					onClick={backToRoom}
-				/>
+				<ActionButton variant="primary" title="回到房間" subtitle="" onClick={backToRoom} />
 				<ActionButton
 					variant="destructive"
 					title="離開房間"
-					subtitle="離開當前房間"
+					subtitle=""
 					onClick={handleLeaveRoom}
 				/>
 			{:else}
