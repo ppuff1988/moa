@@ -213,15 +213,35 @@ export const POST: RequestHandler = async (event) => {
 				return json({ message: `找不到第 ${previousRoundNumber} 回合` }, { status: 404 });
 			}
 
-			// 檢查上一回合是否已完成，如果未完成則先完成它
+			// 檢查上一回合的狀態，根據情況進行相應處理
 			if (!previousRound.completedAt) {
-				await db
-					.update(gameRounds)
-					.set({
-						phase: 'completed',
-						completedAt: new Date()
-					})
-					.where(eq(gameRounds.id, previousRound.id));
+				// 如果前一回合還未完成
+				if (previousRound.phase === 'action' || previousRound.phase === 'discussion') {
+					// 行動或討論階段未完成，不允許開始新回合
+					return json(
+						{
+							message: `第 ${previousRoundNumber} 回合尚未準備好進入下一回合。當前狀態：${previousRound.phase}`
+						},
+						{ status: 400 }
+					);
+				} else if (previousRound.phase === 'voting') {
+					// 如果前一回合還在投票階段，自動跳過到結果階段
+					await db
+						.update(gameRounds)
+						.set({ phase: 'result' })
+						.where(eq(gameRounds.id, previousRound.id));
+				}
+
+				// 無論如何，如果前一回合還未標記完成，就在這裡完成它
+				if (previousRound.phase === 'result' || previousRound.phase === 'voting') {
+					await db
+						.update(gameRounds)
+						.set({
+							phase: 'completed',
+							completedAt: new Date()
+						})
+						.where(eq(gameRounds.id, previousRound.id));
+				}
 			}
 
 			// 檢查新回合是否已經存在

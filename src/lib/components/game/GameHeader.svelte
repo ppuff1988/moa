@@ -1,17 +1,11 @@
 <script lang="ts">
-	import { leaveRoom } from '$lib/utils/room';
-	import ActionButton from '$lib/components/ui/ActionButton.svelte';
-
+	import HeaderActions from '$lib/components/shared/HeaderActions.svelte';
 	export let roomName: string;
 	export let currentUserNickname: string | undefined;
 	export let currentPlayerRole: string | null;
 	export let onOpenHistory: () => void;
 	export let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
 	export let gameStatus: string = 'playing';
-
-	async function handleLeaveRoom() {
-		await leaveRoom(roomName);
-	}
 </script>
 
 <div class="room-header">
@@ -41,12 +35,7 @@
 		</div>
 	</div>
 
-	<div class="header-actions">
-		<button class="history-btn" on:click={onOpenHistory}> 📜 查看行動歷史 </button>
-		{#if gameStatus === 'finished'}
-			<ActionButton variant="destructive" title="離開房間" subtitle="" onClick={handleLeaveRoom} />
-		{/if}
-	</div>
+	<HeaderActions {roomName} {gameStatus} {onOpenHistory} />
 </div>
 
 <style>
@@ -110,47 +99,6 @@
 	.teammate-name {
 		font-weight: 700;
 		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-	}
-
-	.header-actions {
-		display: flex;
-		gap: 1rem;
-		align-items: flex-start;
-	}
-
-	.header-actions :global(.action-btn) {
-		padding: 0.625rem 1.25rem;
-		min-width: 120px;
-		font-size: 0.875rem;
-	}
-
-	.header-actions :global(.action-title) {
-		font-size: 1rem;
-	}
-
-	.header-actions :global(.action-subtitle) {
-		font-size: 0.7rem;
-	}
-
-	.history-btn {
-		padding: 0.625rem 1.25rem;
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		border-radius: calc(var(--radius));
-		color: hsl(var(--foreground));
-		font-weight: 600;
-		font-size: 0.875rem;
-		cursor: pointer;
-		transition: var(--transition-elegant);
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.history-btn:hover {
-		background: rgba(255, 255, 255, 0.2);
-		border-color: rgba(212, 175, 55, 0.5);
-		transform: translateY(-2px);
 	}
 
 	@media (max-width: 768px) {

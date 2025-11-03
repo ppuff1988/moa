@@ -1,7 +1,12 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+
 	export let isOpen = false;
 	export let title = '';
 	export let onClose: (() => void) | null = null;
+
+	let modalContainer: HTMLDivElement | null = null;
+	let portalTarget: HTMLElement | null = null;
 
 	function handleClose() {
 		if (onClose) {
@@ -16,40 +21,66 @@
 			handleClose();
 		}
 	}
+
+	onMount(() => {
+		// 創建一個 portal target 在 body 的最外層
+		portalTarget = document.createElement('div');
+		portalTarget.id = 'modal-portal';
+		portalTarget.style.cssText =
+			'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;';
+		document.body.appendChild(portalTarget);
+	});
+
+	onDestroy(() => {
+		// 清理 portal target
+		if (portalTarget && document.body.contains(portalTarget)) {
+			document.body.removeChild(portalTarget);
+		}
+	});
+
+	$: if (portalTarget && modalContainer) {
+		if (isOpen) {
+			portalTarget.appendChild(modalContainer);
+		} else if (modalContainer.parentElement === portalTarget) {
+			portalTarget.removeChild(modalContainer);
+		}
+	}
 </script>
 
-{#if isOpen}
-	<div
-		class="modal-backdrop"
-		role="button"
-		tabindex="0"
-		on:click={handleBackdropClick}
-		on:keydown={(e) => e.key === 'Escape' && handleClose()}
-	>
-		<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-			<div class="modal-header">
-				<h2 id="modal-title" class="modal-title">{title}</h2>
-				<button class="close-button" on:click={handleClose} aria-label="關閉">
-					<svg
-						width="24"
-						height="24"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						aria-hidden="true"
-					>
-						<line x1="18" y1="6" x2="6" y2="18"></line>
-						<line x1="6" y1="6" x2="18" y2="18"></line>
-					</svg>
-				</button>
-			</div>
-			<div class="modal-body">
-				<slot />
+<div bind:this={modalContainer} style="display: {isOpen ? 'block' : 'none'};">
+	{#if isOpen}
+		<div
+			class="modal-backdrop"
+			role="button"
+			tabindex="0"
+			on:click={handleBackdropClick}
+			on:keydown={(e) => e.key === 'Escape' && handleClose()}
+		>
+			<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+				<div class="modal-header">
+					<h2 id="modal-title" class="modal-title">{title}</h2>
+					<button class="close-button" on:click={handleClose} aria-label="關閉">
+						<svg
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							aria-hidden="true"
+						>
+							<line x1="18" y1="6" x2="6" y2="18"></line>
+							<line x1="6" y1="6" x2="18" y2="18"></line>
+						</svg>
+					</button>
+				</div>
+				<div class="modal-body">
+					<slot />
+				</div>
 			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.modal-backdrop {
@@ -62,9 +93,11 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		z-index: 1000;
+		z-index: 10000;
 		animation: fadeIn 0.2s ease-out;
-		padding: 1rem;
+		padding: 0;
+		box-sizing: border-box;
+		pointer-events: auto;
 	}
 
 	@keyframes fadeIn {
@@ -82,12 +115,13 @@
 		border-radius: 12px;
 		box-shadow: 0 8px 32px rgba(212, 175, 55, 0.3);
 		max-width: 500px;
-		width: 90%;
-		max-height: 90vh;
+		width: calc(100% - 2rem);
+		max-height: calc(100vh - 2rem);
 		overflow: hidden;
 		animation: slideIn 0.3s ease-out;
 		display: flex;
 		flex-direction: column;
+		margin: auto;
 	}
 
 	@keyframes slideIn {

@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getJWTToken } from '$lib/utils/jwt';
-	import { leaveRoom } from '$lib/utils/room';
+	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
 	import RoomForm from '$lib/components/room/RoomForm.svelte';
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import UserArea from '$lib/components/ui/UserArea.svelte';
 	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
 	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
+	import Modal from '$lib/components/ui/Modal.svelte';
 
 	interface User {
 		nickname: string;
@@ -26,6 +27,14 @@
 	let isLoading = true;
 	let showRoomForm = false;
 	let roomFormMode: 'create' | 'join' = 'create';
+
+	const {
+		showLeaveConfirmModal,
+		isLeavingRoom,
+		handleLeaveRoom,
+		closeLeaveConfirmModal,
+		handleConfirmLeave
+	} = useLeaveRoom();
 
 	onMount(async () => {
 		const token = getJWTToken();
@@ -95,18 +104,13 @@
 	}
 
 	function backToRoom() {
-		if (currentGame) {
-			window.location.href = `/room/${encodeURIComponent(currentGame.roomName)}`;
-		}
-	}
+		if (!currentGame) return;
 
-	async function handleLeaveRoom() {
-		if (currentGame) {
-			const success = await leaveRoom(currentGame.roomName);
-			if (success) {
-				currentGame = null;
-			}
-		}
+		const { roomName, status } = currentGame;
+		const basePath = `/room/${encodeURIComponent(roomName)}`;
+		window.location.href = ['waiting', 'selection'].includes(status)
+			? `${basePath}/lobby`
+			: `${basePath}/game`;
 	}
 </script>
 
@@ -123,6 +127,31 @@
 		</div>
 	{/if}
 
+	<Modal isOpen={$showLeaveConfirmModal} title="確認離開房間" onClose={closeLeaveConfirmModal}>
+		<div class="modal-body">
+			<p>確定要離開房間嗎？</p>
+			<div class="modal-actions">
+				<button class="btn btn-cancel" on:click={closeLeaveConfirmModal} disabled={$isLeavingRoom}>
+					取消
+				</button>
+				<button
+					class="btn btn-confirm"
+					on:click={() =>
+						handleConfirmLeave(currentGame?.roomName || '', () => {
+							currentGame = null;
+						})}
+					disabled={$isLeavingRoom}
+				>
+					{#if $isLeavingRoom}
+						處理中...
+					{:else}
+						確認離開
+					{/if}
+				</button>
+			</div>
+		</div>
+	</Modal>
+
 	<UserArea nickname={user.nickname} onLogout={logout} />
 
 	<div class="main-content">
@@ -131,16 +160,11 @@
 		<div class="buttons-section">
 			{#if currentGame}
 				<!-- 玩家在遊戲中：顯示回到房間和離開房間 -->
-				<ActionButton
-					variant="primary"
-					title="回到房間"
-					subtitle="返回房間繼續遊戲"
-					onClick={backToRoom}
-				/>
+				<ActionButton variant="primary" title="回到房間" subtitle="" onClick={backToRoom} />
 				<ActionButton
 					variant="destructive"
 					title="離開房間"
-					subtitle="離開當前房間"
+					subtitle=""
 					onClick={handleLeaveRoom}
 				/>
 			{:else}
@@ -196,6 +220,60 @@
 		justify-content: center;
 		align-items: center;
 		z-index: 100;
+	}
+
+	.modal-body {
+		padding: 1.5rem;
+		text-align: center;
+	}
+
+	.modal-body p {
+		margin: 0 0 1.5rem 0;
+		font-size: 1rem;
+		color: #e8e8e8;
+		line-height: 1.6;
+	}
+
+	.modal-actions {
+		display: flex;
+		gap: 1rem;
+		justify-content: center;
+		margin-top: 1.5rem;
+	}
+
+	.btn {
+		padding: 0.75rem 1.5rem;
+		border: none;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		min-width: 100px;
+	}
+
+	.btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-cancel {
+		background-color: #4a4a4a;
+		color: #e8e8e8;
+	}
+
+	.btn-cancel:hover:not(:disabled) {
+		background-color: #5a5a5a;
+	}
+
+	.btn-confirm {
+		background-color: #d4af37;
+		color: #1a0f0a;
+	}
+
+	.btn-confirm:hover:not(:disabled) {
+		background-color: #e6c547;
+		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
 	}
 
 	@media (max-width: 1024px) {
