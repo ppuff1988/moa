@@ -5,7 +5,7 @@ import { user, passwordResetToken, oauthAccount } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { sendPasswordResetEmail } from '$lib/server/email';
 import crypto from 'crypto';
-import { DEPLOY_URL } from '$env/static/public';
+import { DEPLOY_URL } from '$env/static/private';
 
 /**
  * POST /api/auth/forgot-password
