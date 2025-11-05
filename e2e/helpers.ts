@@ -110,16 +110,32 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 		await page.fill('input#password', user.password);
 		await page.fill('input#confirmPassword', user.password);
 
-		await page.click('button[type="submit"]');
+		// 點擊提交並等待 API 回應
+		try {
+			const [registerResponse] = await Promise.all([
+				page.waitForResponse((resp) => resp.url().includes('/api/auth/register'), {
+					timeout: 10000
+				}),
+				page.click('button[type="submit"]')
+			]);
 
-		// 等待導航完成
-		await page.waitForURL('/', { timeout: 10000 });
-
-		// 確保首頁元素已載入
-		await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
-		return;
-	} catch {
+			// 如果註冊成功，等待導航到首頁
+			if (registerResponse.status() === 200) {
+				await page.waitForURL('/', { timeout: 10000 });
+				// 確保首頁元素已載入
+				await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
+				return;
+			} else {
+				// 註冊失敗（用戶已存在），繼續嘗試登入
+				console.log('註冊失敗（用戶可能已存在），嘗試登入...');
+			}
+		} catch {
+			// 註冊可能失敗（用戶已存在），繼續嘗試登入
+			console.log('註冊失敗，嘗試登入...');
+		}
+	} catch (e) {
 		// 註冊失敗或已存在，繼續嘗試登入
+		console.log('註冊過程出錯:', e);
 	}
 
 	// 如果註冊失敗或用戶已存在，嘗試登入
@@ -141,15 +157,26 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 		throw new Error('登入頁面為空白，無法繼續');
 	}
 
+	// 等待登入表單載入
+	await page.waitForSelector('input#email', { timeout: 5000 });
+
 	await page.fill('input#email', user.username);
 	await page.fill('input#password', user.password);
 
-	await page.click('button[type="submit"]');
+	// 點擊提交並等待導航
+	await Promise.all([
+		page.waitForResponse(
+			(resp) => resp.url().includes('/api/auth/login') && resp.status() === 200,
+			{ timeout: 10000 }
+		),
+		page.click('button[type="submit"]')
+	]);
 
-	await page.waitForURL('/', { timeout: 10000 });
+	// 等待導航完成
+	await page.waitForURL('/', { timeout: 15000 });
 
 	// 確保首頁元素已載入
-	await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
+	await page.locator('button:has-text("創建房間")').waitFor({ timeout: 10000 });
 }
 
 /**
