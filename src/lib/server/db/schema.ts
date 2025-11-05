@@ -15,6 +15,7 @@ export const user = pgTable('users', {
 	email: text('email').notNull().unique(),
 	nickname: text('nickname').notNull(),
 	passwordHash: text('password_hash'), // 改為可選，因為 OAuth 用戶不需要密碼
+	avatar: text('avatar'), // 用戶頭像 URL，可選
 	createdAt: timestamp('created_at').defaultNow(),
 	updatedAt: timestamp('updated_at').defaultNow()
 });

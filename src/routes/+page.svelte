@@ -13,6 +13,8 @@
 	interface User {
 		nickname: string;
 		username: string;
+		email: string;
+		avatar?: string | null;
 	}
 
 	interface CurrentGame {
@@ -141,7 +143,12 @@
 		onCancel={closeLeaveConfirmModal}
 	/>
 
-	<UserArea nickname={user.nickname} onLogout={logout} />
+	<UserArea
+		nickname={user.nickname}
+		email={user.email}
+		avatar={user.avatar || null}
+		onLogout={logout}
+	/>
 
 	<div class="main-content">
 		<MainTitle title="古董局中局" subtitle="在這個充滿神秘色彩的古董世界中，運用您的智慧與判斷力" />

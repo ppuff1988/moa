@@ -94,7 +94,17 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 			if (existingUser) {
 				console.log('   ✓ 找到用戶:', existingUser.email);
-				loggedInUser = existingUser;
+
+				// 更新用戶的 avatar（如果 Google 提供了新的頭像）
+				if (googleUser.picture && existingUser.avatar !== googleUser.picture) {
+					await db
+						.update(user)
+						.set({ avatar: googleUser.picture })
+						.where(eq(user.id, existingUser.id));
+					loggedInUser = { ...existingUser, avatar: googleUser.picture };
+				} else {
+					loggedInUser = existingUser;
+				}
 			} else {
 				// OAuth 帳號存在但用戶不存在（可能被刪除），重新創建用戶
 				console.log('   ⚠️ OAuth 帳號存在但找不到對應的用戶，重新創建用戶');
@@ -135,7 +145,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 						.values({
 							email: googleUser.email,
 							nickname: googleUser.name || googleUser.email.split('@')[0],
-							passwordHash: null
+							passwordHash: null,
+							avatar: googleUser.picture || null
 						})
 						.returning();
 
@@ -181,7 +192,17 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 				// Email 已存在，關聯到現有帳號
 				console.log('   ✓ Email 已存在，關聯到現有帳號');
 				userId = existingUser.id;
-				loggedInUser = existingUser;
+
+				// 更新用戶的 avatar（如果 Google 提供了新的頭像）
+				if (googleUser.picture && existingUser.avatar !== googleUser.picture) {
+					await db
+						.update(user)
+						.set({ avatar: googleUser.picture })
+						.where(eq(user.id, existingUser.id));
+					loggedInUser = { ...existingUser, avatar: googleUser.picture };
+				} else {
+					loggedInUser = existingUser;
+				}
 			} else {
 				// 建立新用戶
 				console.log('   ➕ 建立新用戶');
@@ -190,7 +211,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 					.values({
 						email: googleUser.email,
 						nickname: googleUser.name || googleUser.email.split('@')[0],
-						passwordHash: null // OAuth 用戶不需要密碼
+						passwordHash: null, // OAuth 用戶不需要密碼
+						avatar: googleUser.picture || null
 					})
 					.returning();
 				console.log('   ✓ 新用戶已建立，ID:', newUser.id);

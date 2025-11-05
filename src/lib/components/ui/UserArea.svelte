@@ -1,9 +1,33 @@
 <script lang="ts">
 	export let nickname: string;
+	export let email: string = '';
+	export let avatar: string | null = null;
 	export let onLogout: () => void;
+
+	// 從 email 或 nickname 生成頭像文字（取第一個字符）
+	$: avatarText = (nickname || email || '?').charAt(0).toUpperCase();
+
+	// 根據字串生成顏色
+	function stringToColor(str: string): string {
+		let hash = 0;
+		for (let i = 0; i < str.length; i++) {
+			hash = str.charCodeAt(i) + ((hash << 5) - hash);
+		}
+		const hue = hash % 360;
+		return `hsl(${hue}, 65%, 55%)`;
+	}
+
+	$: avatarBgColor = stringToColor(email || nickname);
 </script>
 
 <div class="user-area">
+	<div class="avatar" style="background-color: {avatar ? 'transparent' : avatarBgColor}">
+		{#if avatar}
+			<img src={avatar} alt={nickname} class="avatar-img" />
+		{:else}
+			{avatarText}
+		{/if}
+	</div>
 	<span class="welcome-text">歡迎，{nickname}</span>
 	<button on:click={onLogout} class="logout-btn">登出</button>
 </div>
@@ -17,6 +41,34 @@
 		align-items: center;
 		gap: 1rem;
 		z-index: 10;
+	}
+
+	.avatar {
+		width: 2.5rem;
+		height: 2.5rem;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: white;
+		font-weight: 700;
+		font-size: 1.2rem;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+		border: 2px solid hsl(var(--background) / 0.3);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+		transition: var(--transition-elegant);
+	}
+
+	.avatar:hover {
+		transform: scale(1.05);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+	}
+
+	.avatar-img {
+		width: 100%;
+		height: 100%;
+		border-radius: 50%;
+		object-fit: cover;
 	}
 
 	.welcome-text {
@@ -50,9 +102,13 @@
 		.user-area {
 			top: 1rem;
 			right: 1rem;
-			flex-direction: column;
 			gap: 0.5rem;
-			align-items: flex-end;
+		}
+
+		.avatar {
+			width: 2rem;
+			height: 2rem;
+			font-size: 1rem;
 		}
 
 		.welcome-text {
