@@ -5,7 +5,7 @@ import { user, passwordResetToken, oauthAccount } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { sendPasswordResetEmail } from '$lib/server/email';
 import crypto from 'crypto';
-import { DEPLOY_URL } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
 /**
  * POST /api/auth/forgot-password
@@ -64,7 +64,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		// 發送郵件
-		const baseUrl = DEPLOY_URL || `${request.url.split('/api')[0]}`;
+		const baseUrl = env.DEPLOY_URL || `${request.url.split('/api')[0]}`;
 		const emailSent = await sendPasswordResetEmail(email, resetToken, baseUrl);
 
 		if (!emailSent) {

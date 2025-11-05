@@ -4,28 +4,27 @@
  */
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import {
-	SMTP_HOST,
-	SMTP_PORT,
-	SMTP_SECURE,
-	SMTP_USER,
-	SMTP_PASSWORD,
-	SMTP_FROM_EMAIL,
-	SMTP_FROM_NAME
-} from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
 // 建立 SMTP transporter
 let transporter: Transporter | null = null;
 
 function getTransporter(): Transporter {
 	if (!transporter) {
+		// Check if SMTP is configured
+		if (!env.SMTP_HOST || !env.SMTP_USER) {
+			throw new Error(
+				'SMTP configuration is not set. Please configure SMTP environment variables.'
+			);
+		}
+
 		const config = {
-			host: SMTP_HOST,
-			port: parseInt(SMTP_PORT || '587'),
-			secure: SMTP_SECURE === 'true', // true for 465, false for other ports
+			host: env.SMTP_HOST,
+			port: parseInt(env.SMTP_PORT || '587'),
+			secure: env.SMTP_SECURE === 'true', // true for 465, false for other ports
 			auth: {
-				user: SMTP_USER,
-				pass: SMTP_PASSWORD
+				user: env.SMTP_USER,
+				pass: env.SMTP_PASSWORD || ''
 			}
 		};
 
@@ -60,7 +59,7 @@ export async function sendEmail({
 		const transport = getTransporter();
 
 		const info = await transport.sendMail({
-			from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
+			from: `"${env.SMTP_FROM_NAME || '古董局中局'}" <${env.SMTP_FROM_EMAIL || env.SMTP_USER}>`,
 			to,
 			subject,
 			text: text || '',
