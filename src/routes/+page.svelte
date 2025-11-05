@@ -105,6 +105,16 @@
 		await logout();
 	}
 
+	function handleProfileUpdate(updatedUser: { nickname: string; avatar: string | null }) {
+		if (user) {
+			user = {
+				...user,
+				nickname: updatedUser.nickname,
+				avatar: updatedUser.avatar
+			};
+		}
+	}
+
 	function backToRoom() {
 		if (!currentGame) return;
 
@@ -148,6 +158,7 @@
 		email={user.email}
 		avatar={user.avatar || null}
 		onLogout={logout}
+		onProfileUpdate={handleProfileUpdate}
 	/>
 
 	<div class="main-content">
