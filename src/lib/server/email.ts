@@ -13,6 +13,17 @@ function getTransporter(): Transporter {
 	if (!transporter) {
 		// Check if SMTP is configured
 		if (!env.SMTP_HOST || !env.SMTP_USER) {
+			// 在測試環境中，使用 mock transporter
+			if (process.env.NODE_ENV === 'test' || env.NODE_ENV === 'test') {
+				console.log('📧 測試環境：使用 mock SMTP transporter');
+				transporter = nodemailer.createTransport({
+					host: 'localhost',
+					port: 1025,
+					secure: false,
+					auth: undefined
+				});
+				return transporter;
+			}
 			throw new Error(
 				'SMTP configuration is not set. Please configure SMTP environment variables.'
 			);
@@ -56,6 +67,13 @@ export async function sendEmail({
 	text?: string;
 }): Promise<boolean> {
 	try {
+		// 在測試環境中，不實際發送郵件
+		if (process.env.NODE_ENV === 'test' || env.NODE_ENV === 'test') {
+			console.log('📧 測試環境：模擬發送郵件到', to);
+			console.log('📧 主題:', subject);
+			return true;
+		}
+
 		const transport = getTransporter();
 
 		const info = await transport.sendMail({
