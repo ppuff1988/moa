@@ -18,12 +18,27 @@ const { Pool } = pg;
 
 // 解析環境變數
 function resolveEnvironmentVariables(str) {
-	return str.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+	// 如果 str 是 undefined 或 null，直接返回
+	if (!str) {
+		return str;
+	}
+	return str.replace(/\$\{([^}]+)}/g, (match, varName) => {
 		return process.env[varName] || match;
 	});
 }
 
 const databaseUrl = resolveEnvironmentVariables(process.env.DATABASE_URL);
+
+// 檢查 DATABASE_URL 是否存在
+if (!databaseUrl) {
+	console.error('❌ DATABASE_URL 環境變數未設定');
+	console.error('請確保在環境中設定 DATABASE_URL');
+	console.error(
+		'當前環境變數:',
+		Object.keys(process.env).filter((k) => k.includes('DB') || k.includes('POSTGRES'))
+	);
+	process.exit(1);
+}
 
 // 建立資料庫連線池
 const pool = new Pool({
