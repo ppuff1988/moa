@@ -5,14 +5,6 @@ on:
     workflows: ['CI Test']
     types:
       - completed
-    branches:
-      - 'feat/**'
-      - 'fix/**'
-      - 'refactor/**'
-      - 'chore/**'
-      - 'docs/**'
-      - 'style/**'
-      - 'test/**'
 
 jobs:
   auto-merge:
@@ -24,10 +16,23 @@ jobs:
     outputs:
       has_conflicts: ${{ steps.merge.outputs.has_conflicts }}
       conflict_pr_numbers: ${{ steps.merge.outputs.conflict_pr_numbers }}
-    # 只在 CI Test 成功且是 PR 事件時執行
+    # 只在以下條件時執行：
+    # 1. CI Test 成功
+    # 2. 是 PR 事件（不是 push）
+    # 3. 分支符合 feature 類型（feat/**, fix/**, 等）
+    # 4. 不是 dev 或 main 分支
     if: |
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      (
+        startsWith(github.event.workflow_run.head_branch, 'feat/') ||
+        startsWith(github.event.workflow_run.head_branch, 'fix/') ||
+        startsWith(github.event.workflow_run.head_branch, 'refactor/') ||
+        startsWith(github.event.workflow_run.head_branch, 'chore/') ||
+        startsWith(github.event.workflow_run.head_branch, 'docs/') ||
+        startsWith(github.event.workflow_run.head_branch, 'style/') ||
+        startsWith(github.event.workflow_run.head_branch, 'test/')
+      )
 
     steps:
       - uses: actions/github-script@v7

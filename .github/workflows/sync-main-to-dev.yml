@@ -4,8 +4,6 @@ on:
   workflow_run:
     workflows: ['Auto Version Bump']
     types: [completed]
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -14,7 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     permissions:
       contents: write
       pull-requests: write

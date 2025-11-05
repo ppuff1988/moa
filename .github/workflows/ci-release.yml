@@ -4,17 +4,17 @@ on:
   workflow_run:
     workflows: ['Auto Version Bump']
     types: [completed]
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   build-docker:
     runs-on: ubuntu-latest
-    # 只在版本升級成功或手動觸發時執行
+    # 只在版本升級成功（且在 main 分支）或手動觸發時執行
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     environment: production
     permissions:
       contents: read

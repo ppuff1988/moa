@@ -7,16 +7,17 @@ on:
   workflow_run:
     workflows: ['Auto Merge Hotfix']
     types: [completed]
-    branches:
-      - main
 
 jobs:
   check-and-bump:
     runs-on: ubuntu-latest
-    # 對於 PR 關閉事件：只在已合併時執行；對於 Auto Merge Hotfix：只在成功完成時執行
+    # 對於 PR 關閉事件：只在已合併到 main 時執行
+    # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
     if: >-
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     permissions:
       contents: write
     outputs:
