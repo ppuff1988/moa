@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { verifyPassword } from '$lib/server/password';
-import { generateJWT, type JWTPayload } from '$lib/server/auth';
+import { generateUserJWT } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -21,16 +21,18 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const userData = foundUser[0];
+
+		// 檢查是否為 OAuth 用戶（沒有密碼）
+		if (!userData.passwordHash) {
+			return json({ message: '此帳號使用 Google 登入，請使用 Google 登入按鈕' }, { status: 401 });
+		}
+
 		const isValidPassword = await verifyPassword(userData.passwordHash, password);
 		if (!isValidPassword) {
 			return json({ message: 'Email 或密碼錯誤' }, { status: 401 });
 		}
 
-		const jwtPayload: JWTPayload = {
-			userId: userData.id,
-			email: userData.email
-		};
-		const token = generateJWT(jwtPayload);
+		const token = generateUserJWT(userData);
 
 		return json(
 			{

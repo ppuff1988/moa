@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/password';
-import { generateJWT, type JWTPayload } from '$lib/server/auth';
+import { generateUserJWT } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -105,11 +105,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			.returning();
 
 		// 生成 JWT token（使用正規化的 email）
-		const jwtPayload: JWTPayload = {
-			userId: newUser.id,
-			email: normalizedEmail
-		};
-		const token = generateJWT(jwtPayload);
+		const token = generateUserJWT({ id: newUser.id, email: normalizedEmail });
 
 		return json(
 			{

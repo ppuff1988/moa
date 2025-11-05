@@ -52,10 +52,11 @@
 - 🎮 即時多人遊戲
 - 🎭 完整角色技能系統
 - 🏺 獸首收集機制
-- 🔐 安全身份驗證
+- 🔐 安全身份驗證（Email/密碼 + Google OAuth）
 - 📊 遊戲房間管理
 - 💬 遊戲內聊天
 - 🐳 支援 Docker 部署
+- 🔑 一鍵 Google 登入
 
 ## 🚀 快速開始
 
@@ -101,6 +102,16 @@ cp .env.example .env
 
 - `JWT_SECRET`: JWT 密鑰（**請務必修改為複雜的隨機字串**）
 - `JWT_EXPIRES_IN`: Token 有效期限（預設: `30d`）
+
+**Google OAuth 配置（選用）**
+
+如果想啟用 Google 一鍵登入功能，需要設定以下參數：
+
+- `GOOGLE_CLIENT_ID`: Google OAuth 用戶端 ID
+- `GOOGLE_CLIENT_SECRET`: Google OAuth 用戶端密鑰
+- `GOOGLE_REDIRECT_URI`: OAuth 回調網址（本地: `http://localhost:5173/auth/google/callback`）
+
+> 📖 **詳細設定步驟**：請參考 [Google OAuth 快速開始指南](docs/GOOGLE-OAUTH-QUICKSTART.md)
 
 **Docker Hub（生產部署用）**
 
@@ -232,26 +243,3 @@ Push to main
 ⭐ 如果這個專案對你有幫助，請給我們一個 Star！
 
 Made with ❤️ by MOA Community
-
-## 🧪 CI/CD 測試記錄
-
-- **2025-10-17 (Test #3)**: 測試 hotfix 自動刪除分支功能
-  - 觸發條件: `hotfix/*` 分支 PR 到 `main`
-  - 預期行為: Auto-merge → Auto-delete branch → Auto-version → CI Release → CD
-  - 測試目的: 驗證 hotfix 分支在合併後自動刪除
-  - 修復內容:
-    - ✅ 新增 hotfix 分支自動刪除功能
-    - ✅ 修復 auto-version 的 HEAD~20 問題（新倉庫適配）
-    - ✅ 測試 lint-staged 在 hotfix 分支的行為
-  - 狀態: 測試中 🚀
-
-- **2025-10-17 (Test #2)**: 測試 hotfix → PR → main 工作流程
-  - 觸發條件: `hotfix/*` 分支 PR 到 `main`
-  - 預期行為: Auto-merge Hotfix → Auto-version → CI Release → CD
-  - 測試目的: 驗證緊急修復的自動化部署流程（不手動改版本號）
-  - 狀態: 測試中 ✅
-
-- **2025-10-17**: 測試 hotfix → main 的完整自動化流程
-  - 觸發條件: `hotfix/*` 分支 PR 到 `main`
-  - 預期行為: Auto-merge Hotfix → Auto-version → CI Release → CD
-  - 測試目的: 驗證緊急修復的自動化部署流程

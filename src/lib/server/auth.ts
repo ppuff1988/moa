@@ -75,3 +75,44 @@ export async function getUserFromJWT(token: string): Promise<User | null> {
 		return null;
 	}
 }
+
+/**
+ * 為用戶生成 JWT token（不設定 cookie）
+ * 用於 API endpoint 返回 token
+ *
+ * @param user - 用戶資料
+ * @returns JWT token 字串
+ */
+export function generateUserJWT(user: { id: number; email: string }): string {
+	const jwtPayload: JWTPayload = {
+		userId: user.id,
+		email: user.email
+	};
+	return generateJWT(jwtPayload);
+}
+
+/**
+ * 生成 JWT token 並設定為 httpOnly cookie
+ * 用於 OAuth 登入流程，提供更高的安全性
+ *
+ * @param user - 用戶資料
+ * @param cookies - SvelteKit cookies 物件
+ * @returns JWT token 字串
+ */
+export function generateAndSetJWTCookie(
+	user: { id: number; email: string },
+	cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void }
+): string {
+	const token = generateUserJWT(user);
+
+	// 設定 JWT cookie (httpOnly=true，防止 XSS 攻擊)
+	cookies.set('jwt', token, {
+		path: '/',
+		httpOnly: true, // 防止 JavaScript 讀取，提高安全性
+		secure: process.env.NODE_ENV === 'production',
+		sameSite: 'lax',
+		maxAge: 60 * 60 * 24 * 30 // 30 天
+	});
+
+	return token;
+}
