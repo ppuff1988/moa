@@ -92,6 +92,14 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REDIRECT_URI: ${{ vars.GOOGLE_REDIRECT_URI }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL }}
+          SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
           DEPLOY_VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euxo pipefail
@@ -109,6 +117,14 @@ jobs:
             if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
               "export DOCKER_USERNAME='$DOCKER_USERNAME' && \
                export DATABASE_URL='$DATABASE_URL' && \
+               export DEPLOY_URL='$DEPLOY_URL' && \
+               export SMTP_HOST='$SMTP_HOST' && \
+               export SMTP_PORT='$SMTP_PORT' && \
+               export SMTP_SECURE='$SMTP_SECURE' && \
+               export SMTP_USER='$SMTP_USER' && \
+               export SMTP_PASSWORD='$SMTP_PASSWORD' && \
+               export SMTP_FROM_EMAIL='$SMTP_FROM_EMAIL' && \
+               export SMTP_FROM_NAME='$SMTP_FROM_NAME' && \
                export JWT_SECRET='$JWT_SECRET' && \
                export POSTGRES_USER='$POSTGRES_USER' && \
                export POSTGRES_PASSWORD='$POSTGRES_PASSWORD' && \
@@ -206,6 +222,14 @@ jobs:
                   echo \"❌ npm 安裝失敗，退出碼: \$EXIT_CODE\"
                   exit \$EXIT_CODE
                 fi
+                echo "DEPLOY_URL=\$DEPLOY_URL"
+                echo "SMTP_HOST=\$SMTP_HOST"
+                echo "SMTP_PORT=\$SMTP_PORT"
+                echo "SMTP_SECURE=\$SMTP_SECURE"
+                echo "SMTP_USER=\$SMTP_USER"
+                echo "SMTP_PASSWORD=\$SMTP_PASSWORD"
+                echo "SMTP_FROM_EMAIL=\$SMTP_FROM_EMAIL"
+                echo "SMTP_FROM_NAME=\$SMTP_FROM_NAME"
               fi
               
               echo "⚙️ 設定環境變數..."

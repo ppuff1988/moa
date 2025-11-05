@@ -44,6 +44,17 @@ export const session = pgTable('sessions', {
 	expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull()
 });
 
+export const passwordResetToken = pgTable('password_reset_tokens', {
+	id: serial('id').primaryKey(),
+	userId: integer('user_id')
+		.notNull()
+		.references(() => user.id),
+	token: text('token').notNull().unique(),
+	expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+	createdAt: timestamp('created_at').defaultNow(),
+	usedAt: timestamp('used_at')
+});
+
 export const games = pgTable(
 	'games',
 	{
@@ -158,6 +169,7 @@ export const identificationVotes = pgTable('identification_votes', {
 	votedFangZhen: integer('voted_fang_zhen').references(() => gamePlayers.id), // 投票方震
 	createdAt: timestamp('created_at').defaultNow()
 });
+export type PasswordResetToken = typeof passwordResetToken.$inferSelect;
 
 export type Role = typeof roles.$inferSelect;
 export type GameArtifact = typeof gameArtifacts.$inferSelect;
