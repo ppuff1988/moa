@@ -50,13 +50,25 @@ jobs:
           PGPASSWORD: ${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}
         run: |
           # 等待資料庫完全就緒
-          sleep 2
+          echo "⏳ 等待資料庫就緒..."
+          sleep 3
 
-          # 執行資料庫初始化腳本
+          echo "📦 執行資料庫初始化腳本..."
           psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -f migrations/init_database.sql
 
-          # 驗證表是否創建成功
+          echo "🔄 執行資料庫 migrations..."
+          npm run db:migrate
+
+          echo "✅ 驗證表結構..."
           psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\dt"
+
+          echo "📋 驗證關鍵欄位..."
+          echo "=== users 表結構 ==="
+          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\d users"
+          echo "=== game_players 表結構 ==="
+          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\d game_players"
+          echo "=== schema_migrations (migration 追蹤) ==="
+          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "SELECT * FROM schema_migrations ORDER BY id"
 
       - name: 建置應用程式
         run: npm run build

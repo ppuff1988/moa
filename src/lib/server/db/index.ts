@@ -5,7 +5,7 @@ import { env } from '$env/dynamic/private';
 
 // 手動處理環境變數替換
 function resolveEnvironmentVariables(str: string): string {
-	return str.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+	return str.replace(/\$\{([^}]+)}/g, (match, varName) => {
 		return env[varName] || process.env[varName] || match;
 	});
 }
