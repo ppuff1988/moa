@@ -9,12 +9,12 @@ on:
 jobs:
   build-docker:
     runs-on: ubuntu-latest
-    # 只在版本升級成功（且在 main 分支）或手動觸發時執行
+    # 只在版本升級成功或手動觸發時執行
+    # Auto Version Bump 只會在 PR 合併到 main 時執行，所以不需要檢查分支
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+       github.event.workflow_run.conclusion == 'success')
     environment: production
     permissions:
       contents: read
