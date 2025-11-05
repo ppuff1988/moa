@@ -181,7 +181,8 @@ jobs:
     name: TG 通知 - Sync Main→Dev
     runs-on: ubuntu-latest
     needs: create-pr
-    if: always()
+    # 只在 create-pr 實際執行（非跳過）時發送通知
+    if: always() && needs.create-pr.result != 'skipped'
     steps:
       - name: 彙整通知內容
         id: compose

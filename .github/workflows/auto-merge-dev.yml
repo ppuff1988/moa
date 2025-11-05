@@ -153,8 +153,11 @@ jobs:
     name: 合併通知
     runs-on: ubuntu-latest
     needs: auto-merge
-    # 在合併失敗或有衝突時通知
-    if: always() && (needs.auto-merge.result == 'failure' || needs.auto-merge.outputs.has_conflicts == 'true')
+    # 只在實際執行且有問題時通知（排除被跳過的情況）
+    if: |
+      always() && 
+      needs.auto-merge.result != 'skipped' &&
+      (needs.auto-merge.result == 'failure' || needs.auto-merge.outputs.has_conflicts == 'true')
     steps:
       - name: 📣 發送合併通知
         uses: appleboy/telegram-action@master

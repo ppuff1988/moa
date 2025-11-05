@@ -204,8 +204,11 @@ jobs:
     name: 發布通知
     runs-on: ubuntu-latest
     needs: [build-docker, create-tag]
-    # 發布失敗或新版本發布時通知
-    if: always() && (needs.build-docker.result == 'failure' || needs.create-tag.outputs.should_release == 'true')
+    # 只在 build-docker 實際執行（非跳過）且（失敗或成功發布）時通知
+    if: |
+      always() && 
+      needs.build-docker.result != 'skipped' &&
+      (needs.build-docker.result == 'failure' || needs.create-tag.outputs.should_release == 'true')
     steps:
       - name: 📣 發送發布通知
         uses: appleboy/telegram-action@master

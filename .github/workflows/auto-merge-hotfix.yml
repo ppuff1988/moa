@@ -104,8 +104,13 @@ jobs:
     name: Hotfix 合併通知
     runs-on: ubuntu-latest
     needs: auto-merge-hotfix
+    # 只在 auto-merge-hotfix 實際執行時才通知（不包括被跳過的情況）
     # Hotfix 是緊急修復，成功和失敗都要通知
-    if: always()
+    if: |
+      always() && 
+      needs.auto-merge-hotfix.result != 'skipped' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'hotfix/')
     steps:
       - name: 📣 發送 Hotfix 合併通知
         uses: appleboy/telegram-action@master

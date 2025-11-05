@@ -3,8 +3,10 @@ name: CI Test
 on:
   pull_request:
     branches: [dev, main]
-  push:
-    branches: [dev]
+  # 移除 push 觸發，避免在直接 push 到 dev 時觸發整個 workflow 鏈
+  # PR 合併前已經執行過 CI，不需要在合併後再次執行
+  # push:
+  #   branches: [dev]
 
 jobs:
   lint:
