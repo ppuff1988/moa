@@ -33,8 +33,7 @@ const client = postgres(resolvedDatabaseUrl, {
 	max: 10,
 	idle_timeout: 20,
 	connect_timeout: 10,
-	onnotice: () => {}, // 靜默通知
-	debug: process.env.NODE_ENV === 'development' ? console.log : undefined
+	onnotice: () => {} // 靜默通知
 });
 
 // 測試連接（僅在非建置時）

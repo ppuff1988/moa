@@ -1,5 +1,12 @@
 -- 將 users 表的 password_hash 改為可選
-ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+DO $$
+BEGIN
+    ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+EXCEPTION
+    WHEN others THEN
+        -- Column is already nullable or doesn't exist, ignore
+        NULL;
+END $$;
 
 -- 建立 oauth_accounts 表
 CREATE TABLE IF NOT EXISTS oauth_accounts (

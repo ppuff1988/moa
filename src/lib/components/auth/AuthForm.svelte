@@ -190,6 +190,12 @@
 			<div class="error-message">{error}</div>
 		{/if}
 
+		{#if mode === 'login'}
+			<div class="forgot-password-link">
+				<a href="/auth/forgot-password">忘記密碼？</a>
+			</div>
+		{/if}
+
 		<button type="submit" disabled={isLoading} class="submit-btn">
 			<span class="btn-content">
 				{#if isLoading}
@@ -426,6 +432,23 @@
 		width: 20px;
 		height: 20px;
 		flex-shrink: 0;
+	}
+
+	.forgot-password-link {
+		text-align: right;
+		margin-top: -0.5rem;
+	}
+
+	.forgot-password-link a {
+		color: hsl(var(--primary));
+		text-decoration: none;
+		font-size: 0.875rem;
+		transition: var(--transition-elegant);
+	}
+
+	.forgot-password-link a:hover {
+		text-decoration: underline;
+		color: hsl(var(--ring));
 	}
 
 	.form-footer {
