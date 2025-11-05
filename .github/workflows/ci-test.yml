@@ -48,6 +48,7 @@ jobs:
       - name: 初始化測試資料庫
         env:
           PGPASSWORD: ${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}
+          DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
         run: |
           # 等待資料庫完全就緒
           echo "⏳ 等待資料庫就緒..."
@@ -59,8 +60,7 @@ jobs:
           echo "🔄 執行資料庫 migrations..."
           npm run db:migrate
 
-          echo "✅ 驗證表結構..."
-          psql -h localhost -U ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\dt"
+          echo "✅ 驗證表結構... ${{ secrets.TEST_DB_USER || 'moa_test_user' }} -d ${{ secrets.TEST_DB_NAME || 'moa_test_db' }} -c "\dt"
 
           echo "📋 驗證關鍵欄位..."
           echo "=== users 表結構 ==="
