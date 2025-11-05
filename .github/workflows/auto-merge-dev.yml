@@ -16,10 +16,23 @@ jobs:
     outputs:
       has_conflicts: ${{ steps.merge.outputs.has_conflicts }}
       conflict_pr_numbers: ${{ steps.merge.outputs.conflict_pr_numbers }}
-    # 只在 CI Test 成功且是 PR 事件時執行
+    # 只在以下條件時執行：
+    # 1. CI Test 成功
+    # 2. 是 PR 事件（不是 push）
+    # 3. 分支符合 feature 類型（feat/**, fix/**, 等）
+    # 4. 不是 dev 或 main 分支
     if: |
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      (
+        startsWith(github.event.workflow_run.head_branch, 'feat/') ||
+        startsWith(github.event.workflow_run.head_branch, 'fix/') ||
+        startsWith(github.event.workflow_run.head_branch, 'refactor/') ||
+        startsWith(github.event.workflow_run.head_branch, 'chore/') ||
+        startsWith(github.event.workflow_run.head_branch, 'docs/') ||
+        startsWith(github.event.workflow_run.head_branch, 'style/') ||
+        startsWith(github.event.workflow_run.head_branch, 'test/')
+      )
 
     steps:
       - uses: actions/github-script@v7
@@ -140,8 +153,11 @@ jobs:
     name: 合併通知
     runs-on: ubuntu-latest
     needs: auto-merge
-    # 在合併失敗或有衝突時通知
-    if: always() && (needs.auto-merge.result == 'failure' || needs.auto-merge.outputs.has_conflicts == 'true')
+    # 只在實際執行且有問題時通知（排除被跳過的情況）
+    if: |
+      always() && 
+      needs.auto-merge.result != 'skipped' &&
+      (needs.auto-merge.result == 'failure' || needs.auto-merge.outputs.has_conflicts == 'true')
     steps:
       - name: 📣 發送合併通知
         uses: appleboy/telegram-action@master

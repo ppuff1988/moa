@@ -13,10 +13,14 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    # 只在 CI Test 成功且是 PR 事件時執行
+    # 只在以下條件時執行：
+    # 1. CI Test 成功
+    # 2. 是 PR 事件（不是 push）
+    # 3. 分支是 hotfix/**
     if: |
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'hotfix/')
 
     steps:
       - uses: actions/github-script@v7
@@ -100,8 +104,13 @@ jobs:
     name: Hotfix 合併通知
     runs-on: ubuntu-latest
     needs: auto-merge-hotfix
+    # 只在 auto-merge-hotfix 實際執行時才通知（不包括被跳過的情況）
     # Hotfix 是緊急修復，成功和失敗都要通知
-    if: always()
+    if: |
+      always() && 
+      needs.auto-merge-hotfix.result != 'skipped' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'hotfix/')
     steps:
       - name: 📣 發送 Hotfix 合併通知
         uses: appleboy/telegram-action@master

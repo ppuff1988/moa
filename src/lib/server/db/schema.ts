@@ -14,9 +14,34 @@ export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
 	email: text('email').notNull().unique(),
 	nickname: text('nickname').notNull(),
-	passwordHash: text('password_hash').notNull(),
+	passwordHash: text('password_hash'), // 改為可選，因為 OAuth 用戶不需要密碼
+	avatar: text('avatar'), // 用戶頭像 URL，可選
 	createdAt: timestamp('created_at').defaultNow(),
 	updatedAt: timestamp('updated_at').defaultNow()
+});
+
+export const oauthAccount = pgTable(
+	'oauth_accounts',
+	{
+		providerId: text('provider_id').notNull(), // 'google', 'github', etc.
+		providerUserId: text('provider_user_id').notNull(), // OAuth 提供者的用戶 ID
+		userId: integer('user_id')
+			.notNull()
+			.references(() => user.id),
+		createdAt: timestamp('created_at').defaultNow()
+	},
+	(table) => ({
+		pk: {
+			name: 'oauth_accounts_pkey',
+			columns: [table.providerId, table.providerUserId]
+		}
+	})
+);
+
+export const session = pgTable('sessions', {
+	id: text('id').primaryKey(),
+	userId: integer('user_id').notNull(),
+	expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull()
 });
 
 export const games = pgTable(
@@ -142,3 +167,5 @@ export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type GameRound = typeof gameRounds.$inferSelect;
 export type GameAction = typeof gameActions.$inferSelect;
 export type IdentificationVote = typeof identificationVotes.$inferSelect;
+export type OAuthAccount = typeof oauthAccount.$inferSelect;
+export type Session = typeof session.$inferSelect;

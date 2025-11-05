@@ -1,9 +1,10 @@
-import type { User } from '$lib/server/db/schema';
+import type { User, Session } from '$lib/server/db/schema';
 
 declare global {
 	namespace App {
 		interface Locals {
 			user: User | null;
+			session: Session | null;
 		}
 	}
 
