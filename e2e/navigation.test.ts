@@ -84,8 +84,29 @@ test.describe('頁面導航', () => {
 			const roomName = `測試房間_${Date.now()}`;
 			await createRoom(page, roomName);
 
+			// 等待房間頁面完全載入
+			await page.waitForLoadState('networkidle');
+			await page.waitForTimeout(500);
+
 			// 點擊返回或離開房間按鈕
-			await page.click('a[href="/"], button:has-text("離開"), button:has-text("返回")');
+			const leaveButton = page
+				.locator('a[href="/"], button:has-text("離開"), button:has-text("返回")')
+				.first();
+			await leaveButton.waitFor({ state: 'visible', timeout: 10000 });
+			await leaveButton.click();
+
+			// 等待確認對話框出現
+			await page.waitForTimeout(500);
+
+			// 點擊確認離開按鈕
+			const confirmButton = page.locator('button:has-text("確認離開"), button:has-text("確定")');
+			const isConfirmVisible = await confirmButton.isVisible({ timeout: 3000 }).catch(() => false);
+
+			if (isConfirmVisible) {
+				await confirmButton.click();
+				// 等待導航完成
+				await page.waitForTimeout(1000);
+			}
 
 			await expectHomePage(page);
 		});
@@ -105,14 +126,22 @@ test.describe('頁面導航', () => {
 		test('已登入用戶訪問登入頁應該重定向到首頁', async ({ page }) => {
 			await ensureLoggedIn(page, TEST_USERS.user1);
 
-			await page.goto('/auth/login');
+			await page.goto('/auth/login', { waitUntil: 'networkidle' });
+
+			// 等待重定向發生
+			await page.waitForTimeout(1000);
+
 			await expectHomePage(page);
 		});
 
 		test('已登入用戶訪問註冊頁應該重定向到首頁', async ({ page }) => {
 			await ensureLoggedIn(page, TEST_USERS.user1);
 
-			await page.goto('/auth/register');
+			await page.goto('/auth/register', { waitUntil: 'networkidle' });
+
+			// 等待重定向發生
+			await page.waitForTimeout(1000);
+
 			await expectHomePage(page);
 		});
 
@@ -167,7 +196,10 @@ test.describe('頁面導航', () => {
 			await ensureLoggedIn(page, TEST_USERS.user1);
 
 			// 重新整理頁面
-			await page.reload();
+			await page.reload({ waitUntil: 'networkidle' });
+
+			// 等待頁面完全載入
+			await page.waitForTimeout(1000);
 
 			// 應該保持在首頁
 			await expectHomePage(page);

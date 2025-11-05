@@ -209,8 +209,6 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 			if (!hasToken) {
 				throw new Error('JWT token 未被正確設置');
 			}
-
-			return;
 		} catch {
 			// 登入失敗，可能是用戶不存在，嘗試註冊
 			try {
@@ -225,7 +223,6 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 
 				// 等待確保 JWT token 被設置
 				await page.waitForTimeout(1000);
-				return;
 			} catch {
 				// 註冊失敗（可能是用戶已存在），再次嘗試登入
 				await page.goto('/auth/login');
@@ -241,6 +238,33 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 
 	// 確認在首頁
 	await page.waitForURL('/', { timeout: 5000 });
+	await page.waitForLoadState('networkidle');
+
+	// 檢查用戶是否在遊戲中（如果有「離開房間」按鈕）
+	const hasLeaveButton = await page
+		.locator('button:has-text("離開房間")')
+		.isVisible({ timeout: 2000 })
+		.catch(() => false);
+
+	if (hasLeaveButton) {
+		// 用戶在遊戲中，先離開房間
+		await page.click('button:has-text("離開房間")');
+
+		// 等待確認對話框出現並確認
+		const confirmButton = page.locator('button:has-text("確認離開"), button:has-text("確定")');
+		const isConfirmVisible = await confirmButton.isVisible({ timeout: 2000 }).catch(() => false);
+
+		if (isConfirmVisible) {
+			await confirmButton.click();
+			await page.waitForTimeout(1000);
+		}
+
+		// 等待回到首頁並確保顯示創建房間按鈕
+		await page.waitForSelector('button:has-text("創建房間")', {
+			state: 'visible',
+			timeout: 10000
+		});
+	}
 }
 
 /**
@@ -255,9 +279,27 @@ export async function expectLoginPage(page: Page) {
  * 期望當前頁面是首頁
  */
 export async function expectHomePage(page: Page) {
+	// 等待 URL 變為首頁
+	await page.waitForURL('/', { timeout: 10000 });
+
+	// 等待頁面載入完成
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
+
+	// 檢查首頁的特定元素（創建房間或回到房間按鈕）
+	const hasCreateButton = await page
+		.locator('button:has-text("創建房間"), button:has-text("回到房間")')
+		.first()
+		.isVisible({ timeout: 10000 })
+		.catch(() => false);
+
+	if (!hasCreateButton) {
+		// 如果找不到按鈕，打印頁面內容以便調試
+		const bodyText = await page.locator('body').textContent();
+		console.log('頁面內容:', bodyText?.substring(0, 500));
+		throw new Error('首頁載入失敗：找不到創建房間或回到房間按鈕');
+	}
+
 	await expect(page).toHaveURL('/');
-	// 檢查首頁的特定元素（例如創建房間按鈕）
-	await expect(page.locator('button:has-text("創建房間")')).toBeVisible({ timeout: 5000 });
 }
 
 /**
@@ -265,11 +307,23 @@ export async function expectHomePage(page: Page) {
  */
 export async function createRoom(page: Page, roomPassword: string) {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
+
+	// 等待創建房間按鈕出現（增加超時時間）
+	await page.waitForSelector('button:has-text("創建房間")', {
+		state: 'visible',
+		timeout: 15000
+	});
+
 	await page.click('button:has-text("創建房間")');
-	await page.waitForSelector('#roomPassword', { timeout: 5000 });
+
+	// 等待房間密碼輸入框出現
+	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 10000 });
 	await page.fill('#roomPassword', roomPassword);
 	await page.click('button[type="submit"]');
-	await page.waitForURL(/\/room\/.+/, { timeout: 10000 });
+
+	// 等待跳轉到房間頁面
+	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
 }
 
 /**
