@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: ['Auto Version Bump']
     types: [completed]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:

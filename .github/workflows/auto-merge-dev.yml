@@ -5,6 +5,14 @@ on:
     workflows: ['CI Test']
     types:
       - completed
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'refactor/**'
+      - 'chore/**'
+      - 'docs/**'
+      - 'style/**'
+      - 'test/**'
 
 jobs:
   auto-merge:
