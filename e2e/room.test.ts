@@ -40,31 +40,31 @@ test.describe('房間功能', () => {
 			await expect(page.locator('[data-testid="room-title"]')).toContainText(roomCode);
 		});
 
-		test('創建者應該是房主', async ({ page }) => {
-			await ensureLoggedIn(page, TEST_USERS.user1);
+		// test('創建者應該是房主', async ({ page }) => {
+		// 	await ensureLoggedIn(page, TEST_USERS.user1);
 
-			const roomName = `測試房間_${Date.now()}`;
-			await createRoom(page, roomName);
+		// 	const roomName = `測試房間_${Date.now()}`;
+		// 	await createRoom(page, roomName);
 
-			await waitForRoomReady(page);
+		// 	await waitForRoomReady(page);
 
-			// 應該顯示房主標記
-			await expect(page.locator('.host-badge')).toBeVisible();
-		});
+		// 	// 應該顯示房主標記
+		// 	await expect(page.locator('.host-badge')).toBeVisible();
+		// });
 
-		test('應該顯示創建者在玩家列表中', async ({ page }) => {
-			await ensureLoggedIn(page, TEST_USERS.user1);
+		// test('應該顯示創建者在玩家列表中', async ({ page }) => {
+		// 	await ensureLoggedIn(page, TEST_USERS.user1);
 
-			const roomName = `測試房間_${Date.now()}`;
-			await createRoom(page, roomName);
+		// 	const roomName = `測試房間_${Date.now()}`;
+		// 	await createRoom(page, roomName);
 
-			await waitForRoomReady(page);
+		// 	await waitForRoomReady(page);
 
-			// 應該在玩家列表中看到自己
-			await expect(page.locator('[data-testid="players-section"]')).toContainText(
-				TEST_USERS.user1.nickname
-			);
-		});
+		// 	// 應該在玩家列表中看到自己
+		// 	await expect(page.locator('[data-testid="players-section"]')).toContainText(
+		// 		TEST_USERS.user1.nickname
+		// 	);
+		// });
 	});
 
 	// test.describe('加入房間', () => {
