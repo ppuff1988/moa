@@ -11,12 +11,16 @@
 -- ==========================================
 -- 第一部分：清理現有表
 -- ==========================================
+DROP TABLE IF EXISTS identification_votes CASCADE;
 DROP TABLE IF EXISTS game_actions CASCADE;
 DROP TABLE IF EXISTS game_rounds CASCADE;
 DROP TABLE IF EXISTS game_artifacts CASCADE;
 DROP TABLE IF EXISTS game_players CASCADE;
 DROP TABLE IF EXISTS games CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
+DROP TABLE IF EXISTS password_reset_tokens CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS oauth_accounts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 -- ==========================================
@@ -28,14 +32,48 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     nickname TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
+    avatar TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX users_email_idx ON users(email);
 
--- 2. 遊戲表
+-- 2. OAuth 帳號表
+CREATE TABLE oauth_accounts (
+    provider_id TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (provider_id, provider_user_id)
+);
+
+CREATE INDEX oauth_accounts_user_id_idx ON oauth_accounts(user_id);
+
+-- 3. 會話表
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX sessions_user_id_idx ON sessions(user_id);
+
+-- 4. 密碼重置 Token 表
+CREATE TABLE password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    used_at TIMESTAMP
+);
+
+CREATE INDEX password_reset_tokens_token_idx ON password_reset_tokens(token);
+CREATE INDEX password_reset_tokens_user_id_idx ON password_reset_tokens(user_id);
+
+-- 5. 遊戲表
 CREATE TABLE games (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_name TEXT NOT NULL UNIQUE,
@@ -53,7 +91,7 @@ CREATE INDEX games_room_name_idx ON games(room_name);
 CREATE INDEX games_status_idx ON games(status);
 CREATE INDEX games_host_id_idx ON games(host_id);
 
--- 3. 角色表
+-- 6. 角色表
 CREATE TABLE roles (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -69,7 +107,7 @@ CREATE TABLE roles (
 
 CREATE INDEX roles_camp_idx ON roles(camp);
 
--- 4. 遊戲玩家表
+-- 7. 遊戲玩家表
 CREATE TABLE game_players (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -94,7 +132,7 @@ CREATE INDEX game_players_game_id_idx ON game_players(game_id);
 CREATE INDEX game_players_user_id_idx ON game_players(user_id);
 CREATE INDEX game_players_role_id_idx ON game_players(role_id);
 
--- 5. 遊戲文物表
+-- 8. 遊戲文物表
 CREATE TABLE game_artifacts (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -111,7 +149,7 @@ CREATE TABLE game_artifacts (
 CREATE INDEX game_artifacts_game_id_idx ON game_artifacts(game_id);
 CREATE INDEX game_artifacts_round_idx ON game_artifacts(game_id, round);
 
--- 6. 遊戲回合表
+-- 9. 遊戲回合表
 CREATE TABLE game_rounds (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -126,7 +164,7 @@ CREATE TABLE game_rounds (
 CREATE INDEX game_rounds_game_id_idx ON game_rounds(game_id);
 CREATE INDEX game_rounds_phase_idx ON game_rounds(game_id, phase);
 
--- 7. 遊戲行動表
+-- 10. 遊戲行動表
 CREATE TABLE game_actions (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -141,7 +179,7 @@ CREATE INDEX game_actions_round_order_idx ON game_actions(round_id, ordering);
 CREATE INDEX game_actions_player_idx ON game_actions(player_id);
 CREATE INDEX game_actions_game_id_idx ON game_actions(game_id);
 
--- 8. 鑑人階段投票記錄
+-- 11. 鑑人階段投票記錄
 CREATE TABLE identification_votes (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
