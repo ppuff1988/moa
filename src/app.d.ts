@@ -33,11 +33,11 @@ declare module '$env/static/private' {
 	export const SMTP_PASSWORD: string;
 	export const SMTP_FROM_EMAIL: string;
 	export const SMTP_FROM_NAME: string;
+	export const DEPLOY_URL: string;
 }
 
 declare module '$env/static/public' {
-	export const PUBLIC_GTM_ID: string;
-	export const DEPLOY_URL: string;
+	export const PUBLIC_BASE_URL: string;
 }
 
 export {};
