@@ -86,6 +86,9 @@ test.describe('Game Flow', () => {
 				});
 			}
 
+			// 追蹤已選擇的顏色
+			const selectedColors: string[] = [];
+
 			// 所有玩家依序選擇角色和顏色，然後按下「鎖定」按鈕
 			for (let i = 0; i < users.length; i++) {
 				// 等待角色選擇界面完全載入
@@ -127,7 +130,7 @@ test.describe('Game Flow', () => {
 				// 等待一下確保選擇已註冊
 				await pages[i].waitForTimeout(500);
 
-				// 選擇顏色（使用下拉選單）
+				// 選擇顏色（使用下拉選單）- 確保每個玩家選擇不同的顏色
 				const colorSelect = pages[i]
 					.locator('select.color-dropdown, select.selection-dropdown')
 					.nth(1);
@@ -135,17 +138,34 @@ test.describe('Game Flow', () => {
 					// 獲取可用顏色選項
 					const colorOptions = await colorSelect.locator('option').allTextContents();
 
-					const selectedColor = colorOptions.find(
+					// 找到一個尚未被選擇的顏色
+					const availableColor = colorOptions.find(
 						(color) =>
-							color && color !== '請選擇顏色' && color !== '自訂顏色' && color.trim() !== ''
+							color &&
+							color !== '請選擇顏色' &&
+							color !== '自訂顏色' &&
+							color.trim() !== '' &&
+							!selectedColors.includes(color)
 					);
 
-					if (selectedColor) {
+					if (availableColor) {
 						// 如果有可用顏色，則選擇該顏色
-						await colorSelect.selectOption({ label: selectedColor });
+						await colorSelect.selectOption({ label: availableColor });
+						selectedColors.push(availableColor);
+						console.log(`玩家 ${i + 1} 選擇顏色: ${availableColor}`);
 					} else {
-						// 如果沒有可用顏色，選擇第一個可用顏色
-						await colorSelect.selectOption({ index: 1 });
+						// 如果沒有可用顏色，選擇第一個可用顏色（作為後備）
+						const firstColor = colorOptions.find(
+							(color) =>
+								color && color !== '請選擇顏色' && color !== '自訂顏色' && color.trim() !== ''
+						);
+						if (firstColor) {
+							await colorSelect.selectOption({ label: firstColor });
+							selectedColors.push(firstColor);
+							console.log(`玩家 ${i + 1} 選擇顏色 (後備): ${firstColor}`);
+						} else {
+							await colorSelect.selectOption({ index: 1 });
+						}
 					}
 				}
 
@@ -159,7 +179,7 @@ test.describe('Game Flow', () => {
 				}
 
 				// 等待鎖定完成
-				await pages[i].waitForTimeout(500);
+				await pages[i].waitForTimeout(1000);
 			}
 
 			// 等待所有玩家鎖定完成
