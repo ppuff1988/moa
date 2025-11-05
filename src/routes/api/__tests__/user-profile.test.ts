@@ -45,7 +45,7 @@ describe('User Profile API', () => {
 
 			expect(response.status).toBe(401);
 			const data = await response.json();
-			expect(data.message).toContain('未授權');
+			expect(data.message).toContain('需要認證');
 		});
 
 		it('應該拒絕無效的 token', async () => {
