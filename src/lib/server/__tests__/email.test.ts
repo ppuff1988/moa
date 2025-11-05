@@ -14,14 +14,16 @@ vi.mock('nodemailer', () => {
 });
 
 // Mock environment variables
-vi.mock('$env/static/private', () => ({
-	SMTP_HOST: 'smtp.test.com',
-	SMTP_PORT: '587',
-	SMTP_SECURE: 'false',
-	SMTP_USER: 'test@test.com',
-	SMTP_PASSWORD: 'test-password',
-	SMTP_FROM_EMAIL: 'noreply@test.com',
-	SMTP_FROM_NAME: 'Test App'
+vi.mock('$env/dynamic/private', () => ({
+	env: {
+		SMTP_HOST: 'smtp.test.com',
+		SMTP_PORT: '587',
+		SMTP_SECURE: 'false',
+		SMTP_USER: 'test@test.com',
+		SMTP_PASSWORD: 'test-password',
+		SMTP_FROM_EMAIL: 'noreply@test.com',
+		SMTP_FROM_NAME: 'Test App'
+	}
 }));
 
 describe('Email Service', () => {
