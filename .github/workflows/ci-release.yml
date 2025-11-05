@@ -80,6 +80,8 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.check_version.outputs.tag }}
       should_release: ${{ steps.check_version.outputs.should_release }}
@@ -87,6 +89,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.PAT }}
+          persist-credentials: true
 
       - name: 檢查版本是否已發布
         id: check_version
