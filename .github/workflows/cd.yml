@@ -89,6 +89,9 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ vars.POSTGRES_DB }}
           PUBLIC_GTM_ID: ${{ vars.PUBLIC_GTM_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI: ${{ vars.GOOGLE_REDIRECT_URI }}
           DEPLOY_VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euxo pipefail
@@ -111,6 +114,9 @@ jobs:
                export POSTGRES_PASSWORD='$POSTGRES_PASSWORD' && \
                export POSTGRES_DB='$POSTGRES_DB' && \
                export PUBLIC_GTM_ID='$PUBLIC_GTM_ID' && \
+               export GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID' && \
+               export GOOGLE_CLIENT_SECRET='$GOOGLE_CLIENT_SECRET' && \
+               export GOOGLE_REDIRECT_URI='$GOOGLE_REDIRECT_URI' && \
                export DEPLOY_PATH='$DEPLOY_PATH' && \
                bash -c '
               set -euo pipefail
@@ -202,17 +208,20 @@ jobs:
                 fi
               fi
               
-              echo \"⚙️ 設定環境變數...\"
+              echo "⚙️ 設定環境變數..."
               {
-                echo \"DOCKER_USERNAME=\$DOCKER_USERNAME\"
-                echo \"DATABASE_URL=\$DATABASE_URL\"
-                echo \"JWT_SECRET=\$JWT_SECRET\"
-                echo \"JWT_EXPIRES_IN=30d\"
-                echo \"POSTGRES_USER=\$POSTGRES_USER\"
-                echo \"POSTGRES_PASSWORD=\$POSTGRES_PASSWORD\"
-                echo \"POSTGRES_DB=\$POSTGRES_DB\"
-                echo \"NODE_ENV=production\"
-                echo \"PUBLIC_GTM_ID=\$PUBLIC_GTM_ID\"
+                echo "DOCKER_USERNAME=\$DOCKER_USERNAME"
+                echo "DATABASE_URL=\$DATABASE_URL"
+                echo "JWT_SECRET=\$JWT_SECRET"
+                echo "JWT_EXPIRES_IN=30d"
+                echo "POSTGRES_USER=\$POSTGRES_USER"
+                echo "POSTGRES_PASSWORD=\$POSTGRES_PASSWORD"
+                echo "POSTGRES_DB=\$POSTGRES_DB"
+                echo "NODE_ENV=production"
+                echo "PUBLIC_GTM_ID=\$PUBLIC_GTM_ID"
+                echo "GOOGLE_CLIENT_ID=\$GOOGLE_CLIENT_ID"
+                echo "GOOGLE_CLIENT_SECRET=\$GOOGLE_CLIENT_SECRET"
+                echo "GOOGLE_REDIRECT_URI=\$GOOGLE_REDIRECT_URI"
               } > .env
               echo \"🚀 執行部署腳本（包含 migrations）...\"
               chmod +x deploy-prod.sh
