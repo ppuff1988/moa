@@ -60,6 +60,14 @@ JWT_EXPIRES_IN=30d
 # Application
 PORT=5173
 NODE_ENV=production
+
+# Google OAuth (必須設置，否則 Google 登入會失敗)
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=https://yourdomain.com/auth/google/callback
+
+# Google Tag Manager (可選)
+PUBLIC_GTM_ID=GTM-XXXXXXX
 ```
 
 **生成安全密碼**：
