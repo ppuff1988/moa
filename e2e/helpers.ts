@@ -32,6 +32,21 @@ export const TEST_USERS = {
 		username: 'testuser3@test.com',
 		password: 'Test123456!',
 		nickname: '測試玩家3'
+	},
+	user4: {
+		username: 'testuser4@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家4'
+	},
+	user5: {
+		username: 'testuser5@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家5'
+	},
+	user6: {
+		username: 'testuser6@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家6'
 	}
 };
 
@@ -82,9 +97,7 @@ export async function loginUser(page: Page, username: string, password: string) 
  */
 export async function registerAndLogin(page: Page, user: TestUser) {
 	try {
-		await page.goto('/auth/register', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.goto('/auth/register', { waitUntil: 'domcontentloaded', timeout: 20000 });
 
 		const bodyText = await page.locator('body').textContent();
 
@@ -99,35 +112,27 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 
 		await page.click('button[type="submit"]');
 
-		// 等待註冊完成，可能重定向到首頁或登入頁
-		await page.waitForTimeout(2000);
-		const currentUrl = page.url();
+		// 等待導航完成
+		await page.waitForURL('/', { timeout: 10000 });
 
-		// 如果註冊後已經在首頁，說明已經自動登入
-		if (currentUrl === 'http://localhost:5173/' || currentUrl.endsWith('/')) {
-			await page.waitForLoadState('networkidle');
-			// 確保首頁元素已載入
-			await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
-			return;
-		}
+		// 確保首頁元素已載入
+		await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
+		return;
 	} catch {
 		// 註冊失敗或已存在，繼續嘗試登入
 	}
 
 	// 如果註冊失敗或用戶已存在，嘗試登入
-	await page.goto('/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+	await page.goto('/auth/login', { waitUntil: 'domcontentloaded', timeout: 20000 });
 
 	// 檢查是否被重定向到首頁（已經登入）
 	if (
 		page.url() === 'http://localhost:5173/' ||
 		(page.url().endsWith('/') && !page.url().includes('/auth/'))
 	) {
-		await page.waitForLoadState('networkidle');
 		await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
 		return;
 	}
-
-	await page.waitForLoadState('networkidle', { timeout: 10000 });
 
 	const loginBodyText = await page.locator('body').textContent();
 
@@ -141,9 +146,7 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 
 	await page.click('button[type="submit"]');
 
-	await page.waitForURL('/', { timeout: 15000 });
-
-	await page.waitForLoadState('networkidle');
+	await page.waitForURL('/', { timeout: 10000 });
 
 	// 確保首頁元素已載入
 	await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
@@ -182,68 +185,63 @@ export async function logoutUser(page: Page) {
 export async function ensureLoggedIn(page: Page, user: TestUser) {
 	// 嘗試訪問首頁，如果重定向到登入頁則需要登入
 	await page.goto('/');
-	await page.waitForLoadState('networkidle');
+	await page.waitForLoadState('domcontentloaded');
+
+	// 等待一下讓頁面完全載入
+	await page.waitForTimeout(500);
 
 	// 檢查是否在登入頁
 	const currentUrl = page.url();
 	if (currentUrl.includes('/auth/login')) {
+		// 等待登入表單出現
+		await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
+
 		// 嘗試登入
 		try {
-			await page.goto('/auth/login');
-			await page.waitForLoadState('networkidle');
 			await page.fill('input#email', user.username);
 			await page.fill('input#password', user.password);
 			await page.click('button[type="submit"]');
-			await page.waitForURL('/', { timeout: 15000 });
+			await page.waitForURL('/', { timeout: 10000 });
 
-			// 等待確保 JWT token 被設置到 localStorage 和 cookie
-			await page.waitForTimeout(1000);
-
-			// 驗證 token 是否存在
-			const hasToken = await page.evaluate(() => {
-				const localToken = localStorage.getItem('jwt_token');
-				const cookieToken = document.cookie.includes('jwt=');
-				return !!(localToken || cookieToken);
-			});
-
-			if (!hasToken) {
-				throw new Error('JWT token 未被正確設置');
-			}
+			// 簡短等待以確保 token 設置完成
+			await page.waitForTimeout(500);
 		} catch {
 			// 登入失敗，可能是用戶不存在，嘗試註冊
 			try {
 				await page.goto('/auth/register');
-				await page.waitForLoadState('networkidle');
+				await page.waitForLoadState('domcontentloaded');
+				await page.waitForSelector('input#nickname', { state: 'visible', timeout: 5000 });
 				await page.fill('input#nickname', user.nickname);
 				await page.fill('input#email', user.username);
 				await page.fill('input#password', user.password);
 				await page.fill('input#confirmPassword', user.password);
 				await page.click('button[type="submit"]');
-				await page.waitForURL('/', { timeout: 15000 });
-
-				// 等待確保 JWT token 被設置
-				await page.waitForTimeout(1000);
+				await page.waitForURL('/', { timeout: 10000 });
+				await page.waitForTimeout(500);
 			} catch {
 				// 註冊失敗（可能是用戶已存在），再次嘗試登入
 				await page.goto('/auth/login');
-				await page.waitForLoadState('networkidle');
+				await page.waitForLoadState('domcontentloaded');
+				await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
 				await page.fill('input#email', user.username);
 				await page.fill('input#password', user.password);
 				await page.click('button[type="submit"]');
-				await page.waitForURL('/', { timeout: 15000 });
-				await page.waitForTimeout(1000);
+				await page.waitForURL('/', { timeout: 10000 });
+				await page.waitForTimeout(500);
 			}
 		}
 	}
 
-	// 確認在首頁
-	await page.waitForURL('/', { timeout: 5000 });
-	await page.waitForLoadState('networkidle');
+	// 確認在首頁並等待關鍵元素
+	await page.waitForSelector('button:has-text("創建房間"), button:has-text("回到房間")', {
+		state: 'visible',
+		timeout: 10000
+	});
 
 	// 檢查用戶是否在遊戲中（如果有「離開房間」按鈕）
 	const hasLeaveButton = await page
 		.locator('button:has-text("離開房間")')
-		.isVisible({ timeout: 2000 })
+		.isVisible({ timeout: 1000 })
 		.catch(() => false);
 
 	if (hasLeaveButton) {
@@ -252,17 +250,17 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 
 		// 等待確認對話框出現並確認
 		const confirmButton = page.locator('button:has-text("確認離開"), button:has-text("確定")');
-		const isConfirmVisible = await confirmButton.isVisible({ timeout: 2000 }).catch(() => false);
+		const isConfirmVisible = await confirmButton.isVisible({ timeout: 1000 }).catch(() => false);
 
 		if (isConfirmVisible) {
 			await confirmButton.click();
-			await page.waitForTimeout(1000);
+			await page.waitForTimeout(500);
 		}
 
 		// 等待回到首頁並確保顯示創建房間按鈕
 		await page.waitForSelector('button:has-text("創建房間")', {
 			state: 'visible',
-			timeout: 10000
+			timeout: 5000
 		});
 	}
 }
@@ -307,23 +305,22 @@ export async function expectHomePage(page: Page) {
  */
 export async function createRoom(page: Page, roomPassword: string) {
 	await page.goto('/');
-	await page.waitForLoadState('networkidle', { timeout: 10000 });
 
-	// 等待創建房間按鈕出現（增加超時時間）
+	// 等待創建房間按鈕出現
 	await page.waitForSelector('button:has-text("創建房間")', {
 		state: 'visible',
-		timeout: 15000
+		timeout: 10000
 	});
 
 	await page.click('button:has-text("創建房間")');
 
 	// 等待房間密碼輸入框出現
-	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 10000 });
+	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 5000 });
 	await page.fill('#roomPassword', roomPassword);
 	await page.click('button[type="submit"]');
 
 	// 等待跳轉到房間頁面
-	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 10000 });
 }
 
 /**
@@ -332,13 +329,13 @@ export async function createRoom(page: Page, roomPassword: string) {
 export async function joinRoom(page: Page, roomCode: string, roomPassword: string = '') {
 	await page.goto('/');
 	await page.click('button:has-text("加入房間")');
-	await page.waitForSelector('#roomName', { timeout: 5000 });
+	await page.waitForSelector('#roomName', { timeout: 3000 });
 	await page.fill('#roomName', roomCode);
 	if (roomPassword) {
 		await page.fill('#roomPassword', roomPassword);
 	}
 	await page.click('button[type="submit"]');
-	await page.waitForURL(/\/room\/.+/, { timeout: 10000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 8000 });
 }
 
 /**

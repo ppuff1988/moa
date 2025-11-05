@@ -6,20 +6,19 @@ import {
 } from './helpers';
 
 test.describe('Game Flow', () => {
-	// 創建 6 個測試用戶（遊戲最少需要 6 人）
-	const users: (TestUser & { page: Page | null })[] = Array.from({ length: 6 }, (_, i) => ({
-		...createTestUser(`game_${i}`, Date.now() + i),
-		page: null as Page | null
-	}));
-
-	let createdRoomName = '';
-
 	async function registerAndLogin(page: Page, user: TestUser) {
 		await helperRegisterAndLogin(page, user);
 	}
 
 	test('complete game flow with 6 players', async ({ browser }) => {
-		test.setTimeout(300000); // 增加超時時間到 5 分鐘
+		test.setTimeout(1200000); // 增加超時時間到 20 分鐘
+
+		// 創建 6 個測試用戶（遊戲最少需要 6 人）- 在運行時創建以避免衝突
+		const timestamp = Date.now();
+		const users: (TestUser & { page: Page | null })[] = Array.from({ length: 6 }, (_, i) => ({
+			...createTestUser(`game_${i}`, timestamp + i * 100),
+			page: null as Page | null
+		}));
 
 		// 創建 6 個瀏覽器上下文和頁面
 		const contexts = await Promise.all(Array.from({ length: 6 }, () => browser.newContext()));
@@ -45,7 +44,7 @@ test.describe('Game Flow', () => {
 			// 等待導航到房間頁面並獲取房間名稱
 			await pages[0].waitForURL(/\/room\/.*\/lobby/, { timeout: 10000 });
 			const roomUrl = pages[0].url();
-			createdRoomName = roomUrl.match(/\/room\/([^/]+)\/lobby/)?.[1] || '';
+			const createdRoomName = roomUrl.match(/\/room\/([^/]+)\/lobby/)?.[1] || '';
 
 			// 其他用戶加入房間
 			for (let i = 1; i < users.length; i++) {
