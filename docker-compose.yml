@@ -38,6 +38,10 @@ services:
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-30d}
       - PORT=5173
       - SOCKET_PORT=5173
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - PUBLIC_GTM_ID=${PUBLIC_GTM_ID}
     depends_on:
       db:
         condition: service_healthy
