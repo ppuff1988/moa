@@ -55,32 +55,27 @@ test.describe('用戶認證', () => {
 		test('應該拒絕重複的用戶名', async ({ page }) => {
 			const user = TEST_USERS.user1;
 
-			// 先導航到註冊頁面
-			await page.goto('/auth/register');
-			await page.waitForLoadState('domcontentloaded'); // 改用 domcontentloaded，更快
+			// 先確保用戶存在（註冊或登入一次）
+			await ensureLoggedIn(page, user);
 
-			// 第一次註冊（應該成功或用戶已存在）
+			// 登出以便測試註冊流程
+			await logoutUser(page);
+
+			// 現在嘗試用相同的 email 註冊
+			await page.goto('/auth/register');
+			await page.waitForLoadState('networkidle');
+
+			// 等待頁面完全載入，避免在填寫時被重定向
+			await page.waitForSelector('input#nickname', { state: 'visible', timeout: 5000 });
+
 			await page.fill('input#nickname', user.nickname);
 			await page.fill('input#email', user.username);
 			await page.fill('input#password', user.password);
 			await page.fill('input#confirmPassword', user.password);
 			await page.click('button[type="submit"]');
 
-			// 等待響應（縮短等待時間）
-			await page.waitForTimeout(500);
-
-			// 無論第一次註冊成功還是失敗，都再次嘗試註冊相同的用戶
-			await page.goto('/auth/register');
-			await page.waitForLoadState('domcontentloaded'); // 改用 domcontentloaded
-
-			await page.fill('input#nickname', user.nickname);
-			await page.fill('input#email', user.username);
-			await page.fill('input#password', user.password);
-			await page.fill('input#confirmPassword', user.password);
-			await page.click('button[type="submit"]');
-
-			// 等待錯誤訊息出現（縮短等待時間）
-			await page.waitForTimeout(500);
+			// 等待錯誤訊息出現
+			await page.waitForTimeout(1000);
 
 			// 應該顯示用戶已存在的錯誤（停留在註冊頁面）
 			await expectErrorMessage(page, 'Email');
