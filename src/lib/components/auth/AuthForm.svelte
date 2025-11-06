@@ -11,6 +11,7 @@
 	let password = '';
 	let confirmPassword = '';
 	let nickname = '';
+	let acceptTerms = false;
 	let error = '';
 	let isLoading = false;
 
@@ -54,6 +55,12 @@
 		if (isLoading) return;
 
 		error = '';
+
+		// 註冊時檢查使用者條款
+		if (mode === 'register' && !acceptTerms) {
+			error = '請閱讀並同意使用者條款';
+			return;
+		}
 
 		// 註冊時檢查密碼確認
 		if (mode === 'register' && password !== confirmPassword) {
@@ -184,6 +191,15 @@
 				disabled={isLoading}
 				autocomplete="new-password"
 			/>
+
+			<div class="terms-checkbox">
+				<label class="checkbox-label">
+					<input type="checkbox" bind:checked={acceptTerms} disabled={isLoading} required />
+					<span class="checkbox-text">
+						我已閱讀並同意<a href="/terms" target="_blank" rel="noopener noreferrer">使用者條款</a>
+					</span>
+				</label>
+			</div>
 		{/if}
 
 		{#if error}
@@ -465,5 +481,46 @@
 
 	.form-footer a:hover {
 		text-decoration: underline;
+	}
+
+	.terms-checkbox {
+		margin: -0.5rem 0;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		cursor: pointer;
+		font-size: 0.9rem;
+		color: hsl(var(--muted-foreground));
+	}
+
+	.checkbox-label input[type='checkbox'] {
+		margin-top: 0.2rem;
+		width: 18px;
+		height: 18px;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.checkbox-label input[type='checkbox']:disabled {
+		cursor: not-allowed;
+	}
+
+	.checkbox-text {
+		line-height: 1.5;
+	}
+
+	.checkbox-text a {
+		color: hsl(var(--primary));
+		text-decoration: none;
+		font-weight: 500;
+		transition: var(--transition-elegant);
+	}
+
+	.checkbox-text a:hover {
+		text-decoration: underline;
+		color: hsl(var(--ring));
 	}
 </style>
