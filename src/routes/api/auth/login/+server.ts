@@ -3,10 +3,11 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { verifyPassword } from '$lib/server/password';
-import { generateUserJWT } from '$lib/server/auth';
+import { generateUserJWT, generateVerificationToken } from '$lib/server/auth';
+import { queueEmailVerification } from '$lib/server/email';
 import { eq } from 'drizzle-orm';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
 	try {
 		const { email, password } = await request.json();
 
@@ -34,9 +35,37 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// 檢查 Email 是否已驗證
 		if (!userData.emailVerified) {
+			// 自動重新發送驗證郵件
+			try {
+				// 生成新的驗證 token
+				const verificationToken = generateVerificationToken();
+				const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24小時
+
+				// 更新用戶的驗證 token
+				await db
+					.update(user)
+					.set({
+						emailVerificationToken: verificationToken,
+						emailVerificationTokenExpiresAt: verificationTokenExpiresAt
+					})
+					.where(eq(user.email, email));
+
+				// 發送驗證郵件（使用隊列）
+				const baseUrl = url.origin;
+				const jobId = await queueEmailVerification(email, verificationToken, baseUrl);
+
+				if (jobId) {
+					console.log(`✅ 自動重新發送驗證郵件已加入隊列 [${jobId}]，收件者: ${email}`);
+				}
+			} catch (emailError) {
+				console.error('重新發送驗證郵件失敗:', emailError);
+				// 即使發送失敗，也繼續返回未驗證的錯誤
+			}
+
 			return json(
 				{
-					message: '請先驗證您的 Email 地址。請檢查您的信箱中的驗證郵件。',
+					message:
+						'請先驗證您的 Email 地址。我們已重新發送驗證郵件，請檢查您的信箱（包括垃圾郵件資料夾）。',
 					requiresVerification: true
 				},
 				{ status: 403 }

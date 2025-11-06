@@ -32,6 +32,14 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# 正規化 .env 的行尾，避免 CRLF 造成解析問題
+if sed --version >/dev/null 2>&1; then
+  sed -i 's/\r$//' .env || true
+else
+  # BusyBox/簡化 sed 兼容
+  tr -d '\r' < .env > .env.tmp && mv .env.tmp .env || true
+fi
+
 # 載入 .env 文件中的環境變數
 set -a
 source .env
@@ -94,7 +102,6 @@ else
         -v "$(pwd)/package.json:/app/package.json" \
         -e DATABASE_URL="${DATABASE_URL}" \
         -e NODE_ENV=production \
-        --workdir /app \
         ${DOCKER_USERNAME}/moa:latest \
         npm run db:migrate; then
         echo "✅ Migrations 執行成功"

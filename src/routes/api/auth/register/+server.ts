@@ -5,7 +5,7 @@ import { user } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/password';
 import { eq } from 'drizzle-orm';
 import { queueEmailVerification } from '$lib/server/email';
-import crypto from 'crypto';
+import { generateVerificationToken } from '$lib/server/auth';
 import { env } from '$env/dynamic/private';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -97,7 +97,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const passwordHash = await hashPassword(password);
 
 		// 生成 email 驗證 token
-		const verificationToken = crypto.randomBytes(32).toString('hex');
+		const verificationToken = generateVerificationToken();
 		const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小時後過期
 
 		// 插入用戶資料（使用正規化的 email）
