@@ -31,6 +31,11 @@ if [ ! -f .env ]; then
     echo "請參考 DEPLOYMENT-QUICK-START.md 創建 .env 文件"
     exit 1
 fi
+
+# 載入 .env 文件中的環境變數
+set -a
+source .env
+set +a
 echo ""
 
 # 拉取最新鏡像
@@ -70,7 +75,7 @@ echo ""
 
 # 停止舊的應用服務（保留資料庫）
 echo "🛑 [3/5] 停止舊應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml stop app 2>/dev/null || echo "   應用服務未運行（可能是首次部署）"
+$DOCKER_COMPOSE -f docker-compose.prod.yml stop app email-worker 2>/dev/null || echo "   應用服務未運行（可能是首次部署）"
 echo ""
 
 # 執行資料庫 Migrations
@@ -96,7 +101,7 @@ else
     else
         echo "❌ Migrations 執行失敗！"
         echo "   嘗試重啟舊版本應用..."
-        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app
+        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
         exit 1
     fi
 fi
@@ -104,8 +109,8 @@ echo ""
 
 # 啟動應用服務
 echo "🚀 [5/5] 啟動應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml up -d app
-echo "✅ 應用服務已啟動"
+$DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+echo "✅ 應用服務和 Email Worker 已啟動"
 echo ""
 
 # 等待服務就緒並檢查健康狀態
@@ -143,4 +148,7 @@ echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml ps"
 echo ""
 echo "📋 查看應用日誌："
 echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml logs -f app"
+echo ""
+echo "📧 查看 Email Worker 日誌："
+echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml logs -f email-worker"
 echo ""
