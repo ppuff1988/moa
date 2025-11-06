@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 import { db } from './db';
 import { user, type User } from './db/schema';
 import { eq } from 'drizzle-orm';
+import crypto from 'crypto';
 
 const JWT_SECRET = env.JWT_SECRET || 'fallback-secret-key-for-development';
 const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN || '30d';
@@ -19,6 +20,13 @@ export interface JWTVerifyResult {
 
 export function generateUserId(): string {
 	return crypto.randomUUID();
+}
+
+/**
+ * 生成郵箱驗證 token
+ */
+export function generateVerificationToken(): string {
+	return crypto.randomBytes(32).toString('hex');
 }
 
 export function generateJWT(payload: JWTPayload): string {

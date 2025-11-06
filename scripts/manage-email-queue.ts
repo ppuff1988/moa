@@ -4,12 +4,14 @@
  *
  * 使用方式：
  * node scripts/manage-email-queue.js status      - 查看隊列狀態
+ * node scripts/manage-email-queue.js retry       - 重試失敗的任務
  * node scripts/manage-email-queue.js clear       - 清除失敗的任務
  * node scripts/manage-email-queue.js test        - 發送測試郵件
  */
 import {
 	getQueueStatus,
 	clearFailedJobs,
+	retryFailedJobs,
 	queueEmail,
 	stopEmailQueue
 } from '../src/lib/server/email-queue';
@@ -59,6 +61,23 @@ async function clearFailed() {
 	}
 }
 
+async function retryFailed() {
+	console.log('🔄 正在重試失敗的任務...\n');
+
+	try {
+		const count = await retryFailedJobs();
+		console.log(`✅ 已重新執行 ${count} 個失敗的任務\n`);
+
+		if (count > 0) {
+			console.log('💡 提示：這些任務將按照重試策略重新執行');
+			console.log('   - 重試次數：最多 5 次');
+			console.log('   - 重試間隔：60s, 120s, 240s, 480s, 960s (指數退避)\n');
+		}
+	} catch (error) {
+		console.error('❌ 重試失敗任務時出錯:', error);
+	}
+}
+
 async function sendTestEmail() {
 	console.log('📧 正在發送測試郵件...\n');
 
@@ -93,6 +112,7 @@ async function showHelp() {
 	console.log('=====================================');
 	console.log('使用方式:');
 	console.log('  node scripts/manage-email-queue.js status              - 查看隊列狀態');
+	console.log('  node scripts/manage-email-queue.js retry               - 重試失敗的任務');
 	console.log('  node scripts/manage-email-queue.js clear               - 清除失敗的任務');
 	console.log('  node scripts/manage-email-queue.js test [email]        - 發送測試郵件');
 	console.log('  node scripts/manage-email-queue.js help                - 顯示幫助');
@@ -104,6 +124,9 @@ async function main() {
 		switch (command) {
 			case 'status':
 				await showStatus();
+				break;
+			case 'retry':
+				await retryFailed();
 				break;
 			case 'clear':
 				await clearFailed();

@@ -72,11 +72,11 @@ export async function getEmailQueue(): Promise<PgBoss> {
 
 		// 配置郵件隊列選項
 		await boss.createQueue(EMAIL_QUEUE_NAME, {
-			retryLimit: 3,
-			retryDelay: 60,
-			retryBackoff: true,
-			expireInSeconds: 3600, // 1小時
-			retentionSeconds: 86400 // 保留 24小時
+			retryLimit: 5, // 最多重試 5 次
+			retryDelay: 60, // 初始重試延遲 60 秒
+			retryBackoff: true, // 啟用指數退避（每次重試延遲翻倍）
+			expireInSeconds: 7200, // 2小時後過期
+			retentionSeconds: 172800 // 保留 48小時（包含失敗記錄）
 		});
 
 		console.log('✅ 郵件隊列服務啟動成功');
@@ -118,9 +118,10 @@ export async function queueEmail(emailData: EmailJob): Promise<string | null> {
 
 		const queue = await getEmailQueue();
 		const jobId = await queue.send(EMAIL_QUEUE_NAME, emailData, {
-			retryLimit: 3,
-			retryDelay: 60,
-			retryBackoff: true
+			retryLimit: 5, // 最多重試 5 次
+			retryDelay: 60, // 初始重試延遲 60 秒
+			retryBackoff: true, // 指數退避：60s, 120s, 240s, 480s, 960s
+			expireInSeconds: 7200 // 2小時後過期
 		});
 
 		console.log('✅ 郵件已加入隊列:', jobId, '收件者:', emailData.to);
@@ -169,6 +170,69 @@ export async function getQueueStatus() {
 	} catch (error) {
 		console.error('❌ 獲取隊列狀態失敗:', error);
 		return null;
+	}
+}
+
+/**
+ * 重試失敗的任務
+ */
+export async function retryFailedJobs(): Promise<number> {
+	try {
+		const queue = await getEmailQueue();
+
+		// 使用 pg-boss 的內部方法獲取失敗的任務
+		// pg-boss 將失敗的任務存儲在同一張表中，狀態為 'failed'
+
+		// 方法1：直接訪問 pg-boss 的內部數據庫
+		// 這需要我們使用原始 SQL 查詢
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const db = (queue as any).db;
+
+		if (!db) {
+			console.log('⚠️ 無法訪問數據庫連接，使用替代方法');
+			return 0;
+		}
+
+		// 查詢失敗的任務
+		const failedJobs = await db.query(
+			`SELECT id, name, data FROM pgboss.job 
+			 WHERE name = $1 
+			 AND state = 'failed' 
+			 AND retrycount >= retrylimit
+			 LIMIT 100`,
+			[EMAIL_QUEUE_NAME]
+		);
+
+		if (!failedJobs || failedJobs.rows.length === 0) {
+			console.log('✅ 沒有需要重試的失敗任務');
+			return 0;
+		}
+
+		// 將失敗的任務重新加入隊列
+		let retryCount = 0;
+		for (const job of failedJobs.rows) {
+			try {
+				await queue.send(EMAIL_QUEUE_NAME, job.data, {
+					retryLimit: 5,
+					retryDelay: 60,
+					retryBackoff: true,
+					expireInSeconds: 7200
+				});
+				retryCount++;
+			} catch (error) {
+				console.error(`❌ 重試任務 ${job.id} 失敗:`, error);
+			}
+		}
+
+		console.log(`✅ 已重新執行 ${retryCount} 個失敗的任務`);
+		return retryCount;
+	} catch (error) {
+		console.error('❌ 重試失敗任務時出錯:', error);
+		console.log('💡 提示：pg-boss 會自動重試失敗的任務（根據 retryLimit 配置）');
+		console.log('   如果任務已達到最大重試次數，您可以：');
+		console.log('   1. 修復問題（如 SMTP 配置）');
+		console.log('   2. 使用 "test" 重新發送測試郵件');
+		return 0;
 	}
 }
 

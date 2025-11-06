@@ -106,7 +106,51 @@ jobs:
           set -euxo pipefail
 
           KEY_PATH=~/.ssh/deploy_key
-          SSH_OPTS=(-i "$KEY_PATH" -p "$DEPLOY_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
+          SSH_OPTS=(-i "$KEY_PATH" -p "${DEPLOY_PORT}" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
+
+          # 在 Runner 本機產生安全的 .env 檔
+          ENV_FILE=$(mktemp)
+          cleanup() { rm -f "$ENV_FILE"; }
+          trap cleanup EXIT
+
+          escape_squotes() {
+            # 將單引號轉為可在單引號字串中表示的序列：' → '\''
+            sed "s/'/'\"'\"'/g" <<< "$1"
+          }
+
+          write_kv() {
+            local key="$1"
+            local val="$2"
+            local esc
+            esc=$(escape_squotes "$val")
+            printf "%s='%s'\n" "$key" "$esc" >> "$ENV_FILE"
+          }
+
+          echo "⚙️ 產生 .env 檔案 (本機)"
+          : > "$ENV_FILE"
+          write_kv DOCKER_USERNAME "$DOCKER_USERNAME"
+          write_kv DATABASE_URL "$DATABASE_URL"
+          write_kv JWT_SECRET "$JWT_SECRET"
+          write_kv JWT_EXPIRES_IN "30d"
+          write_kv POSTGRES_USER "$POSTGRES_USER"
+          write_kv POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
+          write_kv POSTGRES_DB "$POSTGRES_DB"
+          write_kv NODE_ENV "production"
+          write_kv PUBLIC_GTM_ID "$PUBLIC_GTM_ID"
+          write_kv GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
+          write_kv GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
+          write_kv GOOGLE_REDIRECT_URI "$GOOGLE_REDIRECT_URI"
+          write_kv DEPLOY_URL "$DEPLOY_URL"
+          write_kv SMTP_HOST "$SMTP_HOST"
+          write_kv SMTP_PORT "$SMTP_PORT"
+          write_kv SMTP_SECURE "$SMTP_SECURE"
+          write_kv SMTP_USER "$SMTP_USER"
+          write_kv SMTP_PASSWORD "$SMTP_PASSWORD"
+          write_kv SMTP_FROM_EMAIL "$SMTP_FROM_EMAIL"
+          write_kv SMTP_FROM_NAME "$SMTP_FROM_NAME"
+
+          echo "📤 上傳 .env 到遠端伺服器..."
+          scp "${SSH_OPTS[@]}" "$ENV_FILE" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/.env"
 
           max_attempts=3
           attempt=1
@@ -114,70 +158,26 @@ jobs:
           echo "🚀 開始部署版本: $DEPLOY_VERSION"
 
           while [ $attempt -le $max_attempts ]; do
-              echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
-              if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
-              "export DOCKER_USERNAME='$DOCKER_USERNAME' && \
-                 export DATABASE_URL='$DATABASE_URL' && \
-                 export DEPLOY_URL='$DEPLOY_URL' && \
-                 export SMTP_HOST='$SMTP_HOST' && \
-                 export SMTP_PORT='$SMTP_PORT' && \
-                 export SMTP_SECURE='$SMTP_SECURE' && \
-                 export SMTP_USER='$SMTP_USER' && \
-                 export SMTP_PASSWORD='$SMTP_PASSWORD' && \
-                 export SMTP_FROM_EMAIL='$SMTP_FROM_EMAIL' && \
-                 export SMTP_FROM_NAME='$SMTP_FROM_NAME' && \
-                 export JWT_SECRET='$JWT_SECRET' && \
-                 export POSTGRES_USER='$POSTGRES_USER' && \
-                 export POSTGRES_PASSWORD='$POSTGRES_PASSWORD' && \
-                 export POSTGRES_DB='$POSTGRES_DB' && \
-                 export PUBLIC_GTM_ID='$PUBLIC_GTM_ID' && \
-                 export GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID' && \
-                 export GOOGLE_CLIENT_SECRET='$GOOGLE_CLIENT_SECRET' && \
-                 export GOOGLE_REDIRECT_URI='$GOOGLE_REDIRECT_URI' && \
-                 export DEPLOY_PATH='$DEPLOY_PATH' && \
-                 bash -c '
-                  set -euo pipefail
-                  
-                  cd $DEPLOY_PATH
-                  echo "📥 拉取最新代碼..."
+            echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
+            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -lc '
+              set -euo pipefail
+              cd "$DEPLOY_PATH"
+              echo "📥 拉取最新代碼..."
               git pull origin main
-              
-            echo "⚙️ 寫入 .env"
-            echo "DOCKER_USERNAME='${DOCKER_USERNAME}'" > .env
-            echo "DATABASE_URL='${DATABASE_URL}'" >> .env
-            echo "JWT_SECRET='${JWT_SECRET}'" >> .env
-            echo "JWT_EXPIRES_IN='30d'" >> .env
-            echo "POSTGRES_USER='${POSTGRES_USER}'" >> .env
-            echo "POSTGRES_PASSWORD='${POSTGRES_PASSWORD}'" >> .env
-            echo "POSTGRES_DB='${POSTGRES_DB}'" >> .env
-            echo "NODE_ENV='production'" >> .env
-            echo "PUBLIC_GTM_ID='${PUBLIC_GTM_ID}'" >> .env
-            echo "GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}'" >> .env
-            echo "GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}'" >> .env
-            echo "GOOGLE_REDIRECT_URI='${GOOGLE_REDIRECT_URI}'" >> .env
-            echo "DEPLOY_URL='${DEPLOY_URL}'" >> .env
-            echo "SMTP_HOST='${SMTP_HOST}'" >> .env
-            echo "SMTP_PORT='${SMTP_PORT}'" >> .env
-            echo "SMTP_SECURE='${SMTP_SECURE}'" >> .env
-            echo "SMTP_USER='${SMTP_USER}'" >> .env
-            echo "SMTP_PASSWORD='${SMTP_PASSWORD}'" >> .env
-            echo "SMTP_FROM_EMAIL='${SMTP_FROM_EMAIL}'" >> .env
-            echo "SMTP_FROM_NAME='${SMTP_FROM_NAME}'" >> .env
-            
-            echo "🚀 執行部署腳本（包含 migrations）..."
+              echo "🚀 執行部署腳本（包含 migrations）..."
               ./deploy-prod.sh
-              '"; then
-                echo "✅ 部署成功！版本: $DEPLOY_VERSION"
-                exit 0
-              fi
-            
-              echo "❌ 部署失敗，10 秒後重試..."
-              sleep 10
-              attempt=$((attempt + 1))
-            done
-            
-            echo "❌ 達到最大重試次數，部署失敗！"
-            exit 1
+            '"; then
+              echo "✅ 部署成功！版本: $DEPLOY_VERSION"
+              exit 0
+            fi
+
+            echo "❌ 部署失敗，10 秒後重試..."
+            sleep 10
+            attempt=$((attempt + 1))
+          done
+
+          echo "❌ 達到最大重試次數，部署失敗！"
+          exit 1
 
       - name: 🏥 健康檢查
         env:
