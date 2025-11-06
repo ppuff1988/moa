@@ -143,28 +143,26 @@ jobs:
               git pull origin main
               
               echo "⚙️ 寫入 .env"
-              cat > .env <<EOF
-              DOCKER_USERNAME="${DOCKER_USERNAME}"
-              DATABASE_URL="${DATABASE_URL}"
-              JWT_SECRET="${JWT_SECRET}"
-              JWT_EXPIRES_IN="30d"
-              POSTGRES_USER="${POSTGRES_USER}"
-              POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
-              POSTGRES_DB="${POSTGRES_DB}"
-              NODE_ENV="production"
-              PUBLIC_GTM_ID="${PUBLIC_GTM_ID}"
-              GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID}"
-              GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET}"
-              GOOGLE_REDIRECT_URI="${GOOGLE_REDIRECT_URI}"
-              DEPLOY_URL="${DEPLOY_URL}"
-              SMTP_HOST="${SMTP_HOST}"
-              SMTP_PORT="${SMTP_PORT}"
-              SMTP_SECURE="${SMTP_SECURE}"
-              SMTP_USER="${SMTP_USER}"
-              SMTP_PASSWORD="${SMTP_PASSWORD}"
-              SMTP_FROM_EMAIL="${SMTP_FROM_EMAIL}"
-              SMTP_FROM_NAME="${SMTP_FROM_NAME}"
-              EOF
+              printf 'DOCKER_USERNAME=%q\n' "$DOCKER_USERNAME" > .env
+              printf 'DATABASE_URL=%q\n' "$DATABASE_URL" >> .env
+              printf 'JWT_SECRET=%q\n' "$JWT_SECRET" >> .env
+              printf 'JWT_EXPIRES_IN=30d\n' >> .env
+              printf 'POSTGRES_USER=%q\n' "$POSTGRES_USER" >> .env
+              printf 'POSTGRES_PASSWORD=%q\n' "$POSTGRES_PASSWORD" >> .env
+              printf 'POSTGRES_DB=%q\n' "$POSTGRES_DB" >> .env
+              printf 'NODE_ENV=production\n' >> .env
+              printf 'PUBLIC_GTM_ID=%q\n' "$PUBLIC_GTM_ID" >> .env
+              printf 'GOOGLE_CLIENT_ID=%q\n' "$GOOGLE_CLIENT_ID" >> .env
+              printf 'GOOGLE_CLIENT_SECRET=%q\n' "$GOOGLE_CLIENT_SECRET" >> .env
+              printf 'GOOGLE_REDIRECT_URI=%q\n' "$GOOGLE_REDIRECT_URI" >> .env
+              printf 'DEPLOY_URL=%q\n' "$DEPLOY_URL" >> .env
+              printf 'SMTP_HOST=%q\n' "$SMTP_HOST" >> .env
+              printf 'SMTP_PORT=%q\n' "$SMTP_PORT" >> .env
+              printf 'SMTP_SECURE=%q\n' "$SMTP_SECURE" >> .env
+              printf 'SMTP_USER=%q\n' "$SMTP_USER" >> .env
+              printf 'SMTP_PASSWORD=%q\n' "$SMTP_PASSWORD" >> .env
+              printf 'SMTP_FROM_EMAIL=%q\n' "$SMTP_FROM_EMAIL" >> .env
+              printf 'SMTP_FROM_NAME=%q\n' "$SMTP_FROM_NAME" >> .env
               
               echo "🚀 執行部署腳本（包含 migrations）..."
               ./deploy-prod.sh
