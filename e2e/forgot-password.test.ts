@@ -43,7 +43,7 @@ test.describe('忘記密碼流程', () => {
 	test('應該能夠訪問忘記密碼頁面', async ({ page }) => {
 		await page.goto('http://localhost:5173/auth/forgot-password');
 
-		await expect(page.locator('h1')).toContainText('忘記密碼');
+		await expect(page.getByRole('heading', { name: '忘記密碼' })).toBeVisible();
 		await expect(page.locator('input[type="email"]')).toBeVisible();
 		await expect(page.locator('button[type="submit"]')).toBeVisible();
 	});
@@ -64,13 +64,23 @@ test.describe('忘記密碼流程', () => {
 
 		await page.fill('input[type="email"]', testEmail);
 
-		// 點擊提交按鈕
+		// 點擊提交按鈕並同時等待請求
 		const submitButton = page.locator('button[type="submit"]');
-		await submitButton.click();
 
-		// 按鈕應該顯示載入狀態
-		await expect(submitButton).toContainText('發送中');
-		await expect(submitButton).toBeDisabled();
+		// 使用 Promise.all 來同時處理點擊和等待
+		const [response] = await Promise.all([
+			page.waitForResponse(
+				(resp) =>
+					resp.url().includes('/api/auth/forgot-password') && resp.request().method() === 'POST'
+			),
+			submitButton.click()
+		]);
+
+		// 驗證請求成功
+		expect(response.ok()).toBeTruthy();
+
+		// 驗證成功訊息出現
+		await expect(page.locator('.success-message')).toBeVisible();
 	});
 
 	test('應該有返回登入的連結', async ({ page }) => {
@@ -86,7 +96,7 @@ test.describe('忘記密碼流程', () => {
 		const testToken = 'test-token-123';
 		await page.goto(`http://localhost:5173/auth/reset-password?token=${testToken}`);
 
-		await expect(page.locator('h1')).toContainText('重置密碼');
+		await expect(page.getByRole('heading', { name: '重置密碼' })).toBeVisible();
 
 		// 檢查密碼輸入欄位存在
 		const passwordInputs = page.locator('input[type="password"]');

@@ -1,3 +1,7 @@
+# 共用配置定義
+x-app-image: &app-image
+  image: ${DOCKER_USERNAME}/moa:latest
+
 services:
   db:
     image: postgres:16-alpine
@@ -23,30 +27,30 @@ services:
       - moa_network
 
   app:
-    image: ${DOCKER_USERNAME}/moa:latest
+    <<: *app-image
     container_name: moa_app_prod
     restart: always
     ports:
       - '${PORT:-5173}:5173'
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-30d}
-      - PORT=5173
-      - SOCKET_PORT=5173
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
-      - PUBLIC_GTM_ID=${PUBLIC_GTM_ID}
-      - DEPLOY_URL=${DEPLOY_URL}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_SECURE=${SMTP_SECURE}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      PORT: 5173
+      SOCKET_PORT: 5173
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      PUBLIC_GTM_ID: ${PUBLIC_GTM_ID}
+      DEPLOY_URL: ${DEPLOY_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -59,6 +63,26 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  email-worker:
+    image: ${DOCKER_USERNAME}/moa:worker # 使用專門的 worker image
+    container_name: moa_email_worker_prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moa_network
 
 volumes:
   moa_pgdata_prod:

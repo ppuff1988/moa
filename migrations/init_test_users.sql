@@ -6,15 +6,16 @@
 -- ==========================================
 
 -- 插入 8 個測試使用者（密碼都是單個字母）
-INSERT INTO users (email, nickname, password_hash) VALUES
-('a@a.com', '許愿', '$argon2id$v=19$m=19456,t=2,p=1$Hm20VxUKSGzGSLISXlDa9w$zzogxBSOni8lb37jZZQZI4wuyV3LNV5RkvTNJYLZJY8'),
-('b@b.com', '方震', '$argon2id$v=19$m=19456,t=2,p=1$oUxGj1wSSe906Hlvl+pVGQ$ZTdcr/ae0fvqS6tmIrRq9g4iLKhO7TQ0Zhn/xx9tF5E'),
-('c@c.com', '黃煙煙', '$argon2id$v=19$m=19456,t=2,p=1$iD3qZ6OKcDZgqYoozhxKYg$Xwf3fGm2g/EdPYkKcqzdCmLH9InMjN5Pdk99MmJ+SzU'),
-('d@d.com', '木戶加奈', '$argon2id$v=19$m=19456,t=2,p=1$bPp8fL2hz4nutAsWpSdkBA$dVFzqe0m6It+vX5GgF+8N2NYMfMcQPzTytAgzDn3N1w'),
-('e@e.com', '老朝奉', '$argon2id$v=19$m=19456,t=2,p=1$bmEkoKsgTYCP7bSVCZ86ig$eS3dFJHMlUE8CHex5sa8BRI6Ri+4ykZZfSp5cKb1t2E'),
-('f@f.com', '藥不然', '$argon2id$v=19$m=19456,t=2,p=1$Akaxo+aOjccjbHbH8CZLGw$ugWpUT82vdtEFz/Wseg+wIRrLNWz85z3BVVABtGjTu0'),
-('g@g.com', '鄭國渠', '$argon2id$v=19$m=19456,t=2,p=1$ZfEdtZWu9IuMt9BYPQP1hQ$kcTZQ1eFE0yLn3KqG7jG7nFUnH5n17Iw/Pamf2c6fOg'),
-('h@h.com', '姬云浮', '$argon2id$v=19$m=19456,t=2,p=1$5sCI2zhWs8t1531D+CnQtw$OVYVRjxlOlTMsSht/5Zec823z2QmgKQAB52LyNftKJI');
+-- 測試用戶的 email_verified 設為 true 以便直接測試其他功能
+INSERT INTO users (email, nickname, password_hash, email_verified) VALUES
+('a@a.com', '許愿', '$argon2id$v=19$m=19456,t=2,p=1$Hm20VxUKSGzGSLISXlDa9w$zzogxBSOni8lb37jZZQZI4wuyV3LNV5RkvTNJYLZJY8', true),
+('b@b.com', '方震', '$argon2id$v=19$m=19456,t=2,p=1$oUxGj1wSSe906Hlvl+pVGQ$ZTdcr/ae0fvqS6tmIrRq9g4iLKhO7TQ0Zhn/xx9tF5E', true),
+('c@c.com', '黃煙煙', '$argon2id$v=19$m=19456,t=2,p=1$iD3qZ6OKcDZgqYoozhxKYg$Xwf3fGm2g/EdPYkKcqzdCmLH9InMjN5Pdk99MmJ+SzU', true),
+('d@d.com', '木戶加奈', '$argon2id$v=19$m=19456,t=2,p=1$bPp8fL2hz4nutAsWpSdkBA$dVFzqe0m6It+vX5GgF+8N2NYMfMcQPzTytAgzDn3N1w', true),
+('e@e.com', '老朝奉', '$argon2id$v=19$m=19456,t=2,p=1$bmEkoKsgTYCP7bSVCZ86ig$eS3dFJHMlUE8CHex5sa8BRI6Ri+4ykZZfSp5cKb1t2E', true),
+('f@f.com', '藥不然', '$argon2id$v=19$m=19456,t=2,p=1$Akaxo+aOjccjbHbH8CZLGw$ugWpUT82vdtEFz/Wseg+wIRrLNWz85z3BVVABtGjTu0', true),
+('g@g.com', '鄭國渠', '$argon2id$v=19$m=19456,t=2,p=1$ZfEdtZWu9IuMt9BYPQP1hQ$kcTZQ1eFE0yLn3KqG7jG7nFUnH5n17Iw/Pamf2c6fOg', true),
+('h@h.com', '姬云浮', '$argon2id$v=19$m=19456,t=2,p=1$5sCI2zhWs8t1531D+CnQtw$OVYVRjxlOlTMsSht/5Zec823z2QmgKQAB52LyNftKJI', true);
 
 -- ==========================================
 -- 測試使用者登入資訊

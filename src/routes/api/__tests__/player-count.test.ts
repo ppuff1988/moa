@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '$lib/server/db';
 import { user, games, gamePlayers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
+import { createTestUser } from './helpers';
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:5173';
 
@@ -12,21 +13,10 @@ describe('Player Count Issue - Room Creation', () => {
 	let gameId: string;
 
 	beforeAll(async () => {
-		// 創建測試用戶
-		testEmail = `player-count-test-${Date.now()}@example.com`;
-		const registerResponse = await fetch(`${API_BASE}/api/auth/register`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				email: testEmail,
-				nickname: 'Player Count Test',
-				password: 'TestPassword123!',
-				confirmPassword: 'TestPassword123!'
-			})
-		});
-
-		const registerData = await registerResponse.json();
-		authToken = registerData.token;
+		// 創建已驗證的測試用戶
+		const testUser = await createTestUser('player-count');
+		testEmail = testUser.email;
+		authToken = testUser.token;
 		// roomName 將在測試中從 API 響應獲取
 	});
 
@@ -81,7 +71,7 @@ describe('Player Count Issue - Room Creation', () => {
 		// 5. 驗證：玩家數據完整性
 		expect(roomData.players[0]).toHaveProperty('id');
 		expect(roomData.players[0]).toHaveProperty('userId');
-		expect(roomData.players[0]).toHaveProperty('nickname', 'Player Count Test');
+		expect(roomData.players[0]).toHaveProperty('nickname', 'Test User player-count');
 		expect(roomData.players[0]).toHaveProperty('isHost', true);
 	});
 });

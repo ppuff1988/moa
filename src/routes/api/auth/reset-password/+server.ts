@@ -58,7 +58,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			})
 			.where(eq(passwordResetToken.id, resetTokenData.id));
 
-		console.log('✅ 密碼重置成功，用戶 ID:', resetTokenData.userId);
+		if (process.env.NODE_ENV !== 'test') {
+			console.log('✅ 密碼重置成功，用戶 ID:', resetTokenData.userId);
+		}
 
 		return json(
 			{

@@ -23,8 +23,8 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+# Production stage - Main App
+FROM node:20-alpine AS app
 
 WORKDIR /app
 
@@ -54,3 +54,27 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Start the application
 CMD ["node", "scripts/production-server.js"]
+
+# Worker stage - Email Worker (輕量化)
+FROM node:20-alpine AS worker
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# 只安裝 worker 需要的依賴（不包含前端相關）
+RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit && \
+    npm install -g tsx
+
+# 只複製 worker 需要的文件
+COPY scripts/email-worker.ts ./scripts/
+COPY src/lib/server/email-queue.ts ./src/lib/server/
+COPY src/lib/server/email-worker.ts ./src/lib/server/
+COPY src/lib/server/email.ts ./src/lib/server/
+COPY src/lib/server/db ./src/lib/server/db
+
+# Start the worker
+CMD ["tsx", "scripts/email-worker.ts"]
+

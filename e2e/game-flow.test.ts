@@ -174,50 +174,10 @@ test.describe('Game Flow', () => {
 		users.forEach((user, i) => (user.page = pages[i]));
 
 		try {
-			console.log('========== 步驟 1: 註冊所有測試帳號 ==========');
-			// 先確保所有帳號都已註冊
-			for (let i = 0; i < users.length; i++) {
-				try {
-					console.log(`註冊帳號 ${i + 1}/8: ${users[i].username}`);
-					await pages[i].goto('/auth/register', { waitUntil: 'networkidle', timeout: 20000 });
-
-					await pages[i].waitForSelector('input#nickname', { timeout: 5000 });
-					await pages[i].fill('input#nickname', users[i].nickname);
-					await pages[i].fill('input#email', users[i].username);
-					await pages[i].fill('input#password', users[i].password);
-					await pages[i].fill('input#confirmPassword', users[i].password);
-
-					// 點擊註冊並等待回應
-					await pages[i].click('button[type="submit"]');
-
-					// 等待導航或錯誤訊息
-					try {
-						await pages[i].waitForURL('/', { timeout: 5000 });
-						console.log(`  ✅ 帳號 ${i + 1} 註冊成功`);
-						// 登出以便下一步統一登入
-						await pages[i].evaluate(() => {
-							localStorage.removeItem('jwt_token');
-							document.cookie = 'jwt=; path=/; max-age=0';
-						});
-					} catch {
-						// 檢查是否有錯誤訊息
-						const errorVisible = await pages[i]
-							.locator('.error, .error-message, [role="alert"]')
-							.isVisible({ timeout: 2000 })
-							.catch(() => false);
-						if (errorVisible) {
-							console.log(`  ℹ️  帳號 ${i + 1} 可能已存在（看到錯誤訊息）`);
-						} else {
-							console.log(`  ℹ️  帳號 ${i + 1} 註冊狀態未知`);
-						}
-					}
-
-					await pages[i].waitForTimeout(500);
-				} catch (e) {
-					const message = e instanceof Error ? e.message : '未知錯誤';
-					console.log(`  ℹ️  帳號 ${i + 1} 註冊失敗（可能已存在）:`, message);
-				}
-			}
+			console.log('========== 步驟 1: 批量創建測試帳號（直接寫入資料庫）==========');
+			// 使用第一個 page 來調用 API（只需要一次調用）
+			const { createTestUsersInDatabase } = await import('./helpers');
+			await createTestUsersInDatabase(pages[0], users);
 
 			console.log('\n========== 步驟 2: 所有用戶登入 ==========');
 			// 所有用戶登入

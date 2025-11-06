@@ -32,6 +32,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ message: 'Email 或密碼錯誤' }, { status: 401 });
 		}
 
+		// 檢查 Email 是否已驗證
+		if (!userData.emailVerified) {
+			return json(
+				{
+					message: '請先驗證您的 Email 地址。請檢查您的信箱中的驗證郵件。',
+					requiresVerification: true
+				},
+				{ status: 403 }
+			);
+		}
+
 		const token = generateUserJWT(userData);
 
 		return json(

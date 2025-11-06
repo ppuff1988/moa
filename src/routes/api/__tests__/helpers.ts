@@ -2,16 +2,21 @@
  * API 測試輔助工具
  */
 
+import { db } from '$lib/server/db';
+import { user } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
+
 export const API_BASE = process.env.API_BASE_URL || 'http://localhost:5173';
 
 /**
- * 創建測試用戶
+ * 創建已驗證的測試用戶（直接在資料庫中設置為已驗證）
  */
 export async function createTestUser(suffix: string = '') {
 	const email = `test-${Date.now()}${suffix}@example.com`;
 	const password = 'TestPassword123!';
 
-	const response = await fetch(`${API_BASE}/api/auth/register`, {
+	// 註冊用戶（會創建未驗證的帳號）
+	const registerResponse = await fetch(`${API_BASE}/api/auth/register`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -22,17 +27,41 @@ export async function createTestUser(suffix: string = '') {
 		})
 	});
 
-	if (!response.ok) {
-		throw new Error(`Failed to create test user: ${await response.text()}`);
+	if (!registerResponse.ok) {
+		throw new Error(`Failed to create test user: ${await registerResponse.text()}`);
 	}
 
-	const data = await response.json();
+	const registerData = await registerResponse.json();
+
+	// 直接在資料庫中將用戶標記為已驗證（繞過 email 驗證流程）
+	await db
+		.update(user)
+		.set({
+			emailVerified: true,
+			emailVerificationToken: null,
+			emailVerificationTokenExpiresAt: null
+		})
+		.where(eq(user.email, email));
+
+	// 登入以獲取 token
+	const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ email, password })
+	});
+
+	if (!loginResponse.ok) {
+		throw new Error(`Failed to login test user: ${await loginResponse.text()}`);
+	}
+
+	const loginData = await loginResponse.json();
+
 	return {
 		email,
 		password,
-		token: data.token,
-		userId: data.user.id,
-		user: data.user
+		token: loginData.token,
+		userId: registerData.user.id,
+		user: registerData.user
 	};
 }
 

@@ -20,10 +20,6 @@
 
 		return () => clearInterval(interval);
 	});
-
-	function handleRetry() {
-		goto('/auth/login');
-	}
 </script>
 
 <div class="status-container">
@@ -61,10 +57,10 @@
 		</div>
 
 		<div class="actions">
-			<button on:click={handleRetry} class="retry-btn">
+			<a href="/auth/login" class="retry-btn">
 				<span class="btn-icon">↻</span>
 				重新登入
-			</button>
+			</a>
 			<p class="countdown">
 				{countdown} 秒後自動跳轉
 			</p>
@@ -210,6 +206,7 @@
 		font-weight: 500;
 		font-size: 1rem;
 		cursor: pointer;
+		text-decoration: none;
 		transition: var(--transition-elegant);
 		box-shadow: var(--shadow-antique);
 	}

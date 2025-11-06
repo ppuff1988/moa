@@ -1,0 +1,27 @@
+# Dockerfile.worker - 輕量化的 Email Worker
+FROM node:22-alpine
+
+WORKDIR /app
+
+# 只複製必要的依賴文件
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# 只安裝生產環境依賴
+RUN npm ci --only=production
+
+# 只複製 worker 需要的文件
+COPY scripts/email-worker.ts ./scripts/
+COPY src/lib/server/email-queue.ts ./src/lib/server/
+COPY src/lib/server/email-worker.ts ./src/lib/server/
+COPY src/lib/server/email.ts ./src/lib/server/
+
+# 安裝 tsx（運行 TypeScript）
+RUN npm install -g tsx
+
+# 設置環境變數
+ENV NODE_ENV=production
+
+# 運行 worker
+CMD ["tsx", "scripts/email-worker.ts"]
+

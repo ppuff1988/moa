@@ -1,3 +1,9 @@
+# 共用配置定義
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+
 services:
   db:
     image: postgres:16-alpine
@@ -24,24 +30,29 @@ services:
       - moa_network
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *app-build
     container_name: moa_app
     restart: always
     ports:
       - '${PORT:-5173}:5173'
     environment:
-      - NODE_ENV=development
-      - DATABASE_URL=postgres://${POSTGRES_USER:-moa_user}:${POSTGRES_PASSWORD:-moa_pass}@db:5432/${POSTGRES_DB:-moa_db}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-30d}
-      - PORT=5173
-      - SOCKET_PORT=5173
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
-      - PUBLIC_GTM_ID=${PUBLIC_GTM_ID}
+      NODE_ENV: development
+      DATABASE_URL: postgres://${POSTGRES_USER:-moa_user}:${POSTGRES_PASSWORD:-moa_pass}@db:5432/${POSTGRES_DB:-moa_db}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      PORT: 5173
+      SOCKET_PORT: 5173
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      PUBLIC_GTM_ID: ${PUBLIC_GTM_ID}
     depends_on:
       db:
         condition: service_healthy
@@ -54,23 +65,28 @@ services:
       retries: 3
       start_period: 40s
 
-  # Optional: pgAdmin for web-based database management
-  # Uncomment the lines below if you want a web interface in addition to TablePlus
-  # pgadmin:
-  #   image: dpage/pgadmin4:latest
-  #   container_name: moa_pgadmin
-  #   restart: always
-  #   ports:
-  #     - "${PGADMIN_PORT:-5050}:80"
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@moa.local}
-  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-  #   volumes:
-  #     - moa_pgadmin_data:/var/lib/pgadmin
-  #   depends_on:
-  #     - db
-  #   networks:
-  #     - moa_network
+  email-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker # 使用輕量化的 worker stage
+    container_name: moa_email_worker
+    restart: always
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://${POSTGRES_USER:-moa_user}:${POSTGRES_PASSWORD:-moa_pass}@db:5432/${POSTGRES_DB:-moa_db}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moa_network
 
 volumes:
   moa_pgdata:
