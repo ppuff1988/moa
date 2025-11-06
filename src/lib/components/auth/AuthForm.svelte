@@ -13,6 +13,7 @@
 	let nickname = '';
 	let acceptTerms = false;
 	let error = '';
+	let successMessage = '';
 	let isLoading = false;
 
 	$: title = mode === 'login' ? '登入' : '註冊';
@@ -55,6 +56,7 @@
 		if (isLoading) return;
 
 		error = '';
+		successMessage = '';
 
 		// 註冊時檢查使用者條款
 		if (mode === 'register' && !acceptTerms) {
@@ -87,8 +89,20 @@
 				body: JSON.stringify(body)
 			});
 
+			const result = await response.json();
+
 			if (response.ok) {
-				const result = await response.json();
+				// 註冊成功但需要驗證 email
+				if (result.requiresVerification) {
+					successMessage = result.message || '註冊成功！請檢查您的信箱以驗證 Email 地址';
+					// 清空表單
+					email = '';
+					password = '';
+					confirmPassword = '';
+					nickname = '';
+					acceptTerms = false;
+					return;
+				}
 
 				// 儲存 JWT token 到 localStorage
 				if (result.token) {
@@ -98,7 +112,6 @@
 
 				window.location.href = successRedirectUrl;
 			} else {
-				const result = await response.json();
 				console.error('API 錯誤回應:', result); // 調試用
 				error = result.message || `${mode === 'login' ? '登入' : '註冊'}失敗，請檢查輸入資料`;
 			}
@@ -206,6 +219,10 @@
 			<div class="error-message">{error}</div>
 		{/if}
 
+		{#if successMessage}
+			<div class="success-message">{successMessage}</div>
+		{/if}
+
 		{#if mode === 'login'}
 			<div class="forgot-password-link">
 				<a href="/auth/forgot-password">忘記密碼？</a>
@@ -302,6 +319,17 @@
 		padding: 0.75rem 1rem;
 		font-size: 0.9rem;
 		text-align: center;
+	}
+
+	.success-message {
+		color: #22c55e;
+		background: rgba(34, 197, 94, 0.1);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+		border-radius: calc(var(--radius));
+		padding: 0.75rem 1rem;
+		font-size: 0.9rem;
+		text-align: center;
+		font-weight: 500;
 	}
 
 	.submit-btn {

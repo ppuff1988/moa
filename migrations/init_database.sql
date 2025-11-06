@@ -34,11 +34,15 @@ CREATE TABLE users (
     nickname TEXT NOT NULL,
     password_hash TEXT,
     avatar TEXT,
+    email_verified BOOLEAN DEFAULT FALSE,
+    email_verification_token TEXT,
+    email_verification_token_expires_at TIMESTAMPTZ,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX users_email_idx ON users(email);
+CREATE INDEX users_email_verification_token_idx ON users(email_verification_token) WHERE email_verification_token IS NOT NULL;
 
 -- 2. OAuth 帳號表
 CREATE TABLE oauth_accounts (

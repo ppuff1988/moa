@@ -112,7 +112,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 							email: googleUser.email,
 							nickname: googleUser.name || googleUser.email.split('@')[0],
 							passwordHash: null,
-							avatar: googleUser.picture || null
+							avatar: googleUser.picture || null,
+							emailVerified: true // OAuth 用戶自動驗證
 						})
 						.returning();
 
@@ -169,7 +170,8 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 						email: googleUser.email,
 						nickname: googleUser.name || googleUser.email.split('@')[0],
 						passwordHash: null, // OAuth 用戶不需要密碼
-						avatar: googleUser.picture || null
+						avatar: googleUser.picture || null,
+						emailVerified: true // OAuth 用戶自動驗證
 					})
 					.returning();
 				userId = newUser.id;

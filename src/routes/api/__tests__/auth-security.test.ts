@@ -86,7 +86,7 @@ describe('Authentication Edge Cases and Security', () => {
 			expect([201, 400]).toContain(response.status);
 			if (response.status === 201) {
 				const data = await response.json();
-				expect(data).toHaveProperty('token');
+				expect(data).toHaveProperty('requiresVerification', true);
 			}
 		});
 
@@ -109,7 +109,7 @@ describe('Authentication Edge Cases and Security', () => {
 			expect([201, 400]).toContain(response.status);
 			if (response.status === 201) {
 				const data = await response.json();
-				expect(data).toHaveProperty('token');
+				expect(data).toHaveProperty('requiresVerification', true);
 			}
 		});
 	});

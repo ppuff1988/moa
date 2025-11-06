@@ -95,10 +95,96 @@ npm run queue:status
 
 **🎉 如果以上步驟都正常，系統已完全串起來！**
 
-    - SMTP_USER=${SMTP_USER}
-    - SMTP_PASSWORD=${SMTP_PASSWORD}
+---
 
-````
+## 💾 資料庫架構說明
+
+### ⚠️ 重要：pg-boss 自動管理資料表
+
+**pg-boss 會在 PostgreSQL 中自動創建和管理自己的資料表**，您**不需要**手動創建任何 email queue 相關的表。
+
+#### pg-boss 自動創建的表
+
+當您第一次啟動 worker 或調用 `getEmailQueue()` 時，pg-boss 會自動在資料庫中創建以下表：
+
+- `pgboss.version` - 版本管理
+- `pgboss.job` - 儲存所有任務
+- `pgboss.schedule` - 排程任務
+- `pgboss.subscription` - 訂閱管理
+- `pgboss.archive` - 已完成的任務歸檔
+
+#### 您需要做什麼？
+
+**什麼都不用！** 只需要：
+
+1. ✅ 確保 `DATABASE_URL` 配置正確
+2. ✅ 確保 PostgreSQL 資料庫正在運行
+3. ✅ pg-boss 會自動處理其他一切
+
+#### 驗證 pg-boss 表是否已創建
+
+```powershell
+# 連接到資料庫
+docker exec -it moa_postgres psql -U moa_user -d moa_db
+
+# 查看 pgboss schema 中的表
+\dt pgboss.*
+
+# 應該看到:
+#  pgboss | archive      | table | moa_user
+#  pgboss | job          | table | moa_user
+#  pgboss | schedule     | table | moa_user
+#  pgboss | subscription | table | moa_user
+#  pgboss | version      | table | moa_user
+
+# 退出
+\q
+```
+
+#### 不要在 migration 中創建這些表
+
+❌ **錯誤做法**：
+
+```sql
+-- 不要這樣做！
+CREATE TABLE pgboss.job (...);
+CREATE TABLE email_queue (...);
+```
+
+✅ **正確做法**：
+
+- 讓 pg-boss 自動管理
+- 您的 migration 只需要包含應用程式相關的表（users, games, roles 等）
+
+---
+
+## 🐳 Docker 部署
+
+### Docker Compose 配置
+
+確保 `docker-compose.yml` 包含 email-worker 服務：
+
+```yaml
+services:
+  email-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: moa_email_worker
+    restart: unless-stopped
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+```
 
 ### Docker 命令
 
@@ -120,7 +206,7 @@ docker restart moa_email_worker
 
 # 停止所有服務
 docker compose down
-````
+```
 
 ---
 

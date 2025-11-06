@@ -112,7 +112,7 @@ export async function queueEmail(emailData: EmailJob): Promise<string | null> {
 	try {
 		// 在測試環境中，不使用隊列
 		if (process.env.NODE_ENV === 'test') {
-			console.log('📧 測試環境：模擬將郵件加入隊列', emailData.to);
+			// 靜默模式：不輸出日誌
 			return 'test-job-id';
 		}
 
@@ -126,7 +126,7 @@ export async function queueEmail(emailData: EmailJob): Promise<string | null> {
 		console.log('✅ 郵件已加入隊列:', jobId, '收件者:', emailData.to);
 		return jobId;
 	} catch (error) {
-		console.error('❌ 郵件加入隊列失敗:', error);
+		console.error('❌郵件加入隊列失敗:', error);
 		return null;
 	}
 }
