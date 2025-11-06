@@ -73,11 +73,13 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: pr.number,
-                  // 使用 rebase 以符合 Require linear history
-                  merge_method: 'rebase'
+                  // 使用 squash 保持歷史簡潔，每個 PR 合併為一個 commit
+                  merge_method: 'squash',
+                  commit_title: pr.title,
+                  commit_message: `${pr.body || ''}\n\nPR #${pr.number} - ${sourceBranch}`
                 });
 
-                console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch}`);
+                console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch} (squash merge)`);
 
                 // 自動刪除源分支（排除保護分支）
                 const protectedBranches = ['main', 'dev', 'staging', 'production'];
