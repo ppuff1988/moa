@@ -56,9 +56,11 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - uses: docker/build-push-action@v5
+      - name: 構建並推送 App Image
+        uses: docker/build-push-action@v5
         with:
           context: .
+          target: app
           push: true
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/moa:latest
@@ -70,7 +72,23 @@ jobs:
           cache-to: type=inline
           platforms: linux/amd64,linux/arm64
 
-      - run: echo "✅ Docker 映像建置成功"
+      - name: 構建並推送 Worker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: worker
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/moa:worker
+            ${{ secrets.DOCKER_USERNAME }}/moa:worker-v${{ steps.get_version.outputs.version }}
+            ${{ secrets.DOCKER_USERNAME }}/moa:worker-${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:worker
+          cache-to: type=inline
+          platforms: linux/amd64,linux/arm64
+
+      - run: |
+          echo "✅ App Image 建置成功"
+          echo "✅ Worker Image 建置成功"
 
   create-tag:
     name: 創建發布標籤
@@ -178,11 +196,19 @@ jobs:
             }
 
             body += `### 📦 Docker Images\n`;
-            body += `\`\`\`\n`;
+            body += `\n**主應用 (App):**\n`;
+            body += `\`\`\`bash\n`;
             body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:latest\n`;
             body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:v${version}\n`;
             body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:${shortSha}\n`;
             body += `\`\`\`\n\n`;
+            body += `**郵件隊列 Worker (輕量化):**\n`;
+            body += `\`\`\`bash\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:worker\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:worker-v${version}\n`;
+            body += `docker pull ${{ secrets.DOCKER_USERNAME }}/moa:worker-${shortSha}\n`;
+            body += `\`\`\`\n\n`;
+            body += `> 💡 Worker image 是輕量化版本，只包含郵件隊列處理所需的文件，體積減少約 50%\n\n`;
 
             body += `### 🔗 相關連結\n`;
             body += `- [查看 Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\n`;
@@ -232,8 +258,13 @@ jobs:
             ${{ needs.create-tag.outputs.should_release == 'true' && format('✅ Git tag 和 GitHub Release 已創建', '') || '' }}
 
             *Docker 標籤:*
+            **App:**
             • `${{ secrets.DOCKER_USERNAME }}/moa:latest`
             • `${{ secrets.DOCKER_USERNAME }}/moa:v${{ needs.build-docker.outputs.version }}`
+
+            **Worker (輕量化):**
+            • `${{ secrets.DOCKER_USERNAME }}/moa:worker`
+            • `${{ secrets.DOCKER_USERNAME }}/moa:worker-v${{ needs.build-docker.outputs.version }}`
 
             [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 

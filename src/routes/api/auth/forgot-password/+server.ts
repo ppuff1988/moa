@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { user, passwordResetToken, oauthAccount } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { sendPasswordResetEmail } from '$lib/server/email';
+import { queuePasswordResetEmail } from '$lib/server/email';
 import crypto from 'crypto';
 import { env } from '$env/dynamic/private';
 
@@ -63,16 +63,16 @@ export const POST: RequestHandler = async ({ request }) => {
 			expiresAt
 		});
 
-		// 發送郵件
+		// 將郵件加入隊列（非阻塞，立即返回）
 		const baseUrl = env.DEPLOY_URL || `${request.url.split('/api')[0]}`;
-		const emailSent = await sendPasswordResetEmail(email, resetToken, baseUrl);
+		const jobId = await queuePasswordResetEmail(email, resetToken, baseUrl);
 
-		if (!emailSent) {
-			console.error('❌ 郵件發送失敗');
+		if (!jobId) {
+			console.error('❌ 郵件加入隊列失敗');
 			return json({ message: '郵件發送失敗，請稍後再試' }, { status: 500 });
 		}
 
-		console.log('✅ 密碼重置郵件已發送:', email);
+		console.log('✅ 密碼重置郵件已加入隊列:', email, 'Job ID:', jobId);
 
 		return json(
 			{
