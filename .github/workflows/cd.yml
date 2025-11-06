@@ -142,30 +142,29 @@ jobs:
                   echo "📥 拉取最新代碼..."
               git pull origin main
               
-              echo "⚙️ 寫入 .env"
-              echo "DOCKER_USERNAME=\"$DOCKER_USERNAME\"" > .env
-              echo "DATABASE_URL=\"$DATABASE_URL\"" >> .env
-              echo "JWT_SECRET=\"$JWT_SECRET\"" >> .env
-              echo "JWT_EXPIRES_IN=\"30d\"" >> .env
-              echo "POSTGRES_USER=\"$POSTGRES_USER\"" >> .env
-              echo "POSTGRES_PASSWORD='$POSTGRES_PASSWORD'" >> .env
-              echo "POSTGRES_DB=\"$POSTGRES_DB\"" >> .env
-              echo "NODE_ENV=\"production\"" >> .env
-              echo "PUBLIC_GTM_ID=\"$PUBLIC_GTM_ID\"" >> .env
-              echo "GOOGLE_CLIENT_ID=\"$GOOGLE_CLIENT_ID\"" >> .env
-              echo "GOOGLE_CLIENT_SECRET=\"$GOOGLE_CLIENT_SECRET\"" >> .env
-              echo "GOOGLE_REDIRECT_URI=\"$GOOGLE_REDIRECT_URI\"" >> .env
-              echo "DEPLOY_URL=\"$DEPLOY_URL\"" >> .env
-              echo "SMTP_HOST=\"$SMTP_HOST\"" >> .env
-              echo "SMTP_PORT=\"$SMTP_PORT\"" >> .env
-              echo "SMTP_SECURE=\"$SMTP_SECURE\"" >> .env
-              echo "SMTP_USER=\"$SMTP_USER\"" >> .env
-              echo "SMTP_PASSWORD=\"$SMTP_PASSWORD\"" >> .env
-              echo "SMTP_FROM_EMAIL=\"$SMTP_FROM_EMAIL\"" >> .env
-              echo "SMTP_FROM_NAME=\"$SMTP_FROM_NAME\"" >> .env
-
-              
-              echo "🚀 執行部署腳本（包含 migrations）..."
+            echo "⚙️ 寫入 .env"
+            echo "DOCKER_USERNAME='${DOCKER_USERNAME}'" > .env
+            echo "DATABASE_URL='${DATABASE_URL}'" >> .env
+            echo "JWT_SECRET='${JWT_SECRET}'" >> .env
+            echo "JWT_EXPIRES_IN='30d'" >> .env
+            echo "POSTGRES_USER='${POSTGRES_USER}'" >> .env
+            echo "POSTGRES_PASSWORD='${POSTGRES_PASSWORD}'" >> .env
+            echo "POSTGRES_DB='${POSTGRES_DB}'" >> .env
+            echo "NODE_ENV='production'" >> .env
+            echo "PUBLIC_GTM_ID='${PUBLIC_GTM_ID}'" >> .env
+            echo "GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID}'" >> .env
+            echo "GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET}'" >> .env
+            echo "GOOGLE_REDIRECT_URI='${GOOGLE_REDIRECT_URI}'" >> .env
+            echo "DEPLOY_URL='${DEPLOY_URL}'" >> .env
+            echo "SMTP_HOST='${SMTP_HOST}'" >> .env
+            echo "SMTP_PORT='${SMTP_PORT}'" >> .env
+            echo "SMTP_SECURE='${SMTP_SECURE}'" >> .env
+            echo "SMTP_USER='${SMTP_USER}'" >> .env
+            echo "SMTP_PASSWORD='${SMTP_PASSWORD}'" >> .env
+            echo "SMTP_FROM_EMAIL='${SMTP_FROM_EMAIL}'" >> .env
+            echo "SMTP_FROM_NAME='${SMTP_FROM_NAME}'" >> .env
+            
+            echo "🚀 執行部署腳本（包含 migrations）..."
               ./deploy-prod.sh
               '"; then
                 echo "✅ 部署成功！版本: $DEPLOY_VERSION"
