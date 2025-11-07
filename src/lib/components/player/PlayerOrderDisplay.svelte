@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { chineseNumeral } from '$lib/utils/round';
-
 	interface ActionedPlayer {
 		id: number;
 		nickname: string;
@@ -10,19 +8,18 @@
 	}
 
 	interface Props {
-		currentRound: number;
 		currentActionPlayer: ActionedPlayer | null;
 		actionedPlayers?: ActionedPlayer[];
 	}
 
-	let { currentRound, currentActionPlayer, actionedPlayers = [] }: Props = $props();
+	let { currentActionPlayer, actionedPlayers = [] }: Props = $props();
 
 	let isExpanded = $state(false);
 </script>
 
 <div class="turn-order-section">
 	<div class="turn-info">
-		<div class="round-display">第{chineseNumeral(currentRound)}回合</div>
+		<div class="round-display">目前玩家</div>
 		{#if currentActionPlayer}
 			<div class="current-player">
 				<div

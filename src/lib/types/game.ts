@@ -14,6 +14,7 @@ export interface Player {
 	isHost: boolean;
 	isReady: boolean;
 	isOnline: boolean;
+	avatar?: string | null; // Player's avatar URL
 }
 
 export interface User {

@@ -88,28 +88,30 @@
 <style>
 	.header-actions {
 		display: flex;
-		gap: 1rem;
-		align-items: flex-start;
+		gap: 0.625rem;
+		align-items: center;
+		flex-shrink: 0;
 	}
 
 	.history-btn {
-		padding: 0.625rem 1.25rem;
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		border-radius: calc(var(--radius));
+		padding: 0.5rem 1rem;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		border-radius: calc(var(--radius) * 0.75);
 		color: hsl(var(--foreground));
 		font-weight: 600;
-		font-size: 0.875rem;
+		font-size: 0.8125rem;
 		cursor: pointer;
 		transition: var(--transition-elegant);
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.375rem;
+		white-space: nowrap;
 	}
 
 	.history-btn:hover {
-		background: rgba(255, 255, 255, 0.2);
-		border-color: rgba(255, 255, 255, 0.5);
+		background: rgba(255, 255, 255, 0.15);
+		border-color: rgba(255, 255, 255, 0.4);
 	}
 
 	.modal-body {
@@ -164,5 +166,21 @@
 	.btn-confirm:hover:not(:disabled) {
 		background-color: #e6c547;
 		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+	}
+
+	@media (max-width: 768px) {
+		.header-actions {
+			width: 100%;
+			flex-wrap: wrap;
+			justify-content: stretch;
+		}
+
+		.history-btn {
+			font-size: 0.75rem;
+			padding: 0.5rem 0.875rem;
+			flex: 1;
+			justify-content: center;
+			min-width: 0;
+		}
 	}
 </style>

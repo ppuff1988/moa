@@ -975,10 +975,39 @@
 
 		{#if !['identification', 'finished', 'discussion', 'voting', 'result'].includes($roundPhase)}
 			<PlayerOrderDisplay
-				currentRound={$currentRound}
 				currentActionPlayer={$currentActionPlayer}
 				actionedPlayers={$actionedPlayers}
 			/>
+		{/if}
+
+		<!-- 等待提示區域 - 放在行動順序和獸首之間 -->
+		{#if $roundPhase === 'action' && !isMyTurn}
+			<div class="waiting-area">
+				<div class="waiting-card">
+					<div class="waiting-icon">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="32"
+							height="32"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="waiting-spinner"
+						>
+							<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+						</svg>
+					</div>
+					<p class="waiting-text">
+						{#if $currentActionPlayer}
+							等待 <span class="highlight-player">{$currentActionPlayer.nickname}</span> 行動中...
+						{:else}
+							等待其他玩家行動中...
+						{/if}
+					</p>
+				</div>
+			</div>
 		{/if}
 
 		<div class="game-main">
@@ -996,6 +1025,7 @@
 						canBlock={$remainingSkills ? $remainingSkills.block > 0 : false}
 						showVotingResults={$roundPhase === 'voting' || $roundPhase === 'result'}
 						currentRound={$currentRound}
+						autoCollapse={$roundPhase === 'discussion' || $roundPhase === 'voting'}
 						onBeastClick={(beastId) => {
 							if (
 								$gamePhase === 'identification' &&
@@ -1135,16 +1165,6 @@
 							{/if}
 						</div>
 					</div>
-				{:else}
-					<div class="waiting-area">
-						<p class="waiting-text">
-							{#if $currentActionPlayer}
-								等待 {$currentActionPlayer.nickname} 行動中...
-							{:else}
-								等待其他玩家行動中...
-							{/if}
-						</p>
-					</div>
 				{/if}
 			</div>
 		</div>
@@ -1226,34 +1246,35 @@
 		background: rgba(255, 255, 255, 0.1);
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		border-radius: calc(var(--radius));
-		padding: 1.5rem;
+		padding: 1rem;
 		backdrop-filter: blur(10px);
 	}
 
 	.action-content {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.75rem;
 	}
 
 	.action-hint {
 		color: hsl(var(--muted-foreground));
 		text-align: center;
-		padding: 2rem;
-		font-size: 1rem;
+		padding: 0.75rem 1rem;
+		font-size: 0.95rem;
+		margin: 0;
 	}
 
 	.skills-header {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 2rem;
+		gap: 0.375rem;
+		margin-bottom: 1rem;
 	}
 
 	.action-subtitle {
 		color: hsl(var(--foreground));
-		font-size: 1rem;
+		font-size: 1.25rem;
 		font-weight: 600;
 		text-align: center;
 		margin: 0;
@@ -1263,14 +1284,15 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
 		text-align: center;
+		margin: 0;
 	}
 
 	.discussion-host-actions {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.75rem;
 		align-items: center;
-		padding: 1rem;
+		padding: 0.5rem 1rem;
 	}
 
 	.primary-btn {
@@ -1293,14 +1315,100 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		padding: 3rem 2rem;
+		padding: 0;
+		margin: 1.5rem 0;
+		width: 100%;
+	}
+
+	.waiting-card {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		padding: 1.5rem 2rem;
+		background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.15));
+		border: 2px solid rgba(255, 215, 0, 0.4);
+		border-radius: calc(var(--radius));
+		backdrop-filter: blur(20px);
+		box-shadow: 0 8px 32px rgba(255, 215, 0, 0.2);
+		animation: pulse-border 2s ease-in-out infinite;
+		width: 100%;
+	}
+
+	@keyframes pulse-border {
+		0%,
+		100% {
+			border-color: rgba(255, 215, 0, 0.4);
+			box-shadow: 0 8px 32px rgba(255, 215, 0, 0.2);
+		}
+		50% {
+			border-color: rgba(255, 215, 0, 0.6);
+			box-shadow:
+				0 8px 32px rgba(255, 215, 0, 0.3),
+				0 0 30px rgba(255, 215, 0, 0.2);
+		}
+	}
+
+	.waiting-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #ffd700;
+		flex-shrink: 0;
+	}
+
+	.waiting-spinner {
+		animation: rotate 2s linear infinite;
+		fill: none;
+	}
+
+	@keyframes rotate {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.waiting-text {
-		color: hsl(var(--muted-foreground));
-		font-size: 1.125rem;
+		color: hsl(var(--foreground));
+		font-size: 1.25rem;
+		font-weight: 600;
 		text-align: center;
 		margin: 0;
+		letter-spacing: 0.02em;
+	}
+
+	.highlight-player {
+		color: #ffd700;
+		font-weight: 700;
+		text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+	}
+
+	@media (max-width: 768px) {
+		.game-container {
+			padding: 0.5rem 0.5rem;
+		}
+
+		.waiting-area {
+			margin: 1rem 0;
+		}
+
+		.waiting-card {
+			padding: 1rem 1.5rem;
+			gap: 0.75rem;
+		}
+
+		.waiting-icon svg {
+			width: 20px;
+			height: 20px;
+		}
+
+		.waiting-text {
+			font-size: 1rem;
+		}
 	}
 
 	.loading-result {

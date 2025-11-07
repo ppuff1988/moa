@@ -158,9 +158,12 @@ export function useRoomLobby(roomName: string) {
 		});
 
 		// Player joined event
-		socket.on('player-joined', (data: { userId: number; nickname: string }) => {
-			addNotification(`${data.nickname} 加入了房間`, 'info');
-		});
+		socket.on(
+			'player-joined',
+			(data: { userId: number; nickname: string; avatar?: string | null }) => {
+				addNotification(`${data.nickname} 加入了房間`, 'info');
+			}
+		);
 
 		// Player left event
 		socket.on('player-left', (data: { userId: number; nickname: string }) => {

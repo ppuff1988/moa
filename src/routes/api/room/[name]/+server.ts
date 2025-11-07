@@ -19,6 +19,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			id: gamePlayers.id,
 			userId: gamePlayers.userId,
 			nickname: user.nickname,
+			avatar: user.avatar,
 			isHost: gamePlayers.isHost,
 			isOnline: gamePlayers.isOnline,
 			isReady: gamePlayers.isReady,
@@ -46,6 +47,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			id: playerInRoom.id,
 			userId: currentUser.id,
 			nickname: currentUser.nickname,
+			avatar: currentUser.avatar,
 			isHost: playerInRoom.isHost
 		}
 	});

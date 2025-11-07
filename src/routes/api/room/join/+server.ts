@@ -99,6 +99,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			id: newPlayer.id,
 			userId: user.id,
 			nickname: user.nickname,
+			avatar: user.avatar,
 			isHost: false
 		}
 	});

@@ -22,6 +22,7 @@
 		onBeastClick?: (beastId: number) => void;
 		showVotingResults?: boolean; // 是否顯示投票結果
 		currentRound?: number; // 當前回合數
+		autoCollapse?: boolean; // 是否自動收起
 	}
 
 	let {
@@ -36,8 +37,25 @@
 		canBlock = false,
 		onBeastClick = () => {},
 		showVotingResults = false,
-		currentRound = 1
+		currentRound = 1,
+		autoCollapse = false
 	}: Props = $props();
+
+	// 收起/展開狀態
+	let isCollapsed = $state(false);
+
+	// 當 autoCollapse 變化時，自動設置收起狀態
+	$effect(() => {
+		if (autoCollapse) {
+			isCollapsed = true;
+		} else {
+			isCollapsed = false;
+		}
+	});
+
+	function toggleCollapse() {
+		isCollapsed = !isCollapsed;
+	}
 
 	// Map zodiac animal names to image numbers (1-12)
 	function getZodiacImageNumber(animal: string): number {
@@ -105,50 +123,62 @@
 	}
 </script>
 
-<div class="beast-heads-section">
-	<h3 class="section-title">第{chineseNumeral(currentRound)}回合獸首</h3>
-	<div class="beast-heads-grid">
-		{#each beastHeads as beast (beast.id)}
-			<div
-				class="beast-card"
-				class:revealed={identifiedArtifacts.includes(beast.id)}
-				class:failed={failedIdentifications.includes(beast.id)}
-				class:locked={blockedArtifacts.includes(beast.id)}
-				class:selected={selectedBeastHead === beast.id}
-				class:interactive={isInteractive(beast.id)}
-				class:top-ranked={showVotingResults && (beast.voteRank === 1 || beast.voteRank === 2)}
-				onclick={() => handleBeastClick(beast.id)}
-				onkeydown={(e) => handleKeydown(e, beast.id)}
-				role="button"
-				tabindex={isInteractive(beast.id) ? 0 : -1}
-			>
-				<div class="beast-card-inner">
-					{#if showVotingResults && beast.voteRank}
-						<div class="crown-badge">{getCrownIcon(beast.voteRank)}</div>
-					{/if}
-					<div class="beast-icon">
-						<img src={getZodiacImagePath(beast.animal)} alt={beast.animal} class="zodiac-image" />
-					</div>
-					<div class="beast-name">{beast.animal}</div>
-					{#if shouldShowGenuine(beast)}
-						<div class="beast-status" class:is-real={beast.isGenuine}>
-							{beast.isGenuine ? '真品' : '贗品'}
-						</div>
-					{:else if failedIdentifications.includes(beast.id)}
-						<div class="beast-status failed">無法鑑定</div>
-					{:else}
-						<div class="beast-status unknown">未鑑定</div>
-					{/if}
-					{#if blockedArtifacts.includes(beast.id)}
-						<div class="lock-indicator">🔒</div>
-					{/if}
-					{#if showVotingResults && beast.votes > 0}
-						<div class="vote-count">{beast.votes} 票</div>
-					{/if}
-				</div>
-			</div>
-		{/each}
+<div class="beast-heads-section" class:collapsed={isCollapsed}>
+	<div class="section-header">
+		<div class="spacer"></div>
+		<h3 class="section-title">第{chineseNumeral(currentRound)}回合</h3>
+		<button
+			class="toggle-button"
+			onclick={toggleCollapse}
+			aria-label={isCollapsed ? '展開獸首' : '收起獸首'}
+		>
+			{isCollapsed ? '▼' : '▲'}
+		</button>
 	</div>
+	{#if !isCollapsed}
+		<div class="beast-heads-grid">
+			{#each beastHeads as beast (beast.id)}
+				<div
+					class="beast-card"
+					class:revealed={identifiedArtifacts.includes(beast.id)}
+					class:failed={failedIdentifications.includes(beast.id)}
+					class:locked={blockedArtifacts.includes(beast.id)}
+					class:selected={selectedBeastHead === beast.id}
+					class:interactive={isInteractive(beast.id)}
+					class:top-ranked={showVotingResults && (beast.voteRank === 1 || beast.voteRank === 2)}
+					onclick={() => handleBeastClick(beast.id)}
+					onkeydown={(e) => handleKeydown(e, beast.id)}
+					role="button"
+					tabindex={isInteractive(beast.id) ? 0 : -1}
+				>
+					<div class="beast-card-inner">
+						{#if showVotingResults && beast.voteRank}
+							<div class="crown-badge">{getCrownIcon(beast.voteRank)}</div>
+						{/if}
+						<div class="beast-icon">
+							<img src={getZodiacImagePath(beast.animal)} alt={beast.animal} class="zodiac-image" />
+						</div>
+						<div class="beast-name">{beast.animal}</div>
+						{#if shouldShowGenuine(beast)}
+							<div class="beast-status" class:is-real={beast.isGenuine}>
+								{beast.isGenuine ? '真品' : '贗品'}
+							</div>
+						{:else if failedIdentifications.includes(beast.id)}
+							<div class="beast-status failed">無法鑑定</div>
+						{:else}
+							<div class="beast-status unknown">未鑑定</div>
+						{/if}
+						{#if blockedArtifacts.includes(beast.id)}
+							<div class="lock-indicator">🔒</div>
+						{/if}
+						{#if showVotingResults && beast.votes > 0}
+							<div class="vote-count">{beast.votes} 票</div>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -156,23 +186,67 @@
 		background: rgba(255, 255, 255, 0.1);
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		border-radius: 12px;
-		padding: 1.5rem;
+		padding: 0.75rem 1rem;
 		backdrop-filter: blur(10px);
+		transition: padding 0.2s ease;
+	}
+
+	.beast-heads-section.collapsed {
+		padding: 0.5rem 0.75rem;
+	}
+
+	.section-header {
+		display: grid;
+		grid-template-columns: 2rem 1fr 2rem;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0;
+	}
+
+	.spacer {
+		width: 2rem;
 	}
 
 	.section-title {
 		color: hsl(var(--foreground));
-		font-size: 1.125rem;
+		font-size: 1rem;
 		font-weight: 600;
-		margin: 0 0 1rem 0;
+		margin: 0;
 		text-align: center;
 		text-shadow: 0 2px 4px hsl(var(--background) / 0.8);
+	}
+
+	.toggle-button {
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 6px;
+		color: hsl(var(--foreground));
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.875rem;
+		transition: all 0.2s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2rem;
+		flex-shrink: 0;
+	}
+
+	.toggle-button:hover {
+		background: rgba(255, 255, 255, 0.2);
+		border-color: rgba(212, 175, 55, 0.5);
+		transform: translateY(-1px);
+	}
+
+	.toggle-button:active {
+		transform: translateY(0);
 	}
 
 	.beast-heads-grid {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 1rem;
+		margin-top: 1rem;
 	}
 
 	.beast-card {

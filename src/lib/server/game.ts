@@ -155,6 +155,7 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 		id: player.id,
 		userId: userId,
 		nickname: userInfo.nickname,
+		avatar: userInfo.avatar,
 		isHost: isHost,
 		isReady: false,
 		color: null,
@@ -181,7 +182,8 @@ export async function getGameState(gameId: string) {
 			canAction: gamePlayers.canAction,
 			joinedAt: gamePlayers.joinedAt,
 			lastActiveAt: gamePlayers.lastActiveAt,
-			nickname: user.nickname
+			nickname: user.nickname,
+			avatar: user.avatar
 		})
 		.from(gamePlayers)
 		.leftJoin(user, eq(gamePlayers.userId, user.id))

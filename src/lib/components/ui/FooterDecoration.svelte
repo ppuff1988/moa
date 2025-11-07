@@ -34,13 +34,7 @@
 
 	@media (max-width: 768px) {
 		.footer-decoration {
-			flex-direction: column;
-			gap: 1rem;
-		}
-
-		.footer-line {
-			width: 120px;
-			height: 1px;
+			display: none;
 		}
 	}
 </style>

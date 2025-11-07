@@ -37,7 +37,7 @@
 	onMount(async () => {
 		await roomLobby.initialize();
 
-		// 初始化完成後，檢查遊戲狀態，如果已經開始或完成就導向 game
+		// 初始化完成後，檢查遊戲狀態，如果已經進入選角、遊戲中或完成就導向 game
 		const status = $gameStatus;
 		if (status && (status === 'playing' || status === 'finished')) {
 			goto(`/room/${encodeURIComponent(roomName)}/game`, {
@@ -82,7 +82,9 @@
 			onKickPlayer={roomLobby.kickPlayer}
 		/>
 
-		<FooterDecoration text={footerText} />
+		<div class="footer-wrapper">
+			<FooterDecoration text={footerText} />
+		</div>
 	</div>
 
 	<NotificationManager />
@@ -97,7 +99,14 @@
 		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
+		align-items: stretch;
+		width: 100%;
+	}
+
+	.footer-wrapper {
+		display: flex;
+		justify-content: center;
+		width: 100%;
 	}
 
 	@media (max-width: 768px) {

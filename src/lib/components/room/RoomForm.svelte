@@ -110,7 +110,7 @@
 
 			{#if mode === 'create'}
 				<div class="info-message">
-					<p>系統將自動為您生成 6 碼數字房間名稱</p>
+					<p>系統將自動為您生成房間名稱</p>
 				</div>
 			{/if}
 

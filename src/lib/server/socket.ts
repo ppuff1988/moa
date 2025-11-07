@@ -86,7 +86,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 					return;
 				}
 
-				// 獲取用戶暱稱
+				// 獲取用戶暱稱和頭像
 				const { user } = await import('./db/schema');
 				const [userInfo] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
 
@@ -94,6 +94,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				socket.join(roomName);
 				socket.data.roomName = roomName;
 				socket.data.nickname = userInfo?.nickname || `玩家${userId}`;
+				socket.data.avatar = userInfo?.avatar || null;
 
 				// 更新玩家在線狀態
 				await updatePlayerOnlineStatus(game.id, userId, true);
@@ -116,7 +117,8 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				// 通知其他玩家有新玩家加入
 				socket.to(roomName).emit('player-joined', {
 					userId,
-					nickname: socket.data.nickname
+					nickname: socket.data.nickname,
+					avatar: socket.data.avatar
 				});
 			} catch {
 				socket.emit('error', { message: '加入房間失敗，請稍後再試' });
