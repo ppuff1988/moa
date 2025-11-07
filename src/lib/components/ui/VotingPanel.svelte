@@ -168,7 +168,33 @@
 			</button>
 		</div>
 	{:else}
-		<p class="action-hint">等待房主提交投票結果...</p>
+		<div class="waiting-container">
+			<div class="waiting-content">
+				<div class="waiting-icon">
+					<svg
+						class="hourglass-icon"
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M5 22h14" />
+						<path d="M5 2h14" />
+						<path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+						<path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+					</svg>
+				</div>
+				<h3 class="waiting-title">房主設定中</h3>
+				<div class="waiting-dots">
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="dot"></span>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>
 
@@ -220,11 +246,11 @@
 	.voting-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0;
 	}
 
 	.skills-header {
-		margin-bottom: 1rem;
+		margin-bottom: 0;
 	}
 
 	.action-subtitle {
@@ -370,12 +396,117 @@
 		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
 	}
 
-	.action-hint {
-		color: hsl(var(--muted-foreground));
+	/* 等待容器樣式 */
+	.waiting-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		padding: 0.5rem 2rem 3rem;
+		min-height: 280px;
+	}
+
+	.waiting-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.5rem;
+		max-width: 500px;
 		text-align: center;
-		padding: 2rem;
-		font-size: 1rem;
+	}
+
+	.waiting-icon {
+		width: 88px;
+		height: 88px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.3));
+		border-radius: 50%;
+		border: 3px solid rgba(212, 175, 55, 0.5);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.3);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	.hourglass-icon {
+		width: 44px;
+		height: 44px;
+		color: rgba(212, 175, 55, 1);
+		animation: rotate-hourglass 3s ease-in-out infinite;
+	}
+
+	@keyframes rotate-hourglass {
+		0%,
+		100% {
+			transform: rotate(0deg);
+		}
+		50% {
+			transform: rotate(180deg);
+		}
+	}
+
+	@keyframes pulse-glow {
+		0%,
+		100% {
+			box-shadow:
+				0 8px 24px rgba(212, 175, 55, 0.3),
+				0 0 0 0 rgba(212, 175, 55, 0.4);
+		}
+		50% {
+			box-shadow:
+				0 8px 32px rgba(212, 175, 55, 0.5),
+				0 0 0 15px rgba(212, 175, 55, 0);
+		}
+	}
+
+	.waiting-title {
+		color: hsl(var(--foreground));
+		font-size: 1.5rem;
+		font-weight: 700;
 		margin: 0;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		line-height: 1.3;
+	}
+
+	.waiting-dots {
+		display: flex;
+		gap: 0.625rem;
+		align-items: center;
+		justify-content: center;
+		margin-top: 0.25rem;
+	}
+
+	.dot {
+		width: 12px;
+		height: 12px;
+		background: rgba(212, 175, 55, 0.8);
+		border-radius: 50%;
+		animation: bounce-dots 1.4s ease-in-out infinite;
+		box-shadow: 0 2px 4px rgba(212, 175, 55, 0.3);
+	}
+
+	.dot:nth-child(1) {
+		animation-delay: 0s;
+	}
+
+	.dot:nth-child(2) {
+		animation-delay: 0.2s;
+	}
+
+	.dot:nth-child(3) {
+		animation-delay: 0.4s;
+	}
+
+	@keyframes bounce-dots {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.7;
+		}
+		30% {
+			transform: translateY(-15px);
+			opacity: 1;
+		}
 	}
 
 	.modal-overlay {
@@ -579,6 +710,30 @@
 
 		.modal-warning {
 			font-size: 0.875rem;
+		}
+
+		.waiting-container {
+			padding: 0.5rem 1.25rem 2.5rem;
+			min-height: 240px;
+		}
+
+		.waiting-icon {
+			width: 72px;
+			height: 72px;
+		}
+
+		.hourglass-icon {
+			width: 36px;
+			height: 36px;
+		}
+
+		.waiting-title {
+			font-size: 1.25rem;
+		}
+
+		.dot {
+			width: 10px;
+			height: 10px;
 		}
 	}
 </style>
