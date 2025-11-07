@@ -401,15 +401,15 @@
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		padding: 0.5rem 2rem 3rem;
-		min-height: 280px;
+		padding: 0.5rem 2rem 1rem;
+		min-height: auto;
 	}
 
 	.waiting-content {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 1.5rem;
+		gap: 1.25rem;
 		max-width: 500px;
 		text-align: center;
 	}
@@ -713,8 +713,8 @@
 		}
 
 		.waiting-container {
-			padding: 0.5rem 1.25rem 2.5rem;
-			min-height: 240px;
+			padding: 0.5rem 1.25rem 1rem;
+			min-height: auto;
 		}
 
 		.waiting-icon {
