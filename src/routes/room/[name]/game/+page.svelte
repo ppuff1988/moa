@@ -1085,22 +1085,18 @@
 						</div>
 					</div>
 				{:else if $roundPhase === 'result'}
-					<div class="action-area">
-						<div class="action-content">
-							<VotingResultPanel
-								{roomName}
-								beastHeads={$beastHeads}
-								isHost={$isHost}
-								currentRound={$currentRound}
-								onNextRound={async () => {
-									await fetchArtifacts();
-									await updatePlayersAndRound();
-									await fetchRoundStatus();
-									gameState.resetSkillsForNewTurn();
-								}}
-							/>
-						</div>
-					</div>
+					<VotingResultPanel
+						{roomName}
+						beastHeads={$beastHeads}
+						isHost={$isHost}
+						currentRound={$currentRound}
+						onNextRound={async () => {
+							await fetchArtifacts();
+							await updatePlayersAndRound();
+							await fetchRoundStatus();
+							gameState.resetSkillsForNewTurn();
+						}}
+					/>
 				{:else if $roundPhase === 'identification'}
 					<div class="action-area">
 						<div class="action-content">

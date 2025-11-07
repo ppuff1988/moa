@@ -3,6 +3,7 @@
 	import { addNotification } from '$lib/stores/notifications';
 	import { chineseNumeral } from '$lib/utils/round';
 	import SettlementButton from '$lib/components/game/SettlementButton.svelte';
+	import Portal from '$lib/components/ui/Portal.svelte';
 
 	interface BeastHead {
 		id: number;
@@ -17,21 +18,33 @@
 	export let isHost: boolean = false;
 	export let currentRound: number = 1;
 	export let onNextRound: () => void = () => {};
+	export let isOpen: boolean = true;
 
-	// 獲取排名前兩名的獸首
-	$: topTwo = beastHeads
-		.filter((b) => b.voteRank === 1 || b.voteRank === 2)
+	// 12生肖排序
+	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
+
+	// 獲取所有獸首並排序（按票數和生肖順序）
+	$: sortedBeasts = beastHeads
+		.filter((b) => b.votes > 0)
 		.sort((a, b) => {
-			if (a.voteRank !== b.voteRank) {
-				return (a.voteRank || 999) - (b.voteRank || 999);
+			// 先按票數降序
+			if (b.votes !== a.votes) {
+				return b.votes - a.votes;
 			}
-			return 0;
+			// 票數相同時按生肖順序
+			const orderA = ZODIAC_ORDER.indexOf(a.animal);
+			const orderB = ZODIAC_ORDER.indexOf(b.animal);
+			return orderA - orderB;
 		});
 
+	// 獲取前兩名用於特殊顯示
+	$: topTwo = sortedBeasts.slice(0, 2);
+
 	// 獲取排名徽章
-	function getRankBadge(voteRank: number | null | undefined): string {
-		if (voteRank === 1) return '🥇'; // 第一名
-		if (voteRank === 2) return '🥈'; // 第二名
+	function getRankBadge(beast: BeastHead): string {
+		const index = topTwo.findIndex((b) => b.id === beast.id);
+		if (index === 0) return '🥇'; // 第一名
+		if (index === 1) return '🥈'; // 第二名
 		return '';
 	}
 
@@ -65,89 +78,147 @@
 	};
 </script>
 
-<div class="voting-result-panel">
-	<div class="result-header">
-		<h4 class="result-title">投票結果公布</h4>
-		<p class="result-description">本回合投票已完成</p>
-	</div>
+<Portal {isOpen}>
+	<div class="modal-backdrop">
+		<div class="modal-dialog">
+			<div class="voting-result-panel">
+				<div class="result-header">
+					<h4 class="result-title">投票結果公布</h4>
+					<p class="result-description">本回合投票已完成</p>
+				</div>
 
-	<div class="result-content">
-		<div class="top-two-results">
-			{#each topTwo as beast (beast.id)}
-				<div class="result-card" class:second-place={beast.voteRank === 2}>
-					<div class="rank-badge-large">{getRankBadge(beast.voteRank)}</div>
-					<div class="beast-info">
-						<h5 class="beast-name">{beast.animal}首</h5>
-						<div class="vote-count">{beast.votes} 票</div>
-					</div>
-					{#if beast.voteRank === 2}
-						<div class="beast-status-large" class:is-real={beast.isGenuine}>
-							{beast.isGenuine ? '真品 ✓' : '贗品 ✗'}
+				<div class="result-content">
+					{#if sortedBeasts.length > 0}
+						<div class="all-results">
+							{#each sortedBeasts as beast, index (beast.id)}
+								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
+									{#if index < 2}
+										<div class="rank-badge-large">{getRankBadge(beast)}</div>
+									{:else}
+										<div class="rank-number">{index + 1}</div>
+									{/if}
+									<div class="beast-info">
+										<h5 class="beast-name">{beast.animal}首</h5>
+										<div class="vote-count">{beast.votes} 票</div>
+									</div>
+									{#if index === 1}
+										<div class="beast-status-large" class:is-real={beast.isGenuine}>
+											{beast.isGenuine ? '真品 ✓' : '贗品 ✗'}
+										</div>
+									{:else if index === 0}
+										<div class="beast-status-pending">待揭曉</div>
+									{/if}
+								</div>
+							{/each}
 						</div>
 					{:else}
-						<div class="beast-status-pending">待揭曉</div>
+						<div class="no-votes-message">
+							<p>尚未有投票結果</p>
+						</div>
+					{/if}
+
+					{#if isHost}
+						<div class="host-actions">
+							{#if currentRound < 3}
+								<button class="primary-btn start-round-btn" on:click={startNextRound}>
+									開始第{chineseNumeral(currentRound + 1)}回合
+								</button>
+							{:else}
+								<SettlementButton {roomName} {currentRound} {isHost} />
+							{/if}
+						</div>
+					{:else}
+						<p class="action-hint">
+							{#if currentRound < 3}
+								等待房主開始下一回合...
+							{:else}
+								等待房主進行遊戲結算...
+							{/if}
+						</p>
 					{/if}
 				</div>
-			{/each}
-		</div>
-
-		<!--{#if secondPlace}-->
-		<!--	<div class="announcement">-->
-		<!--		<div class="announcement-icon">📢</div>-->
-		<!--		<p class="announcement-text">-->
-		<!--			第二名 <strong>{secondPlace.animal}首</strong> 為-->
-		<!--			<strong class:genuine={secondPlace.isGenuine} class:fake={!secondPlace.isGenuine}>-->
-		<!--				{secondPlace.isGenuine ? '真品' : '贗品'}-->
-		<!--			</strong>-->
-		<!--		</p>-->
-		<!--	</div>-->
-		<!--{/if}-->
-
-		{#if isHost}
-			<div class="host-actions">
-				{#if currentRound < 3}
-					<button class="primary-btn start-round-btn" on:click={startNextRound}>
-						開始第{chineseNumeral(currentRound + 1)}回合
-					</button>
-				{:else}
-					<SettlementButton {roomName} {currentRound} {isHost} />
-				{/if}
 			</div>
-		{:else}
-			<p class="action-hint">
-				{#if currentRound < 3}
-					等待房主開始下一回合...
-				{:else}
-					等待房主進行遊戲結算...
-				{/if}
-			</p>
-		{/if}
+		</div>
 	</div>
-</div>
+</Portal>
 
 <style>
+	.modal-backdrop {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.85);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 10000;
+		animation: fadeIn 0.3s ease-out;
+		padding: 1rem;
+		box-sizing: border-box;
+		pointer-events: auto;
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	.modal-dialog {
+		max-width: 900px;
+		width: 100%;
+		max-height: calc(100vh - 2rem);
+		overflow-y: auto;
+		animation: slideIn 0.4s ease-out;
+	}
+
+	@keyframes slideIn {
+		from {
+			transform: translateY(-50px) scale(0.95);
+			opacity: 0;
+		}
+		to {
+			transform: translateY(0) scale(1);
+			opacity: 1;
+		}
+	}
+
 	.voting-result-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 1.5rem;
-		padding: 1.5rem;
+		gap: 1rem;
+		padding: 2rem 2.5rem;
+		background: linear-gradient(135deg, #2d1810 0%, #1a0f0a 100%);
+		border: 3px solid #d4af37;
+		border-radius: 20px;
+		box-shadow:
+			0 20px 60px rgba(212, 175, 55, 0.4),
+			0 0 40px rgba(212, 175, 55, 0.2);
 	}
 
 	.result-header {
 		text-align: center;
-		margin-bottom: 1rem;
+		margin-bottom: 0.5rem;
 	}
 
 	.result-title {
-		color: hsl(var(--foreground));
-		font-size: 1.5rem;
+		color: #d4af37;
+		font-size: 1.875rem;
 		font-weight: 700;
-		margin: 0 0 0.5rem 0;
-		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+		margin: 0 0 0.75rem 0;
+		text-shadow:
+			0 0 20px rgba(212, 175, 55, 0.6),
+			0 2px 4px rgba(0, 0, 0, 0.3);
+		letter-spacing: 0.05em;
 	}
 
 	.result-description {
-		color: hsl(var(--muted-foreground));
+		color: #e8d4a0;
 		font-size: 1rem;
 		margin: 0;
 	}
@@ -155,53 +226,80 @@
 	.result-content {
 		display: flex;
 		flex-direction: column;
-		gap: 2rem;
+		gap: 1.5rem;
 		align-items: center;
+		width: 100%;
 	}
 
-	.top-two-results {
-		display: flex;
-		gap: 2rem;
-		justify-content: center;
-		flex-wrap: wrap;
+	.all-results {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 1.25rem;
 		width: 100%;
-		max-width: 800px;
+		max-width: 900px;
+	}
+
+	.no-votes-message {
+		text-align: center;
+		padding: 2rem;
+		color: #e8d4a0;
+		font-size: 1.125rem;
 	}
 
 	.result-card {
-		flex: 1;
-		min-width: 280px;
-		max-width: 360px;
-		background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(184, 151, 90, 0.1) 100%);
-		border: 3px solid rgba(212, 175, 55, 0.5);
+		background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(184, 151, 90, 0.08) 100%);
+		border: 2px solid rgba(212, 175, 55, 0.3);
 		border-radius: 16px;
-		padding: 2rem;
+		padding: 1.5rem 1.75rem;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 1rem;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-		transition: var(--transition-elegant);
+		gap: 0.875rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		transition: all 0.3s ease;
+		min-height: 180px;
+		justify-content: center;
+	}
+
+	.result-card.top-one {
+		background: linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(184, 151, 90, 0.15) 100%);
+		border: 3px solid rgba(212, 175, 55, 0.7);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.3);
+	}
+
+	.result-card.top-two {
+		background: linear-gradient(
+			135deg,
+			rgba(192, 192, 192, 0.25) 0%,
+			rgba(169, 169, 169, 0.15) 100%
+		);
+		border: 3px solid rgba(192, 192, 192, 0.7);
+		box-shadow: 0 8px 24px rgba(192, 192, 192, 0.25);
 	}
 
 	.result-card:hover {
-		transform: translateY(-4px);
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-	}
-
-	.result-card.second-place {
-		background: linear-gradient(
-			135deg,
-			rgba(192, 192, 192, 0.2) 0%,
-			rgba(169, 169, 169, 0.15) 100%
-		);
-		border-color: rgba(192, 192, 192, 0.6);
+		transform: translateY(-2px);
+		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 	}
 
 	.rank-badge-large {
-		font-size: 4rem;
+		font-size: 3.5rem;
 		filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 		animation: bounce 0.6s ease-in-out;
+	}
+
+	.rank-number {
+		font-size: 2rem;
+		font-weight: 700;
+		color: rgba(212, 175, 55, 0.6);
+		width: 3.5rem;
+		height: 3.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 2px solid rgba(212, 175, 55, 0.4);
+		border-radius: 50%;
+		background: rgba(212, 175, 55, 0.1);
 	}
 
 	@keyframes bounce {
@@ -219,14 +317,14 @@
 	}
 
 	.beast-name {
-		color: hsl(var(--foreground));
+		color: #d4af37;
 		font-size: 1.75rem;
 		font-weight: 700;
 		margin: 0 0 0.5rem 0;
 	}
 
 	.vote-count {
-		color: hsl(var(--muted-foreground));
+		color: #e8d4a0;
 		font-size: 1.25rem;
 		font-weight: 600;
 	}
@@ -255,23 +353,12 @@
 	.beast-status-pending {
 		font-size: 1.25rem;
 		font-weight: 600;
-		color: hsl(var(--muted-foreground));
+		color: #e8d4a0;
 		padding: 0.75rem 1.5rem;
 		border-radius: 12px;
 		background: rgba(255, 255, 255, 0.1);
-		border: 2px dashed rgba(255, 255, 255, 0.3);
+		border: 2px dashed rgba(212, 175, 55, 0.5);
 		white-space: nowrap;
-	}
-
-	@keyframes slideIn {
-		from {
-			opacity: 0;
-			transform: translateY(-20px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
 	}
 
 	.host-actions {
@@ -281,25 +368,25 @@
 	.primary-btn {
 		padding: 1rem 2.5rem;
 		border: none;
-		border-radius: calc(var(--radius));
+		border-radius: 12px;
 		font-weight: 700;
 		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.3s ease;
 		font-size: 1.125rem;
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
+		background: linear-gradient(135deg, #d4af37 0%, #b8975a 100%);
+		color: #1a0f0a;
 		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
 	}
 
 	.primary-btn:hover:not(:disabled) {
-		background: hsl(var(--secondary) / 0.9);
+		background: linear-gradient(135deg, #e8c456 0%, #d4af37 100%);
 		transform: translateY(-2px);
 		box-shadow: 0 8px 20px rgba(212, 175, 55, 0.5);
 	}
 
 	.primary-btn:disabled {
-		background: hsl(var(--muted));
-		color: hsl(var(--muted-foreground));
+		background: #666;
+		color: #999;
 		cursor: not-allowed;
 		opacity: 0.5;
 	}
@@ -320,7 +407,7 @@
 	}
 
 	.action-hint {
-		color: hsl(var(--muted-foreground));
+		color: #e8d4a0;
 		text-align: center;
 		padding: 1.5rem;
 		font-size: 1rem;
@@ -328,19 +415,40 @@
 	}
 
 	@media (max-width: 768px) {
-		.top-two-results {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
+		.modal-dialog {
+			max-height: calc(100vh - 1rem);
+		}
+
+		.voting-result-panel {
+			padding: 1.5rem;
+		}
+
+		.result-title {
+			font-size: 1.5rem;
+		}
+
+		.result-description {
+			font-size: 0.9375rem;
+		}
+
+		.all-results {
+			grid-template-columns: repeat(2, 1fr);
 			gap: 1rem;
 		}
 
 		.result-card {
-			min-width: unset;
-			padding: 1rem;
+			min-height: 160px;
+			padding: 1.25rem;
 		}
 
 		.rank-badge-large {
 			font-size: 2.5rem;
+		}
+
+		.rank-number {
+			font-size: 1.5rem;
+			width: 2.5rem;
+			height: 2.5rem;
 		}
 
 		.beast-name {
@@ -361,6 +469,40 @@
 			font-size: 0.875rem;
 			padding: 0.5rem 0.75rem;
 			white-space: nowrap;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.voting-result-panel {
+			padding: 1.25rem;
+		}
+
+		.all-results {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 0.75rem;
+		}
+
+		.result-card {
+			min-height: 140px;
+			padding: 1rem;
+		}
+
+		.rank-badge-large {
+			font-size: 2rem;
+		}
+
+		.rank-number {
+			font-size: 1.25rem;
+			width: 2rem;
+			height: 2rem;
+		}
+
+		.beast-name {
+			font-size: 1.125rem;
+		}
+
+		.vote-count {
+			font-size: 0.9375rem;
 		}
 	}
 </style>

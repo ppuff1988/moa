@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getJWTToken } from '$lib/utils/jwt';
 	import { addNotification } from '$lib/stores/notifications';
+	import Portal from '$lib/components/ui/Portal.svelte';
 
 	interface BeastHead {
 		id: number;
@@ -199,7 +200,7 @@
 </div>
 
 <!-- 確認對話框 -->
-{#if showConfirmDialog}
+<Portal isOpen={showConfirmDialog}>
 	<div class="modal-overlay">
 		<div class="modal-container">
 			<div class="confirm-dialog-content">
@@ -240,7 +241,7 @@
 			</div>
 		</div>
 	</div>
-{/if}
+</Portal>
 
 <style>
 	.voting-panel {
@@ -519,8 +520,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 1000;
+		z-index: 10000;
 		backdrop-filter: blur(6px);
+		pointer-events: auto;
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
 
 	.modal-container {
