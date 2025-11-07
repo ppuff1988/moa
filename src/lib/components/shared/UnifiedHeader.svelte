@@ -34,7 +34,7 @@
 	<div class="room-info">
 		<div class="info-row">
 			<!-- 返回首頁按鈕 -->
-			<a href="/" class="back-home-btn" title="返回首頁">
+			<a href="/" class="back-home-btn" title="返回首頁" aria-label="返回首頁">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					width="20"
