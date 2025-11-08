@@ -11,6 +11,7 @@
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
 	interface User {
+		id: number;
 		nickname: string;
 		username: string;
 		email: string;
@@ -54,7 +55,7 @@
 			});
 
 			if (response.ok) {
-				user = await response.json();
+				user = (await response.json()) as User;
 
 				// 獲取用戶當前遊戲狀態
 				const gameResponse = await fetch('/api/user/current-game', {
@@ -154,6 +155,7 @@
 	/>
 
 	<UserArea
+		userId={user.id}
 		nickname={user.nickname}
 		email={user.email}
 		avatar={user.avatar || null}

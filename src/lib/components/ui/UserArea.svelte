@@ -1,4 +1,5 @@
 <script lang="ts">
+	export let userId: number;
 	export let nickname: string;
 	export let email: string = '';
 	export let avatar: string | null = null;
@@ -15,17 +16,14 @@
 	// 從 email 或 nickname 生成頭像文字（取第一個字符）
 	$: avatarText = (nickname || email || '?').charAt(0).toUpperCase();
 
-	// 根據字串生成顏色
-	function stringToColor(str: string): string {
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			hash = str.charCodeAt(i) + ((hash << 5) - hash);
-		}
-		const hue = hash % 360;
+	// 根據 userId 生成顏色（確保每個用戶的顏色是穩定且唯一的，與 PlayerCard 一致）
+	function userIdToColor(userId: number): string {
+		// 使用 userId 來生成穩定的顏色
+		const hue = (userId * 137.508) % 360; // 使用黃金角度來分散顏色
 		return `hsl(${hue}, 65%, 55%)`;
 	}
 
-	$: avatarBgColor = stringToColor(email || nickname);
+	$: avatarBgColor = userIdToColor(userId);
 
 	function toggleDropdown() {
 		isDropdownOpen = !isDropdownOpen;
