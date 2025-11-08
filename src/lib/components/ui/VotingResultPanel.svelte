@@ -397,15 +397,6 @@
 		animation: none;
 	}
 
-	.round-arrow {
-		font-size: 1.25rem;
-		transition: transform 0.3s ease;
-	}
-
-	.start-round-btn:hover:not(:disabled) .round-arrow {
-		transform: translateX(6px);
-	}
-
 	@keyframes pulse-glow {
 		0%,
 		100% {

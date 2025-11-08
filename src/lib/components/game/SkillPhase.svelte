@@ -437,11 +437,14 @@
 		border-radius: 1rem;
 		padding: 2px;
 		background: linear-gradient(135deg, currentColor, transparent);
+		mask:
+			linear-gradient(#fff 0 0) content-box,
+			linear-gradient(#fff 0 0);
+		mask-composite: exclude;
 		-webkit-mask:
 			linear-gradient(#fff 0 0) content-box,
 			linear-gradient(#fff 0 0);
 		-webkit-mask-composite: xor;
-		mask-composite: exclude;
 		opacity: 0.5;
 	}
 
@@ -686,12 +689,7 @@
 
 	.player-btn-inline:hover .select-arrow {
 		opacity: 1;
-		transform: translateX(3px);
-		color: #d4af37;
-	}
-
-	.player-btn-inline.attack-target:hover .select-arrow {
-		color: #ef4444;
+		transform: translateX(4px);
 	}
 
 	/* ===== 玩家結果 ===== */

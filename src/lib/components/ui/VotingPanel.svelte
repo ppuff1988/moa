@@ -419,30 +419,6 @@
 		background: rgba(255, 255, 255, 0.12);
 	}
 
-	.primary-btn {
-		padding: 0.75rem 1.5rem;
-		border: none;
-		border-radius: calc(var(--radius));
-		font-weight: 600;
-		cursor: pointer;
-		transition: var(--transition-elegant);
-		font-size: 1rem;
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
-	}
-
-	.primary-btn:hover:not(:disabled) {
-		background: hsl(var(--secondary) / 0.9);
-		transform: translateY(-1px);
-	}
-
-	.primary-btn:disabled {
-		background: hsl(var(--muted));
-		color: hsl(var(--muted-foreground));
-		cursor: not-allowed;
-		opacity: 0.5;
-	}
-
 	.submit-votes-btn {
 		display: inline-flex;
 		align-items: center;
