@@ -1361,11 +1361,14 @@
 	}
 
 	.action-area {
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		border-radius: calc(var(--radius));
-		padding: 1rem;
-		backdrop-filter: blur(10px);
+		background: rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(212, 175, 55, 0.4);
+		border-radius: calc(var(--radius) * 1.5);
+		padding: 1.5rem;
+		backdrop-filter: blur(15px);
+		box-shadow:
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.action-content {
@@ -1445,7 +1448,12 @@
 		transform: translateY(-1px);
 	}
 
-	.start-voting-btn:hover {
+	.voting-arrow {
+		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.start-voting-btn:hover .voting-arrow {
 		transform: translateX(6px);
 	}
 
@@ -1459,13 +1467,9 @@
 		align-items: center;
 		gap: 1.5rem;
 		padding: 2rem;
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
-		border: 2px solid rgba(255, 255, 255, 0.2);
-		border-radius: calc(var(--radius) * 1.5);
-		backdrop-filter: blur(15px);
-		box-shadow:
-			0 8px 32px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		background: transparent;
+		border: none;
+		border-radius: 0;
 	}
 
 	.phase-icon {

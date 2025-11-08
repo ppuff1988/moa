@@ -690,9 +690,8 @@
 		color: #d4af37;
 	}
 
-	.player-btn-inline.attack-target:hover {
-		opacity: 1;
-		transform: scale(1.2);
+	.player-btn-inline.attack-target:hover .select-arrow {
+		color: #ef4444;
 	}
 
 	/* ===== 玩家結果 ===== */
