@@ -30,6 +30,7 @@
 	let totalEligibleVoters = players.length;
 	let allPlayersVoted = false;
 	let isPublishing = false;
+	let phaseElement: HTMLDivElement | null = null;
 
 	// 根據當前角色決定可以投票的對象
 	$: currentPlayerRole = players.find((p) => p.userId === currentUser?.id)?.roleName;
@@ -141,6 +142,16 @@
 	};
 
 	onMount(() => {
+		// 自動滾動到鑑人階段
+		if (phaseElement) {
+			setTimeout(() => {
+				phaseElement?.scrollIntoView({
+					behavior: 'smooth',
+					block: 'start'
+				});
+			}, 100);
+		}
+
 		const socket = getSocket();
 		if (!socket) return;
 
@@ -181,7 +192,7 @@
 	});
 </script>
 
-<div class="identification-phase">
+<div class="identification-phase" bind:this={phaseElement}>
 	<div class="phase-header">
 		<h3>🔍 鑑人階段</h3>
 		<p class="phase-description">並未找出全部真品，投票找出目標角色</p>
@@ -303,9 +314,8 @@
 <style>
 	.identification-phase {
 		padding: 2rem;
-		background: rgba(0, 0, 0, 0.3);
+		background: transparent;
 		border-radius: 1rem;
-		backdrop-filter: blur(10px);
 	}
 
 	.phase-header {
