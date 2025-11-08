@@ -286,8 +286,8 @@
 		.unified-header {
 			flex-direction: column;
 			align-items: stretch;
-			gap: 0.75rem;
-			padding: 0.75rem 1rem;
+			gap: 0.5rem; /* 從 0.75rem 縮小到 0.5rem */
+			padding: 0.625rem 0.75rem; /* 上下從 0.75rem 縮小到 0.625rem */
 		}
 
 		.room-info {
@@ -297,8 +297,9 @@
 		.info-row {
 			flex-direction: column;
 			align-items: flex-start;
-			gap: 0.5rem;
+			gap: 0.35rem; /* 從 0.5rem 縮小到 0.35rem */
 			width: 100%;
+			padding: 0;
 		}
 
 		/* 返回按鈕在移動版變小 */
@@ -308,6 +309,7 @@
 			position: absolute;
 			left: 0.75rem;
 			top: 0.75rem;
+			z-index: 10;
 		}
 
 		.back-home-btn svg {
@@ -317,12 +319,18 @@
 
 		/* 房間號碼區塊在移動版調整 padding，為按鈕留空間 */
 		.room-id-section {
-			padding-right: 0;
-			padding-bottom: 0.5rem;
-			padding-left: 3rem;
+			padding-right: 3.25rem; /* 修正：與左邊 padding-left 一致，保持左右對稱 */
+			padding-bottom: 0.5rem; /* 從 0.75rem 縮小到 0.5rem */
+			padding-left: 3.25rem;
+			padding-top: 0.25rem;
 			border-right: none;
-			border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+			border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 			width: 100%;
+			box-sizing: border-box;
+			margin-bottom: 0.5rem; /* 從 0.75rem 縮小到 0.5rem */
+			min-height: 2.5rem;
+			display: flex;
+			align-items: center;
 		}
 
 		.room-number {
@@ -331,15 +339,19 @@
 
 		.info-section {
 			width: 100%;
+			padding: 0.3rem 0; /* 從 0.5rem 縮小到 0.3rem */
 		}
 
 		.teammate-section,
 		.status-section {
 			padding-left: 0;
-			padding-top: 0.5rem;
+			padding-top: 0.4rem; /* 從 0.625rem 縮小到 0.4rem */
+			padding-bottom: 0.1rem; /* 從 0.125rem 縮小到 0.1rem */
 			border-left: none;
-			border-top: 2px solid rgba(239, 68, 68, 0.3);
+			border-top: 1px solid rgba(239, 68, 68, 0.3);
 			width: 100%;
+			box-sizing: border-box;
+			margin-top: 0.3rem; /* 從 0.5rem 縮小到 0.3rem */
 		}
 
 		.status-section {
