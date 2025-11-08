@@ -1087,7 +1087,8 @@
 							$roundPhase === 'voting' ||
 							($roundPhase === 'action' &&
 								isMyTurn &&
-								($gamePhase === 'skill' || $gamePhase === 'assign-next'))}
+								($gamePhase === 'skill' || $gamePhase === 'assign-next') &&
+								$currentPlayerRole !== '鄭國渠')}
 						showIdentifyHint={$roundPhase === 'action' &&
 							isMyTurn &&
 							$gamePhase === 'identification'}
@@ -1199,6 +1200,7 @@
 									remainingSkills={$remainingSkills}
 									identifiedPlayers={$identifiedPlayers}
 									selectedBeastHead={$selectedBeastHead}
+									beastHeads={$beastHeads}
 									{attackablePlayers}
 									onCheckPlayer={checkPlayer}
 									onBlockArtifact={(beastId) => {
@@ -1258,13 +1260,22 @@
 		z-index: 1;
 	}
 
+	.loading-container p {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+	}
+
 	.loading-spinner {
 		width: 3rem;
 		height: 3rem;
-		border: 3px solid hsl(var(--muted));
-		border-top: 3px solid hsl(var(--primary));
+		border: 3px solid rgba(212, 175, 55, 0.3);
+		border-top: 3px solid #d4af37;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
+		box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
 	}
 
 	@keyframes spin {
@@ -1473,5 +1484,13 @@
 		gap: 1rem;
 		padding: 2rem;
 		text-align: center;
+	}
+
+	.loading-result p {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 </style>

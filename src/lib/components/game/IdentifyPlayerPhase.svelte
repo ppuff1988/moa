@@ -197,19 +197,21 @@
 		<div class="voting-section">
 			{#if canVoteLaoChaoFeng}
 				<div class="vote-group">
-					<h4>許愿陣營：找出老朝奉</h4>
-					<p class="vote-hint">需過半數票選才能成功找出 (+1分)</p>
+					<div class="vote-header">
+						<h4>許愿陣營：找出老朝奉</h4>
+						<p class="vote-hint">需過半數票選才能成功找出 (+1分)</p>
+					</div>
 					<div class="player-selection">
 						{#each otherPlayers as player (player.id)}
-							<label class="player-option">
-								<input
-									type="radio"
-									name="laoChaoFeng"
-									value={player.id}
-									bind:group={selectedLaoChaoFeng}
-								/>
-								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-							</label>
+							<button
+								class="player-btn-inline"
+								class:selected={selectedLaoChaoFeng === player.id}
+								on:click={() => (selectedLaoChaoFeng = Number(player.id))}
+							>
+								<span class="player-dot" style:background-color={player.colorCode || '#888'}></span>
+								<span class="player-name">{player.nickname}</span>
+								<span class="select-icon">{selectedLaoChaoFeng === player.id ? '✓' : ''}</span>
+							</button>
 						{/each}
 					</div>
 				</div>
@@ -217,14 +219,21 @@
 
 			{#if canVoteXuYuan}
 				<div class="vote-group">
-					<h4>老朝奉：找出許愿</h4>
-					<p class="vote-hint">找出許愿則老朝奉不失分，否則許愿陣營 +2分</p>
+					<div class="vote-header">
+						<h4>老朝奉：找出許愿</h4>
+						<p class="vote-hint">找出許愿則老朝奉不失分，否則許愿陣營 +2分</p>
+					</div>
 					<div class="player-selection">
 						{#each otherPlayers as player (player.id)}
-							<label class="player-option">
-								<input type="radio" name="xuYuan" value={player.id} bind:group={selectedXuYuan} />
-								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-							</label>
+							<button
+								class="player-btn-inline"
+								class:selected={selectedXuYuan === player.id}
+								on:click={() => (selectedXuYuan = Number(player.id))}
+							>
+								<span class="player-dot" style:background-color={player.colorCode || '#888'}></span>
+								<span class="player-name">{player.nickname}</span>
+								<span class="select-icon">{selectedXuYuan === player.id ? '✓' : ''}</span>
+							</button>
 						{/each}
 					</div>
 				</div>
@@ -232,19 +241,21 @@
 
 			{#if canVoteFangZhen}
 				<div class="vote-group">
-					<h4>藥不然：找出方震</h4>
-					<p class="vote-hint">找出方震則藥不然不失分，否則許愿陣營 +1分</p>
+					<div class="vote-header">
+						<h4>藥不然：找出方震</h4>
+						<p class="vote-hint">找出方震則藥不然不失分，否則許愿陣營 +1分</p>
+					</div>
 					<div class="player-selection">
 						{#each otherPlayers as player (player.id)}
-							<label class="player-option">
-								<input
-									type="radio"
-									name="fangZhen"
-									value={player.id}
-									bind:group={selectedFangZhen}
-								/>
-								<span class="player-name" style="color: {player.colorCode}">{player.nickname}</span>
-							</label>
+							<button
+								class="player-btn-inline"
+								class:selected={selectedFangZhen === player.id}
+								on:click={() => (selectedFangZhen = Number(player.id))}
+							>
+								<span class="player-dot" style:background-color={player.colorCode || '#888'}></span>
+								<span class="player-name">{player.nickname}</span>
+								<span class="select-icon">{selectedFangZhen === player.id ? '✓' : ''}</span>
+							</button>
 						{/each}
 					</div>
 				</div>
@@ -344,51 +355,107 @@
 		border-radius: 0.75rem;
 	}
 
+	.vote-header {
+		margin-bottom: 1.25rem;
+	}
+
 	.vote-group h4 {
 		color: hsl(var(--foreground));
-		font-size: 1.25rem;
+		font-size: 1.125rem;
+		font-weight: 600;
 		margin: 0 0 0.5rem 0;
-		white-space: nowrap;
 	}
 
 	.vote-hint {
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
-		margin: 0 0 1rem 0;
+		margin: 0;
 	}
 
 	.player-selection {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 		gap: 0.75rem;
+		padding: 0.5rem 0;
 	}
 
-	.player-option {
+	.player-btn-inline {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		background: rgba(255, 255, 255, 0.03);
-		border-radius: 0.5rem;
+		gap: 0.75rem;
+		padding: 0.875rem 1.25rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: calc(var(--radius));
+		color: hsl(var(--foreground));
+		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.2s;
-		border: 1px solid transparent;
+		transition: all 0.2s ease;
+		position: relative;
+		overflow: hidden;
+		font-size: 1rem;
 	}
 
-	.player-option:hover {
-		background: rgba(255, 255, 255, 0.08);
-		border-color: rgba(255, 255, 255, 0.2);
+	.player-btn-inline::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.2), transparent);
+		transition: left 0.5s ease;
 	}
 
-	.player-option input[type='radio'] {
-		width: 1rem;
-		height: 1rem;
-		cursor: pointer;
+	.player-btn-inline:hover::before {
+		left: 100%;
+	}
+
+	.player-btn-inline:hover {
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(212, 175, 55, 0.6);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+	}
+
+	.player-btn-inline:active {
+		transform: translateY(0);
+	}
+
+	.player-btn-inline.selected {
+		background: rgba(212, 175, 55, 0.15);
+		border-color: rgba(212, 175, 55, 0.8);
+		box-shadow: 0 0 12px rgba(212, 175, 55, 0.4);
+	}
+
+	.player-dot {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		border: 2px solid rgba(255, 255, 255, 0.4);
+		box-shadow: 0 0 8px currentColor;
+		display: inline-block;
 	}
 
 	.player-name {
+		flex: 1;
+		text-align: left;
 		font-weight: 500;
-		font-size: 1rem;
+	}
+
+	.select-icon {
+		color: #d4af37;
+		font-size: 1.25rem;
+		font-weight: 700;
+		min-width: 1.25rem;
+		text-align: center;
+		opacity: 0;
+		transition: all 0.2s ease;
+	}
+
+	.player-btn-inline.selected .select-icon {
+		opacity: 1;
 	}
 
 	.submit-btn {
@@ -506,8 +573,6 @@
 
 		.vote-group h4 {
 			font-size: 1rem;
-			white-space: normal;
-			word-break: keep-all;
 		}
 
 		.vote-hint {
@@ -519,13 +584,22 @@
 			gap: 0.5rem;
 		}
 
-		.player-option {
-			padding: 0.5rem;
-			font-size: 0.9rem;
+		.player-btn-inline {
+			padding: 0.75rem 0.875rem;
+			gap: 0.5rem;
+		}
+
+		.player-dot {
+			width: 12px;
+			height: 12px;
 		}
 
 		.player-name {
-			font-size: 0.9rem;
+			font-size: 0.875rem;
+		}
+
+		.select-icon {
+			font-size: 1rem;
 		}
 
 		.submit-btn {

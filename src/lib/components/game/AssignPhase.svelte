@@ -54,50 +54,6 @@
 		gap: 1.5rem;
 	}
 
-	/* 進度區塊 */
-	.progress-section {
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		border-radius: calc(var(--radius));
-		padding: 1rem;
-		backdrop-filter: blur(5px);
-	}
-
-	.progress-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.75rem;
-	}
-
-	.progress-label {
-		color: hsl(var(--muted-foreground));
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.progress-count {
-		color: hsl(var(--foreground));
-		font-size: 0.875rem;
-		font-weight: 600;
-	}
-
-	.progress-bar-container {
-		width: 100%;
-		height: 8px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-
-	.progress-bar-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #d4af37, #f4e285);
-		border-radius: 4px;
-		transition: width 0.5s ease;
-		box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-	}
-
 	/* 標題區塊 */
 	.skills-header {
 		display: flex;

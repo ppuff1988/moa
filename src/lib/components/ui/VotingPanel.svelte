@@ -248,10 +248,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0;
+		width: 100%;
+		max-width: 100%;
+		overflow: hidden;
 	}
 
 	.skills-header {
 		margin-bottom: 0;
+		padding: 0 1rem;
 	}
 
 	.action-subtitle {
@@ -274,23 +278,37 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 1.5rem;
-		padding: 1.5rem 0;
+		padding: 1.5rem 1rem;
 		width: 100%;
-		margin: 0 auto;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	.voting-grid {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(2, 1fr);
 		gap: 1rem;
 		width: 100%;
-		max-width: 900px;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
-	@media (max-width: 768px) {
+	@media (max-width: 480px) {
 		.voting-grid {
 			grid-template-columns: repeat(2, 1fr);
-			max-width: 400px;
+			gap: 0.75rem;
+		}
+
+		.voting-section {
+			padding: 1rem 0.5rem;
+		}
+	}
+
+	@media (min-width: 481px) and (max-width: 768px) {
+		.voting-grid {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 1rem;
+			max-width: 500px;
 		}
 	}
 
@@ -301,17 +319,27 @@
 		}
 	}
 
+	@media (min-width: 1025px) {
+		.voting-grid {
+			grid-template-columns: repeat(4, 1fr);
+			max-width: 900px;
+		}
+	}
+
 	.vote-input-row {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		gap: 0.5rem;
-		padding: 1rem;
+		padding: 1rem 0.5rem;
 		background: rgba(255, 255, 255, 0.05);
 		border: 1px solid rgba(255, 255, 255, 0.15);
 		border-radius: calc(var(--radius));
 		transition: var(--transition-elegant);
 		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
 	}
 
 	.vote-input-row:hover {
@@ -327,17 +355,34 @@
 		gap: 0.25rem;
 		text-align: center;
 		cursor: pointer;
+		width: 100%;
+		min-width: 0;
 	}
 
 	.vote-beast-name {
 		color: hsl(var(--foreground));
 		font-weight: 600;
-		font-size: 1rem;
+		font-size: 0.9375rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		width: 100%;
+	}
+
+	@media (max-width: 480px) {
+		.vote-beast-name {
+			font-size: 0.875rem;
+		}
+
+		.vote-input-row {
+			padding: 0.75rem 0.5rem;
+		}
 	}
 
 	.vote-input {
-		width: 70px;
-		padding: 0.5rem;
+		width: 65px;
+		max-width: 100%;
+		padding: 0.5rem 0.25rem;
 		background: rgba(255, 255, 255, 0.1);
 		border: 2px solid rgba(212, 175, 55, 0.4);
 		border-radius: calc(var(--radius) - 2px);
@@ -347,6 +392,15 @@
 		text-align: center;
 		transition: var(--transition-elegant);
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+		box-sizing: border-box;
+	}
+
+	@media (max-width: 480px) {
+		.vote-input {
+			width: 60px;
+			font-size: 0.9375rem;
+			padding: 0.4rem 0.25rem;
+		}
 	}
 
 	.vote-input:focus {
@@ -542,7 +596,19 @@
 		padding: 2.5rem;
 		max-width: 520px;
 		width: 90%;
+		max-height: 90vh;
+		overflow-y: auto;
 		box-shadow: 0 25px 70px rgba(0, 0, 0, 0.6);
+		box-sizing: border-box;
+	}
+
+	@media (max-width: 480px) {
+		.modal-container {
+			padding: 1.5rem 1rem;
+			width: 95%;
+			max-height: 85vh;
+			border-radius: 16px;
+		}
 	}
 
 	/* Modal 內容樣式 */
@@ -550,6 +616,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
+		width: 100%;
+		box-sizing: border-box;
 	}
 
 	.modal-description {
@@ -558,6 +626,13 @@
 		margin: 0 0 1.25rem 0;
 		text-align: center;
 		font-weight: 500;
+	}
+
+	@media (max-width: 480px) {
+		.modal-description {
+			font-size: 0.9375rem;
+			margin-bottom: 1rem;
+		}
 	}
 
 	.vote-summary {
@@ -570,6 +645,16 @@
 		gap: 0.875rem;
 		max-height: 280px;
 		overflow-y: auto;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	@media (max-width: 480px) {
+		.vote-summary {
+			padding: 0.75rem;
+			gap: 0.75rem;
+			max-height: 240px;
+		}
 	}
 
 	.vote-summary-item {
@@ -581,6 +666,15 @@
 		border-radius: 10px;
 		border: 2px solid rgba(184, 151, 90, 0.2);
 		transition: all 0.2s ease;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	@media (max-width: 480px) {
+		.vote-summary-item {
+			padding: 0.75rem 1rem;
+			border-radius: 8px;
+		}
 	}
 
 	.vote-summary-item:hover {
@@ -606,17 +700,43 @@
 		display: flex;
 		align-items: center;
 		gap: 0.625rem;
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	@media (max-width: 480px) {
+		.summary-beast-name {
+			font-size: 1rem;
+			gap: 0.5rem;
+		}
 	}
 
 	.rank-badge-large {
 		font-size: 1.75rem;
 		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+		flex-shrink: 0;
+	}
+
+	@media (max-width: 480px) {
+		.rank-badge-large {
+			font-size: 1.5rem;
+		}
 	}
 
 	.summary-votes {
 		color: #5a5045;
 		font-weight: 700;
 		font-size: 1.25rem;
+		flex-shrink: 0;
+	}
+
+	@media (max-width: 480px) {
+		.summary-votes {
+			font-size: 1.125rem;
+		}
 	}
 
 	.modal-warning {
@@ -628,11 +748,27 @@
 		text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
 	}
 
+	@media (max-width: 480px) {
+		.modal-warning {
+			font-size: 0.875rem;
+			margin-top: 1rem;
+		}
+	}
+
 	.modal-actions {
 		display: flex;
 		gap: 1rem;
 		justify-content: center;
 		margin-top: 1.5rem;
+		width: 100%;
+	}
+
+	@media (max-width: 480px) {
+		.modal-actions {
+			flex-direction: row;
+			gap: 0.75rem;
+			margin-top: 1.25rem;
+		}
 	}
 
 	.secondary-btn {
@@ -646,6 +782,15 @@
 		transition: all 0.2s ease;
 		font-size: 1.0625rem;
 		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+		flex: 1;
+		min-width: 0;
+	}
+
+	@media (max-width: 480px) {
+		.secondary-btn {
+			padding: 0.75rem 1rem;
+			font-size: 1rem;
+		}
 	}
 
 	.secondary-btn:hover {
@@ -666,6 +811,15 @@
 		background: linear-gradient(135deg, #d4af37 0%, #b8975a 100%);
 		color: #2d2416;
 		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+		flex: 1;
+		min-width: 0;
+	}
+
+	@media (max-width: 480px) {
+		.primary-btn {
+			padding: 0.75rem 1rem;
+			font-size: 1rem;
+		}
 	}
 
 	.primary-btn:hover:not(:disabled) {
@@ -680,72 +834,5 @@
 		cursor: not-allowed;
 		opacity: 0.6;
 		box-shadow: none;
-	}
-
-	/* 手機版響應式樣式 */
-	@media (max-width: 768px) {
-		.modal-container {
-			padding: 1.5rem;
-			max-width: 90%;
-		}
-
-		.modal-actions {
-			flex-direction: row;
-			gap: 0.75rem;
-			width: 100%;
-		}
-
-		.secondary-btn,
-		.primary-btn {
-			flex: 1;
-			padding: 0.75rem 1rem;
-			font-size: 0.9375rem;
-			white-space: nowrap;
-			min-width: 0;
-		}
-
-		.summary-beast-name {
-			font-size: 1rem;
-		}
-
-		.summary-votes {
-			font-size: 1.125rem;
-		}
-
-		.rank-badge-large {
-			font-size: 1.5rem;
-		}
-
-		.modal-description {
-			font-size: 0.9375rem;
-		}
-
-		.modal-warning {
-			font-size: 0.875rem;
-		}
-
-		.waiting-container {
-			padding: 0.5rem 1.25rem 1rem;
-			min-height: auto;
-		}
-
-		.waiting-icon {
-			width: 72px;
-			height: 72px;
-		}
-
-		.hourglass-icon {
-			width: 36px;
-			height: 36px;
-		}
-
-		.waiting-title {
-			font-size: 1.25rem;
-		}
-
-		.dot {
-			width: 10px;
-			height: 10px;
-		}
 	}
 </style>
