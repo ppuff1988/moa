@@ -67,6 +67,7 @@
 	let pendingIdentifyBeastId: number | null = $state(null);
 	let isIdentifying = $state(false);
 	let actionAreaElement: HTMLDivElement | null = $state(null);
+	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
 
 	// roomName 需要立即從 URL 參數初始化
 	let roomName = $state($page.params.name || '');
@@ -152,7 +153,8 @@
 			$gamePhase === 'skill' &&
 			$skillActions &&
 			$remainingSkills &&
-			$roundPhase === 'action'
+			$roundPhase === 'action' &&
+			!justUsedSkill // 剛使用完技能時不自動跳轉
 		) {
 			// 檢查是否所有技能都已用完
 			const allSkillsUsed =
@@ -537,6 +539,32 @@
 		isIdentifying = false;
 	}
 
+	// 處理鑑定玩家後的自動跳轉邏輯
+	function handlePostIdentifyTransition(hasRemainingCheckPeople: boolean, delayMs: number = 3000) {
+		justUsedSkill = true;
+
+		if (!hasRemainingCheckPeople) {
+			// 如果鑑人次數用完，延遲後再檢查是否需要跳轉到指派階段
+			setTimeout(() => {
+				justUsedSkill = false;
+				if ($remainingSkills) {
+					const hasOtherSkills =
+						$remainingSkills.block > 0 || $remainingSkills.attack > 0 || $remainingSkills.swap > 0;
+
+					if (!hasOtherSkills) {
+						gamePhase.set('assign-next');
+						addNotification('請指派下一位玩家', 'info', 3000);
+					}
+				}
+			}, delayMs);
+		} else {
+			// 還有鑑人次數，稍後重置標記即可
+			setTimeout(() => {
+				justUsedSkill = false;
+			}, 1500);
+		}
+	}
+
 	async function checkPlayer(playerId: number | string) {
 		if (!$remainingSkills || $remainingSkills.checkPeople <= 0) {
 			addNotification('你沒有剩餘的鑑人次數', 'error');
@@ -594,25 +622,31 @@
 					data.result.camp === 'good' ? 'success' : 'warning',
 					5000
 				);
-			} else {
-				if (data.blocked) {
-					usedSkills.update((s) => ({ ...s, checkPeople: s.checkPeople + 1 }));
-					addNotification(data.message || '無法鑑定此玩家', 'warning', 3000);
 
-					performedActions.update((list) => [
-						...list,
-						{
-							type: 'identify_player',
-							data: {
-								targetPlayerId: playerId,
-								targetPlayerNickname: targetPlayer.nickname,
-								blocked: true
-							}
+				// 處理後續跳轉邏輯
+				const hasRemainingCheckPeople = $remainingSkills && $remainingSkills.checkPeople > 0;
+				handlePostIdentifyTransition(hasRemainingCheckPeople, 3000);
+			} else if (data.blocked) {
+				usedSkills.update((s) => ({ ...s, checkPeople: s.checkPeople + 1 }));
+				addNotification(data.message || '無法鑑定此玩家', 'warning', 3000);
+
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_player',
+						data: {
+							targetPlayerId: playerId,
+							targetPlayerNickname: targetPlayer.nickname,
+							blocked: true
 						}
-					]);
-				} else {
-					addNotification(data.message || '鑑定失敗', 'error');
-				}
+					}
+				]);
+
+				// 被封鎖的情況也使用相同的跳轉邏輯，但延遲較短
+				const hasRemainingCheckPeople = $remainingSkills && $remainingSkills.checkPeople > 0;
+				handlePostIdentifyTransition(hasRemainingCheckPeople, 2000);
+			} else {
+				addNotification(data.message || '鑑定失敗', 'error');
 			}
 		} catch (error) {
 			console.error('鑑定玩家錯誤:', error);
