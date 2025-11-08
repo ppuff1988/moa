@@ -164,8 +164,9 @@
 					</div>
 				{/each}
 			</div>
-			<button class="primary-btn submit-votes-btn" on:click={showConfirmation}>
-				提交投票結果
+			<button class="submit-votes-btn" on:click={showConfirmation}>
+				<span>提交投票結果</span>
+				<span class="btn-arrow">→</span>
 			</button>
 		</div>
 	{:else}
@@ -236,7 +237,10 @@
 				<p class="modal-warning">⚠️ 提交後將公布排名第二的獸首真偽</p>
 				<div class="modal-actions">
 					<button class="secondary-btn" on:click={cancelSubmit}>取消</button>
-					<button class="primary-btn" on:click={confirmSubmit}>確認提交</button>
+					<button class="confirm-btn" on:click={confirmSubmit}>
+						<span>確認提交</span>
+						<span class="confirm-arrow">→</span>
+					</button>
 				</div>
 			</div>
 		</div>
@@ -440,15 +444,60 @@
 	}
 
 	.submit-votes-btn {
-		margin-top: 1rem;
-		min-width: 200px;
-		padding: 1rem 2rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.875rem;
+		padding: 1rem 2.5rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
+		border: none;
+		border-radius: 0.875rem;
 		font-size: 1.0625rem;
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
+		position: relative;
+		overflow: hidden;
+		margin-top: 1rem;
+	}
+
+	.submit-votes-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
+	}
+
+	.submit-votes-btn:hover:not(:disabled)::before {
+		transform: translateX(100%);
 	}
 
 	.submit-votes-btn:hover:not(:disabled) {
-		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
+		transform: translateY(-3px);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.5);
+	}
+
+	.submit-votes-btn:active:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
+	.submit-votes-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+	}
+
+	.btn-arrow {
+		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.submit-votes-btn:hover:not(:disabled) .btn-arrow {
+		transform: translateX(6px);
 	}
 
 	/* 等待容器樣式 */
@@ -515,11 +564,13 @@
 
 	.waiting-title {
 		color: hsl(var(--foreground));
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		font-weight: 700;
 		margin: 0;
-		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 		line-height: 1.3;
+		letter-spacing: 0.02em;
+		text-align: center;
 	}
 
 	.waiting-dots {
@@ -800,39 +851,70 @@
 		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 	}
 
-	.primary-btn {
+	.confirm-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.875rem;
 		padding: 0.875rem 1.75rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
 		border: none;
 		border-radius: calc(var(--radius));
+		font-size: 1.0625rem;
 		font-weight: 700;
 		cursor: pointer;
-		transition: all 0.2s ease;
-		font-size: 1.0625rem;
-		background: linear-gradient(135deg, #d4af37 0%, #b8975a 100%);
-		color: #2d2416;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+		position: relative;
+		overflow: hidden;
 		flex: 1;
 		min-width: 0;
 	}
 
-	@media (max-width: 480px) {
-		.primary-btn {
-			padding: 0.75rem 1rem;
-			font-size: 1rem;
-		}
+	.confirm-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
 	}
 
-	.primary-btn:hover:not(:disabled) {
-		background: linear-gradient(135deg, #e5c048 0%, #c9a86b 100%);
-		transform: translateY(-1px);
+	.confirm-btn:hover::before {
+		transform: translateX(100%);
+	}
+
+	.confirm-btn:hover:not(:disabled) {
+		transform: translateY(-2px);
 		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.5);
 	}
 
-	.primary-btn:disabled {
+	.confirm-btn:active:not(:disabled) {
+		transform: translateY(0);
+	}
+
+	.confirm-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 		background: #c4b5a0;
 		color: #8b8073;
-		cursor: not-allowed;
-		opacity: 0.6;
 		box-shadow: none;
+	}
+
+	.confirm-arrow {
+		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.confirm-btn:hover:not(:disabled) .confirm-arrow {
+		transform: translateX(6px);
+	}
+
+	@media (max-width: 480px) {
+		.confirm-btn {
+			padding: 0.75rem 1rem;
+			font-size: 1rem;
+		}
 	}
 </style>

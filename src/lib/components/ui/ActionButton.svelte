@@ -34,6 +34,10 @@
 	}
 
 	.action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
 		padding: 1.2rem 3rem;
 		border: none;
 		border-radius: calc(var(--radius) * 1.5);
@@ -42,7 +46,26 @@
 		cursor: pointer;
 		transition: var(--transition-elegant);
 		min-width: 280px;
-		box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
+		box-shadow:
+			0 8px 25px -5px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		position: relative;
+		overflow: hidden;
+	}
+
+	.action-btn::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+		transition: left 0.5s ease;
+	}
+
+	.action-btn:hover::before {
+		left: 100%;
 	}
 
 	.action-btn.compact {
@@ -59,62 +82,98 @@
 		transform: none !important;
 	}
 
-	.create-btn {
+	.action-btn:disabled::before {
+		display: none;
+	}
+
+	:global(.create-btn) {
 		background: linear-gradient(135deg, #c6a664, #d4b875);
 		color: hsl(var(--card-foreground));
+		border: 2px solid rgba(198, 166, 100, 0.5);
 	}
 
-	.create-btn:hover {
+	:global(.create-btn:hover:not(:disabled)) {
 		transform: translateY(-3px);
-		box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4);
+		box-shadow:
+			0 12px 35px -5px rgba(0, 0, 0, 0.4),
+			0 0 20px rgba(212, 175, 55, 0.3);
+		border-color: rgba(212, 175, 55, 0.8);
 	}
 
-	.create-btn.compact:hover {
+	:global(.create-btn:active:not(:disabled)) {
+		transform: translateY(-1px);
+	}
+
+	:global(.create-btn.compact:hover:not(:disabled)) {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 	}
 
-	.join-btn {
+	:global(.join-btn) {
 		background: linear-gradient(135deg, hsl(var(--primary)), #b91c1c);
 		color: hsl(var(--primary-foreground));
+		border: 2px solid rgba(220, 38, 38, 0.5);
 	}
 
-	.join-btn:hover {
+	:global(.join-btn:hover:not(:disabled)) {
 		transform: translateY(-3px);
-		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
+		box-shadow:
+			0 12px 35px -5px rgba(165, 36, 34, 0.4),
+			0 0 20px rgba(220, 38, 38, 0.3);
+		border-color: rgba(220, 38, 38, 0.8);
 	}
 
-	.join-btn.compact:hover {
+	:global(.join-btn:active:not(:disabled)) {
+		transform: translateY(-1px);
+	}
+
+	:global(.join-btn.compact:hover:not(:disabled)) {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(165, 36, 34, 0.3);
 	}
 
-	.primary-btn {
+	:global(.primary-btn) {
 		background: linear-gradient(135deg, #c6a664, #d4b875);
 		color: hsl(var(--card-foreground));
+		border: 2px solid rgba(198, 166, 100, 0.5);
 	}
 
-	.primary-btn:hover {
+	:global(.primary-btn:hover:not(:disabled)) {
 		transform: translateY(-3px);
-		box-shadow: 0 12px 35px -5px rgba(0, 0, 0, 0.4);
+		box-shadow:
+			0 12px 35px -5px rgba(0, 0, 0, 0.4),
+			0 0 20px rgba(212, 175, 55, 0.3);
+		border-color: rgba(212, 175, 55, 0.8);
 	}
 
-	.primary-btn.compact:hover {
+	:global(.primary-btn:active:not(:disabled)) {
+		transform: translateY(-1px);
+	}
+
+	:global(.primary-btn.compact:hover:not(:disabled)) {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 	}
 
-	.destructive-btn {
+	:global(.destructive-btn) {
 		background: linear-gradient(135deg, hsl(var(--primary)), #b91c1c);
 		color: hsl(var(--primary-foreground));
+		border: 2px solid rgba(220, 38, 38, 0.5);
 	}
 
-	.destructive-btn:hover {
+	:global(.destructive-btn:hover:not(:disabled)) {
 		transform: translateY(-3px);
-		box-shadow: 0 12px 35px -5px rgba(165, 36, 34, 0.4);
+		box-shadow:
+			0 12px 35px -5px rgba(165, 36, 34, 0.4),
+			0 0 20px rgba(220, 38, 38, 0.3);
+		border-color: rgba(220, 38, 38, 0.8);
 	}
 
-	.destructive-btn.compact:hover {
+	:global(.destructive-btn:active:not(:disabled)) {
+		transform: translateY(-1px);
+	}
+
+	:global(.destructive-btn.compact:hover:not(:disabled)) {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(165, 36, 34, 0.3);
 	}

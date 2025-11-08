@@ -20,9 +20,9 @@
 				<p class="no-assignable-text">所有玩家已完成行動</p>
 				<p class="no-assignable-subtext">本回合行動階段結束，準備進入討論</p>
 			</div>
-			<button class="primary-btn enter-discussion-btn" on:click={onEnterDiscussion}>
-				<span class="btn-icon">💬</span>
+			<button class="enter-discussion-btn" on:click={onEnterDiscussion}>
 				<span>進入討論階段</span>
+				<span class="discussion-arrow">→</span>
 			</button>
 		</div>
 	{:else}
@@ -241,33 +241,54 @@
 	}
 
 	/* 按鈕樣式 */
-	.primary-btn {
-		display: flex;
+	.enter-discussion-btn {
+		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1.75rem;
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
+		justify-content: center;
+		gap: 0.875rem;
+		padding: 1rem 2.5rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
 		border: none;
-		border-radius: calc(var(--radius));
-		font-weight: 600;
-		font-size: 1rem;
+		border-radius: 0.875rem;
+		font-size: 1.0625rem;
+		font-weight: 700;
 		cursor: pointer;
-		transition: all 0.2s ease;
-		box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
+		position: relative;
+		overflow: hidden;
 	}
 
-	.primary-btn:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.5);
+	.enter-discussion-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
 	}
 
-	.primary-btn:active {
-		transform: translateY(0);
+	.enter-discussion-btn:hover::before {
+		transform: translateX(100%);
 	}
 
-	.btn-icon {
+	.enter-discussion-btn:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.5);
+	}
+
+	.enter-discussion-btn:active {
+		transform: translateY(-1px);
+	}
+
+	.discussion-arrow {
 		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.enter-discussion-btn:hover .discussion-arrow {
+		transform: translateX(6px);
 	}
 
 	/* 響應式設計 */

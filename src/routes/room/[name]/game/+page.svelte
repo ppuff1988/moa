@@ -1118,24 +1118,43 @@
 
 				{#if $roundPhase === 'discussion'}
 					<div class="action-area">
-						<div class="action-content">
-							{#if $isHost}
+						<div class="action-content discussion-phase">
+							<div class="phase-card">
+								<div class="phase-icon">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="48"
+										height="48"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+										<line x1="9" y1="10" x2="15" y2="10"></line>
+										<line x1="12" y1="7" x2="12" y2="13"></line>
+									</svg>
+								</div>
 								<div class="skills-header">
 									<h4 class="action-subtitle">討論階段</h4>
-									<p class="skills-description">你是房主，可以開始投票階段</p>
+									{#if $isHost}
+										<p class="skills-description">你是房主，可以開始投票階段</p>
+									{:else}
+										<p class="skills-description">所有玩家已完成行動，現在進入討論時間</p>
+									{/if}
 								</div>
 
-								<div class="discussion-host-actions">
-									<!--                  <p class="action-hint" style="color: #22c55e;">你是房主，可以開始投票階段</p>-->
-									<button class="primary-btn" onclick={startVoting}> 開始投票 </button>
-								</div>
-							{:else}
-								<div class="skills-header">
-									<h4 class="action-subtitle">討論階段</h4>
-									<p class="skills-description">所有玩家已完成行動，現在進入討論時間</p>
-								</div>
-								<p class="action-hint">等待房主開始投票...</p>
-							{/if}
+								{#if $isHost}
+									<div class="discussion-host-actions">
+										<button class="start-voting-btn" onclick={startVoting}>
+											<span>開始投票</span>
+											<span class="voting-arrow">→</span>
+										</button>
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
 				{:else if $roundPhase === 'voting'}
@@ -1321,14 +1340,6 @@
 		gap: 0.75rem;
 	}
 
-	.action-hint {
-		color: hsl(var(--muted-foreground));
-		text-align: center;
-		padding: 0.75rem 1rem;
-		font-size: 0.95rem;
-		margin: 0;
-	}
-
 	.skills-header {
 		display: flex;
 		flex-direction: column;
@@ -1354,26 +1365,139 @@
 
 	.discussion-host-actions {
 		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+		justify-content: center;
+		padding: 1rem;
+		width: 100%;
+	}
+
+	.start-voting-btn {
+		display: inline-flex;
 		align-items: center;
-		padding: 0.5rem 1rem;
-	}
-
-	.primary-btn {
-		padding: 0.75rem 1.5rem;
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
+		justify-content: center;
+		gap: 0.875rem;
+		padding: 1rem 2.5rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
 		border: none;
-		border-radius: calc(var(--radius));
-		font-weight: 600;
+		border-radius: 0.875rem;
+		font-size: 1.0625rem;
+		font-weight: 700;
 		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
+		position: relative;
+		overflow: hidden;
 	}
 
-	.primary-btn:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+	.start-voting-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
+	}
+
+	.start-voting-btn:hover::before {
+		transform: translateX(100%);
+	}
+
+	.start-voting-btn:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.5);
+	}
+
+	.start-voting-btn:active {
+		transform: translateY(-1px);
+	}
+
+	.start-voting-btn:hover {
+		transform: translateX(6px);
+	}
+
+	.discussion-phase {
+		width: 100%;
+	}
+
+	.phase-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 2rem;
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+		border: 2px solid rgba(255, 255, 255, 0.2);
+		border-radius: calc(var(--radius) * 1.5);
+		backdrop-filter: blur(15px);
+		box-shadow:
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	}
+
+	.phase-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 80px;
+		height: 80px;
+		background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.1));
+		border: 2px solid rgba(212, 175, 55, 0.4);
+		border-radius: 50%;
+		color: #d4af37;
+		box-shadow:
+			0 4px 12px rgba(212, 175, 55, 0.2),
+			inset 0 2px 0 rgba(255, 255, 255, 0.1);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse-glow {
+		0%,
+		100% {
+			box-shadow:
+				0 4px 12px rgba(212, 175, 55, 0.2),
+				inset 0 2px 0 rgba(255, 255, 255, 0.1);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 4px 20px rgba(212, 175, 55, 0.4),
+				inset 0 2px 0 rgba(255, 255, 255, 0.15),
+				0 0 30px rgba(212, 175, 55, 0.2);
+			transform: scale(1.05);
+		}
+	}
+
+	@keyframes hourglass-rotate {
+		0%,
+		100% {
+			transform: rotate(0deg);
+		}
+		50% {
+			transform: rotate(180deg);
+		}
+	}
+
+	.waiting-text {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		text-align: center;
+		margin: 0;
+		letter-spacing: 0.02em;
+		opacity: 0.9;
+	}
+
+	@keyframes dot-bounce {
+		0%,
+		80%,
+		100% {
+			transform: scale(1);
+			opacity: 0.6;
+		}
+		40% {
+			transform: scale(1.3);
+			opacity: 1;
+		}
 	}
 
 	.waiting-area {

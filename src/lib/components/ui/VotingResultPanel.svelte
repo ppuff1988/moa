@@ -344,43 +344,72 @@
 
 	.host-actions {
 		margin-top: 1rem;
-	}
-
-	.primary-btn {
-		padding: 1rem 2.5rem;
-		border: none;
-		border-radius: 12px;
-		font-weight: 700;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		font-size: 1.125rem;
-		background: linear-gradient(135deg, #d4af37 0%, #b8975a 100%);
-		color: #1a0f0a;
-		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
-	}
-
-	.primary-btn:hover:not(:disabled) {
-		background: linear-gradient(135deg, #e8c456 0%, #d4af37 100%);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 20px rgba(212, 175, 55, 0.5);
-	}
-
-	.primary-btn:disabled {
-		background: #666;
-		color: #999;
-		cursor: not-allowed;
-		opacity: 0.5;
+		display: flex;
+		justify-content: center;
 	}
 
 	.start-round-btn {
-		min-width: 240px;
-		animation: pulse 2s ease-in-out infinite;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.875rem;
+		padding: 1rem 2.5rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
+		border: none;
+		border-radius: 0.875rem;
+		font-size: 1.0625rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
+		position: relative;
+		overflow: hidden;
+		animation: pulse-glow 2s ease-in-out infinite;
 	}
 
-	@keyframes pulse {
+	.start-round-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
+	}
+
+	.start-round-btn:hover::before {
+		transform: translateX(100%);
+	}
+
+	.start-round-btn:hover:not(:disabled) {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.5);
+	}
+
+	.start-round-btn:active:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
+	.start-round-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+		animation: none;
+	}
+
+	.round-arrow {
+		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.start-round-btn:hover:not(:disabled) .round-arrow {
+		transform: translateX(6px);
+	}
+
+	@keyframes pulse-glow {
 		0%,
 		100% {
-			box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
+			box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
 		}
 		50% {
 			box-shadow: 0 8px 24px rgba(212, 175, 55, 0.6);
