@@ -7,7 +7,6 @@
 	import UserArea from '$lib/components/ui/UserArea.svelte';
 	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
-	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 
 	interface User {
@@ -169,11 +168,16 @@
 		<div class="buttons-section">
 			{#if currentGame}
 				<!-- 玩家在遊戲中：顯示回到房間和離開房間 -->
-				<ActionButton variant="primary" title="回到房間" subtitle="" onClick={backToRoom} />
+				<ActionButton
+					variant="primary"
+					title="回到房間"
+					subtitle="繼續您的遊戲旅程"
+					onClick={backToRoom}
+				/>
 				<ActionButton
 					variant="destructive"
 					title="離開房間"
-					subtitle=""
+					subtitle="退出當前的遊戲房間"
 					onClick={handleLeaveRoom}
 				/>
 			{:else}
@@ -193,7 +197,7 @@
 			{/if}
 		</div>
 
-		<FooterDecoration text="傳承千年智慧，品鑑古董真偽" />
+		<p class="footer-text">傳承千年智慧，品鑑古董真偽</p>
 	</div>
 {/if}
 
@@ -215,6 +219,32 @@
 		gap: 4rem;
 		margin-bottom: 6rem;
 		align-items: flex-start;
+	}
+
+	.footer-text {
+		margin-top: 2rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 1.1rem;
+		font-style: italic;
+		opacity: 0.8;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		width: 100%;
+		max-width: 600px;
+	}
+
+	.footer-text::before,
+	.footer-text::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(
+			to right,
+			transparent,
+			hsl(var(--muted-foreground) / 0.3),
+			transparent
+		);
 	}
 
 	.room-form-overlay {

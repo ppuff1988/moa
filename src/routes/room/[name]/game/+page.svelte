@@ -64,6 +64,7 @@
 	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = $state(null);
 	let showBlockedModal = $state(false);
 	let showIdentifyConfirmModal = $state(false);
+	let showStaleDataModal = $state(false);
 	let pendingIdentifyBeastId: number | null = $state(null);
 	let isIdentifying = $state(false);
 	let actionAreaElement: HTMLDivElement | null = $state(null);
@@ -451,6 +452,12 @@
 			return;
 		}
 
+		// 檢查獸首回合是否與當前回合一致
+		if (beast.round && beast.round !== $currentRound) {
+			showStaleDataModal = true;
+			return;
+		}
+
 		pendingIdentifyBeastId = beastId;
 		showIdentifyConfirmModal = true;
 	}
@@ -537,6 +544,10 @@
 		showIdentifyConfirmModal = false;
 		pendingIdentifyBeastId = null;
 		isIdentifying = false;
+	}
+
+	function handleRefreshPage() {
+		window.location.reload();
 	}
 
 	// 處理鑑定玩家後的自動跳轉邏輯
@@ -1298,6 +1309,17 @@
 		isProcessing={isIdentifying}
 		onConfirm={confirmIdentifyBeastHead}
 		onCancel={closeIdentifyConfirmModal}
+	/>
+	<ConfirmModal
+		isOpen={showStaleDataModal}
+		title="數據已過期"
+		message="獸首數據還停留在上一回合，請重新整理頁面以獲取最新數據。"
+		confirmText="重新整理"
+		cancelText="取消"
+		onConfirm={handleRefreshPage}
+		onCancel={() => {
+			showStaleDataModal = false;
+		}}
 	/>
 {/if}
 

@@ -6,7 +6,6 @@
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import RoomHeader from '$lib/components/room/RoomHeader.svelte';
 	import PlayersGrid from '$lib/components/player/PlayersGrid.svelte';
-	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
 	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
 	import { currentGameStatus } from '$lib/stores/notifications';
 
@@ -83,7 +82,7 @@
 		/>
 
 		<div class="footer-wrapper">
-			<FooterDecoration text={footerText} />
+			<p class="footer-text">{footerText}</p>
 		</div>
 	</div>
 
@@ -107,6 +106,32 @@
 		display: flex;
 		justify-content: center;
 		width: 100%;
+	}
+
+	.footer-text {
+		margin-top: 2rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 1.1rem;
+		font-style: italic;
+		opacity: 0.8;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		width: 100%;
+		max-width: 600px;
+	}
+
+	.footer-text::before,
+	.footer-text::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(
+			to right,
+			transparent,
+			hsl(var(--muted-foreground) / 0.3),
+			transparent
+		);
 	}
 
 	@media (max-width: 768px) {
