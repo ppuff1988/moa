@@ -23,6 +23,10 @@
 		showVotingResults?: boolean; // 是否顯示投票結果
 		currentRound?: number; // 當前回合數
 		autoCollapse?: boolean; // 是否自動收起
+		// 鑑定階段相關
+		showIdentifyHint?: boolean; // 是否顯示鑑定提示
+		remainingIdentifyCount?: number; // 剩餘鑑定次數
+		hasIdentifySkill?: boolean; // 是否有鑑定技能
 	}
 
 	let {
@@ -38,11 +42,17 @@
 		onBeastClick = () => {},
 		showVotingResults = false,
 		currentRound = 1,
-		autoCollapse = false
+		autoCollapse = false,
+		showIdentifyHint = false,
+		remainingIdentifyCount = 0,
+		hasIdentifySkill = true
 	}: Props = $props();
 
 	// 收起/展開狀態
 	let isCollapsed = $state(false);
+
+	// 獸首區域的 DOM 引用
+	let beastHeadsSectionElement: HTMLDivElement | null = null;
 
 	// 當 autoCollapse 變化時，自動設置收起狀態
 	$effect(() => {
@@ -50,6 +60,19 @@
 			isCollapsed = true;
 		} else {
 			isCollapsed = false;
+		}
+	});
+
+	// 當進入鑑定階段時，自動滾動到獸首區域
+	$effect(() => {
+		if (showIdentifyHint && beastHeadsSectionElement) {
+			// 延遲一小段時間確保 DOM 已經渲染完成
+			setTimeout(() => {
+				beastHeadsSectionElement?.scrollIntoView({
+					behavior: 'smooth',
+					block: 'start'
+				});
+			}, 100);
 		}
 	});
 
@@ -123,7 +146,7 @@
 	}
 </script>
 
-<div class="beast-heads-section" class:collapsed={isCollapsed}>
+<div class="beast-heads-section" class:collapsed={isCollapsed} bind:this={beastHeadsSectionElement}>
 	<div class="section-header">
 		<div class="spacer"></div>
 		<h3 class="section-title">第{chineseNumeral(currentRound)}回合</h3>
@@ -178,6 +201,33 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if showIdentifyHint}
+			<div class="identify-hint-section">
+				{#if hasIdentifySkill}
+					<div class="identify-hint-content">
+						<div class="hint-icon">🔍</div>
+						<p class="hint-text">點擊上方的獸首進行鑑定</p>
+						{#if remainingIdentifyCount > 0}
+							<div class="remaining-badge">
+								<span class="badge-label">剩餘鑑定次數</span>
+								<span class="badge-count">{remainingIdentifyCount}</span>
+							</div>
+						{:else}
+							<div class="completed-badge">
+								<span>✓</span>
+								<span>已用完所有鑑定次數</span>
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<div class="no-skill-hint">
+						<div class="no-skill-icon">⊘</div>
+						<p class="no-skill-text">你的角色無法鑑定獸首</p>
+					</div>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -385,6 +435,109 @@
 		background: rgba(212, 175, 55, 0.2);
 		border-radius: 6px;
 		border: 1px solid rgba(212, 175, 55, 0.4);
+	}
+
+	/* 鑑定提示區域 */
+	.identify-hint-section {
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.identify-hint-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+	}
+
+	.hint-icon {
+		font-size: 2rem;
+		animation: hint-pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes hint-pulse {
+		0%,
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		50% {
+			transform: scale(1.1);
+			opacity: 0.8;
+		}
+	}
+
+	.hint-text {
+		color: hsl(var(--foreground));
+		text-align: center;
+		font-size: 0.9375rem;
+		font-weight: 500;
+		margin: 0;
+	}
+
+	.remaining-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 1.25rem;
+		background: rgba(34, 197, 94, 0.15);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+		border-radius: 8px;
+	}
+
+	.badge-label {
+		color: #22c55e;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.badge-count {
+		color: #22c55e;
+		font-size: 1.125rem;
+		font-weight: 700;
+	}
+
+	.completed-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1.25rem;
+		background: rgba(100, 100, 100, 0.15);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 8px;
+		color: hsl(var(--muted-foreground));
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.no-skill-hint {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 1rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+	}
+
+	.no-skill-icon {
+		font-size: 2rem;
+		color: hsl(var(--muted-foreground));
+		opacity: 0.5;
+	}
+
+	.no-skill-text {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.875rem;
+		font-weight: 500;
+		margin: 0;
+		text-align: center;
 	}
 
 	@media (max-width: 1024px) {

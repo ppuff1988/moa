@@ -19,7 +19,6 @@
 	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 	import GameHeader from '$lib/components/game/GameHeader.svelte';
 	import PhaseIndicator from '$lib/components/game/PhaseIndicator.svelte';
-	import IdentifyArtifactPhase from '$lib/components/game/IdentifyArtifactPhase.svelte';
 	import SkillPhase from '$lib/components/game/SkillPhase.svelte';
 	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
 	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
@@ -56,78 +55,118 @@
 		isGameFinished
 	} = gameState;
 
-	let currentUser: User | null = null;
-	let isLoading = true;
-	let gameStatus: string = 'playing';
+	let currentUser: User | null = $state(null);
+	let isLoading = $state(true);
 	let updateInterval: number;
-	let isActionHistoryOpen = false;
+	let isActionHistoryOpen = $state(false);
 	let gameService: GameService;
 	let socket: Socket | null = null;
-	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
-	let showBlockedModal = false;
-	let showIdentifyConfirmModal = false;
-	let pendingIdentifyBeastId: number | null = null;
-	let isIdentifying = false;
+	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = $state(null);
+	let showBlockedModal = $state(false);
+	let showIdentifyConfirmModal = $state(false);
+	let pendingIdentifyBeastId: number | null = $state(null);
+	let isIdentifying = $state(false);
+	let actionAreaElement: HTMLDivElement | null = null;
 
-	$: roomName = $page.params.name || '';
-	$: isMyTurn =
-		$currentActionPlayer?.id === $players.find((p) => p.nickname === currentUser?.nickname)?.id;
-	$: currentUserId = $players.find((p) => p.nickname === currentUser?.nickname)?.id;
-	$: assignablePlayers = $players.filter((player) => {
-		if (player.id === $currentActionPlayer?.id) return false;
-		const hasActed = $actionedPlayers.some((ap) => ap.id === player.id);
-		return !hasActed;
+	// roomName 需要立即從 URL 參數初始化
+	let roomName = $state($page.params.name || '');
+
+	// 監聽 page 變化並更新 roomName
+	$effect(() => {
+		const newRoomName = $page.params.name || '';
+		if (newRoomName !== roomName) {
+			roomName = newRoomName;
+		}
 	});
-	$: attackablePlayers = $players.filter((player) => player.id !== currentUserId);
+
+	// 使用 $derived 代替 $: 的計算值
+	const isMyTurn = $derived(
+		$currentActionPlayer?.id === $players.find((p) => p.nickname === currentUser?.nickname)?.id
+	);
+	const currentUserId = $derived($players.find((p) => p.nickname === currentUser?.nickname)?.id);
+	const assignablePlayers = $derived(
+		$players.filter((player) => {
+			if (player.id === $currentActionPlayer?.id) return false;
+			const hasActed = $actionedPlayers.some((ap) => ap.id === player.id);
+			return !hasActed;
+		})
+	);
+	const attackablePlayers = $derived($players.filter((player) => player.id !== currentUserId));
 
 	// Update gameStatus based on roundPhase
-	$: gameStatus = $roundPhase === 'finished' ? 'finished' : 'playing';
+	let gameStatus = $derived($roundPhase === 'finished' ? 'finished' : 'playing');
 
 	// 同步遊戲狀態到通知系統
-	$: currentGameStatus.set(gameStatus);
-
-	// 自動跳過鑑定階段：當玩家沒有鑑定能力時，直接進入技能階段
-	$: if (
-		isMyTurn &&
-		$gamePhase === 'identification' &&
-		$skillActions &&
-		$skillActions.checkArtifact === 0 &&
-		$roundPhase === 'action'
-	) {
-		// 檢查是否有其他技能，如果有就進入技能階段，否則進入指派階段
-		if ($hasActualSkills) {
-			gamePhase.set('skill');
-		} else {
-			gamePhase.set('assign-next');
-			addNotification('請指派下一位玩家', 'info', 3000);
-		}
-	}
-
-	// 自動完成技能階段：當所有技能都用完時，自動進入指派階段
-	$: if (
-		isMyTurn &&
-		$gamePhase === 'skill' &&
-		$skillActions &&
-		$remainingSkills &&
-		$roundPhase === 'action'
-	) {
-		// 檢查是否所有技能都已用完
-		const allSkillsUsed =
-			$remainingSkills.checkPeople === 0 &&
-			$remainingSkills.block === 0 &&
-			$remainingSkills.attack === 0 &&
-			$remainingSkills.swap === 0;
-
-		if (allSkillsUsed) {
-			gamePhase.set('assign-next');
-			selectedBeastHead.set(null);
-		}
-	}
+	$effect(() => {
+		currentGameStatus.set(gameStatus);
+	});
 
 	// Initialize game service
-	$: if (roomName) {
-		gameService = new GameService(roomName);
-	}
+	$effect(() => {
+		if (roomName) {
+			gameService = new GameService(roomName);
+		}
+	});
+
+	// 當進入技能或指派階段時，自動滾動到行動區域
+	$effect(() => {
+		if (
+			$roundPhase === 'action' &&
+			isMyTurn &&
+			($gamePhase === 'skill' || $gamePhase === 'assign-next') &&
+			actionAreaElement
+		) {
+			// 延遲一小段時間確保 DOM 已經渲染完成
+			setTimeout(() => {
+				actionAreaElement?.scrollIntoView({
+					behavior: 'smooth',
+					block: 'start'
+				});
+			}, 100);
+		}
+	});
+
+	// 自動跳過鑑定階段：當玩家沒有鑑定能力時，直接進入技能階段
+	$effect(() => {
+		if (
+			isMyTurn &&
+			$gamePhase === 'identification' &&
+			$skillActions &&
+			$skillActions.checkArtifact === 0 &&
+			$roundPhase === 'action'
+		) {
+			// 檢查是否有其他技能，如果有就進入技能階段，否則進入指派階段
+			if ($hasActualSkills) {
+				gamePhase.set('skill');
+			} else {
+				gamePhase.set('assign-next');
+				addNotification('請指派下一位玩家', 'info', 3000);
+			}
+		}
+	});
+
+	// 自動完成技能階段：當所有技能都用完時，自動進入指派階段
+	$effect(() => {
+		if (
+			isMyTurn &&
+			$gamePhase === 'skill' &&
+			$skillActions &&
+			$remainingSkills &&
+			$roundPhase === 'action'
+		) {
+			// 檢查是否所有技能都已用完
+			const allSkillsUsed =
+				$remainingSkills.checkPeople === 0 &&
+				$remainingSkills.block === 0 &&
+				$remainingSkills.attack === 0 &&
+				$remainingSkills.swap === 0;
+
+			if (allSkillsUsed) {
+				gamePhase.set('assign-next');
+				selectedBeastHead.set(null);
+			}
+		}
+	});
 
 	// ==================== Data Fetching ====================
 
@@ -771,16 +810,16 @@
 
 			if (roomResponse.ok) {
 				const roomData = await roomResponse.json();
-				gameStatus = roomData.game?.status || 'playing';
+				const currentGameStatus = roomData.game?.status || 'playing';
 
 				// 如果遊戲狀態是 waiting 或 selecting，導向到 lobby 頁面
-				if (gameStatus === 'waiting' || gameStatus === 'selecting') {
+				if (currentGameStatus === 'waiting' || currentGameStatus === 'selecting') {
 					goto(`/room/${encodeURIComponent(roomName)}/lobby`, { replaceState: true });
 					return;
 				}
 
 				// 如果遊戲已結束，獲取最終結果並顯示
-				if (gameStatus === 'finished') {
+				if (currentGameStatus === 'finished') {
 					const finalResultData = await gameService.fetchFinalResult();
 					if (finalResultData && finalResultData.success) {
 						finalResult.set(finalResultData);
@@ -808,23 +847,38 @@
 
 				// Initialize socket connection
 				try {
+					console.log('[socket] 初始化 socket 連接...');
 					socket = initSocket();
 
 					// Join the game room
+					console.log(`[socket] 加入房間: ${roomName}`);
 					socket.emit('join-room', roomName);
+
+					// 監聽房間加入成功事件
+					socket.on('room-update', () => {
+						console.log('[socket] 收到 room-update 事件，確認已成功加入房間');
+					});
+
+					socket.on('error', (error) => {
+						console.error('[socket] Socket 錯誤:', error);
+					});
 
 					// Listen for voting-completed event
 					socket.on('voting-completed', async (data) => {
+						console.log('[voting-completed] 收到投票完成事件:', data);
 						addNotification('投票結果已公布', 'info', 3000);
 
 						// Update phase to result
 						if (data.phase) {
+							console.log('[voting-completed] 更新階段為:', data.phase);
 							roundPhase.set(data.phase);
 						}
 
 						// Refresh artifacts to get voting results
+						console.log('[voting-completed] 刷新獸首資料...');
 						await fetchArtifacts();
 						await fetchRoundStatus();
+						console.log('[voting-completed] 數據刷新完成');
 					});
 
 					// Listen for round-started event
@@ -1012,6 +1066,10 @@
 
 		<div class="game-main">
 			<div class="game-content">
+				{#if $roundPhase === 'action'}
+					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
+				{/if}
+
 				{#if $roundPhase !== 'identification' && $roundPhase !== 'finished'}
 					<ArtifactDisplay
 						beastHeads={$beastHeads}
@@ -1025,7 +1083,18 @@
 						canBlock={$remainingSkills ? $remainingSkills.block > 0 : false}
 						showVotingResults={$roundPhase === 'voting' || $roundPhase === 'result'}
 						currentRound={$currentRound}
-						autoCollapse={$roundPhase === 'discussion' || $roundPhase === 'voting'}
+						autoCollapse={$roundPhase === 'discussion' ||
+							$roundPhase === 'voting' ||
+							($roundPhase === 'action' &&
+								isMyTurn &&
+								($gamePhase === 'skill' || $gamePhase === 'assign-next'))}
+						showIdentifyHint={$roundPhase === 'action' &&
+							isMyTurn &&
+							$gamePhase === 'identification'}
+						remainingIdentifyCount={$skillActions && $usedSkills
+							? $skillActions.checkArtifact - $usedSkills.checkArtifact
+							: 0}
+						hasIdentifySkill={$skillActions ? $skillActions.checkArtifact > 0 : false}
 						onBeastClick={(beastId) => {
 							if (
 								$gamePhase === 'identification' &&
@@ -1044,10 +1113,6 @@
 							}
 						}}
 					/>
-				{/if}
-
-				{#if $roundPhase === 'action'}
-					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
 				{/if}
 
 				{#if $roundPhase === 'discussion'}
@@ -1122,17 +1187,10 @@
 							{/if}
 						</div>
 					</div>
-				{:else if isMyTurn}
-					<div class="action-area">
+				{:else if isMyTurn && $gamePhase !== 'identification'}
+					<div class="action-area" bind:this={actionAreaElement}>
 						<div class="action-content">
-							{#if $gamePhase === 'identification'}
-								<IdentifyArtifactPhase
-									skillActions={$skillActions}
-									usedSkills={$usedSkills}
-									onIdentify={openIdentifyConfirm}
-									onSkipToSkill={() => gamePhase.set('skill')}
-								/>
-							{:else if $gamePhase === 'skill'}
+							{#if $gamePhase === 'skill'}
 								<SkillPhase
 									players={$players}
 									{currentUser}

@@ -24,20 +24,18 @@
 	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
 
 	// 獲取所有獸首並排序（按票數和生肖順序）
-	$: sortedBeasts = beastHeads
-		.filter((b) => b.votes > 0)
-		.sort((a, b) => {
-			// 先按票數降序
-			if (b.votes !== a.votes) {
-				return b.votes - a.votes;
-			}
-			// 票數相同時按生肖順序
-			const orderA = ZODIAC_ORDER.indexOf(a.animal);
-			const orderB = ZODIAC_ORDER.indexOf(b.animal);
-			return orderA - orderB;
-		});
+	$: sortedBeasts = beastHeads.sort((a, b) => {
+		// 先按票數降序
+		if (b.votes !== a.votes) {
+			return b.votes - a.votes;
+		}
+		// 票數相同時按生肖順序
+		const orderA = ZODIAC_ORDER.indexOf(a.animal);
+		const orderB = ZODIAC_ORDER.indexOf(b.animal);
+		return orderA - orderB;
+	});
 
-	// 獲取前兩名用於特殊顯示
+	// 獲取前兩名（一定會有前兩名，即使第二名是0票）
 	$: topTwo = sortedBeasts.slice(0, 2);
 
 	// 獲取排名徽章
@@ -88,20 +86,17 @@
 				</div>
 
 				<div class="result-content">
-					{#if sortedBeasts.length > 0}
+					{#if topTwo.length > 0}
 						<div class="all-results">
-							{#each sortedBeasts as beast, index (beast.id)}
+							{#each topTwo as beast, index (beast.id)}
 								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
-									{#if index < 2}
-										<div class="rank-badge-large">{getRankBadge(beast)}</div>
-									{:else}
-										<div class="rank-number">{index + 1}</div>
-									{/if}
+									<div class="rank-badge-large">{getRankBadge(beast)}</div>
 									<div class="beast-info">
 										<h5 class="beast-name">{beast.animal}首</h5>
 										<div class="vote-count">{beast.votes} 票</div>
 									</div>
 									{#if index === 1}
+										<!-- 第二名一定會公布真偽 -->
 										<div class="beast-status-large" class:is-real={beast.isGenuine}>
 											{beast.isGenuine ? '真品 ✓' : '贗品 ✗'}
 										</div>
@@ -288,20 +283,6 @@
 		animation: bounce 0.6s ease-in-out;
 	}
 
-	.rank-number {
-		font-size: 2rem;
-		font-weight: 700;
-		color: rgba(212, 175, 55, 0.6);
-		width: 3.5rem;
-		height: 3.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 2px solid rgba(212, 175, 55, 0.4);
-		border-radius: 50%;
-		background: rgba(212, 175, 55, 0.1);
-	}
-
 	@keyframes bounce {
 		0%,
 		100% {
@@ -445,12 +426,6 @@
 			font-size: 2.5rem;
 		}
 
-		.rank-number {
-			font-size: 1.5rem;
-			width: 2.5rem;
-			height: 2.5rem;
-		}
-
 		.beast-name {
 			font-size: 1.25rem;
 		}
@@ -489,12 +464,6 @@
 
 		.rank-badge-large {
 			font-size: 2rem;
-		}
-
-		.rank-number {
-			font-size: 1.25rem;
-			width: 2rem;
-			height: 2rem;
 		}
 
 		.beast-name {

@@ -15,28 +15,43 @@
 		</div>
 	{:else if assignablePlayers.length === 0}
 		<div class="no-assignable-section">
+			<div class="completion-icon">✓</div>
 			<div class="no-assignable-message">
-				<div class="warning-icon">⚠️</div>
-				<p class="no-assignable-text">沒有可以指派的玩家</p>
-				<p class="no-assignable-subtext">（所有玩家都已行動）</p>
+				<p class="no-assignable-text">所有玩家已完成行動</p>
+				<p class="no-assignable-subtext">本回合行動階段結束，準備進入討論</p>
 			</div>
 			<button class="primary-btn enter-discussion-btn" on:click={onEnterDiscussion}>
-				進入討論階段
+				<span class="btn-icon">💬</span>
+				<span>進入討論階段</span>
 			</button>
 		</div>
 	{:else}
+		<!-- 指派提示 -->
 		<div class="skills-header">
-			<h4 class="action-subtitle">指派下一位玩家</h4>
-			<p class="skills-description">選擇還未行動過的玩家作為下一位行動者</p>
+			<h4 class="action-subtitle">指派下一位行動者</h4>
+			<p class="skills-description">
+				選擇尚未行動的玩家 · 還有 {assignablePlayers.length} 位玩家待指派
+			</p>
 		</div>
+
+		<!-- 玩家列表 -->
 		<div class="player-list-inline">
 			{#each assignablePlayers as player (player.id)}
 				<button class="player-btn-inline" on:click={() => onAssign(player.id)}>
-					<div class="player-dot" style:background-color={player.colorCode || '#888'}></div>
-					<span>{player.nickname}</span>
+					<span class="player-dot" style:background-color={player.colorCode || '#888'}></span>
+					<span class="player-name">{player.nickname}</span>
+					<span class="assign-arrow">→</span>
 				</button>
 			{/each}
 		</div>
+
+		<!-- 快捷提示 -->
+		{#if assignablePlayers.length === 1}
+			<div class="hint-message">
+				<span class="hint-icon">💡</span>
+				<span>這是最後一位待指派的玩家</span>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -44,20 +59,64 @@
 	.assign-phase {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 1.5rem;
 	}
 
+	/* 進度區塊 */
+	.progress-section {
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: calc(var(--radius));
+		padding: 1rem;
+		backdrop-filter: blur(5px);
+	}
+
+	.progress-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+	}
+
+	.progress-label {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.progress-count {
+		color: hsl(var(--foreground));
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+
+	.progress-bar-container {
+		width: 100%;
+		height: 8px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.progress-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #d4af37, #f4e285);
+		border-radius: 4px;
+		transition: width 0.5s ease;
+		box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+	}
+
+	/* 標題區塊 */
 	.skills-header {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 0.5rem;
-		margin-bottom: 1rem;
 	}
 
 	.action-subtitle {
 		color: hsl(var(--foreground));
-		font-size: 1rem;
+		font-size: 1.125rem;
 		font-weight: 600;
 		text-align: center;
 		margin: 0;
@@ -67,44 +126,108 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
 		text-align: center;
+		margin: 0;
 	}
 
+	/* 玩家列表 */
 	.player-list-inline {
-		display: flex;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 		gap: 0.75rem;
-		justify-content: center;
 		padding: 0.5rem 0;
 	}
 
 	.player-btn-inline {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
+		gap: 0.75rem;
+		padding: 0.875rem 1.25rem;
 		background: rgba(255, 255, 255, 0.05);
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		border-radius: calc(var(--radius));
 		color: hsl(var(--foreground));
 		font-weight: 500;
 		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.2s ease;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.player-btn-inline::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.2), transparent);
+		transition: left 0.5s ease;
+	}
+
+	.player-btn-inline:hover::before {
+		left: 100%;
 	}
 
 	.player-btn-inline:hover {
 		background: rgba(255, 255, 255, 0.1);
-		border-color: rgba(212, 175, 55, 0.5);
+		border-color: rgba(212, 175, 55, 0.6);
 		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+	}
+
+	.player-btn-inline:active {
+		transform: translateY(0);
 	}
 
 	.player-dot {
-		width: 12px;
-		height: 12px;
+		width: 14px;
+		height: 14px;
 		border-radius: 50%;
 		flex-shrink: 0;
-		border: 1px solid rgba(255, 255, 255, 0.3);
+		border: 2px solid rgba(255, 255, 255, 0.4);
+		box-shadow: 0 0 8px currentColor;
+		display: inline-block;
 	}
 
+	.player-name {
+		flex: 1;
+		text-align: left;
+	}
+
+	.assign-arrow {
+		color: hsl(var(--muted-foreground));
+		font-size: 1.125rem;
+		opacity: 0.6;
+		transition: all 0.2s ease;
+		display: inline-block;
+	}
+
+	.player-btn-inline:hover .assign-arrow {
+		opacity: 1;
+		transform: translateX(3px);
+		color: #d4af37;
+	}
+
+	/* 提示訊息 */
+	.hint-message {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		background: rgba(212, 175, 55, 0.15);
+		border: 1px solid rgba(212, 175, 55, 0.3);
+		border-radius: calc(var(--radius));
+		color: #f4e285;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.hint-icon {
+		font-size: 1.125rem;
+	}
+
+	/* 載入狀態 */
 	.loading-skills {
 		display: flex;
 		flex-direction: column;
@@ -131,12 +254,41 @@
 		}
 	}
 
+	/* 完成狀態 */
 	.no-assignable-section {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 1.5rem;
 		padding: 2rem;
+	}
+
+	.completion-icon {
+		width: 80px;
+		height: 80px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 3rem;
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1));
+		border: 2px solid rgba(34, 197, 94, 0.4);
+		border-radius: 50%;
+		color: #22c55e;
+		animation: scaleIn 0.5s ease;
+	}
+
+	@keyframes scaleIn {
+		0% {
+			transform: scale(0);
+			opacity: 0;
+		}
+		50% {
+			transform: scale(1.1);
+		}
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
 	}
 
 	.no-assignable-message {
@@ -146,12 +298,8 @@
 		gap: 0.5rem;
 	}
 
-	.warning-icon {
-		font-size: 3rem;
-	}
-
 	.no-assignable-text {
-		font-size: 1.125rem;
+		font-size: 1.25rem;
 		font-weight: 600;
 		color: hsl(var(--foreground));
 		margin: 0;
@@ -163,23 +311,52 @@
 		margin: 0;
 	}
 
+	/* 按鈕樣式 */
 	.primary-btn {
-		padding: 0.75rem 1.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.875rem 1.75rem;
 		background: var(--gradient-gold);
 		color: hsl(var(--secondary-foreground));
 		border: none;
 		border-radius: calc(var(--radius));
 		font-weight: 600;
+		font-size: 1rem;
 		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.2s ease;
+		box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
 	}
 
 	.primary-btn:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+		box-shadow: 0 6px 16px rgba(212, 175, 55, 0.5);
 	}
 
-	.enter-discussion-btn {
-		font-size: 1rem;
+	.primary-btn:active {
+		transform: translateY(0);
+	}
+
+	.btn-icon {
+		font-size: 1.25rem;
+	}
+
+	/* 響應式設計 */
+	@media (max-width: 768px) {
+		.player-list-inline {
+			grid-template-columns: 1fr;
+		}
+
+		.progress-section {
+			padding: 0.75rem;
+		}
+
+		.action-subtitle {
+			font-size: 1rem;
+		}
+
+		.no-assignable-text {
+			font-size: 1.125rem;
+		}
 	}
 </style>

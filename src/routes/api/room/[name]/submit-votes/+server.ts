@@ -66,10 +66,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 
 		// 更新獸首的投票數和排名（只更新當前回合的獸首）
+		// 一定會有第一名和第二名（即使第二名是0票）
 		for (let i = 0; i < votedArtifacts.length; i++) {
 			const artifact = votedArtifacts[i];
 			const voteCount = artifact.votes;
-			const rank = i < 2 ? i + 1 : null; // 只標記前兩名
+			const rank = i < 2 ? i + 1 : null; // 前兩名一定給排名
 
 			await db
 				.update(gameArtifacts)
@@ -86,13 +87,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			.set({ phase: 'result' })
 			.where(eq(gameRounds.id, currentRound[0].id));
 
-		// 取得第二名的資訊
+		// 取得第二名的資訊 - 一定會有第二名（即使是0票）
 		const secondPlace = votedArtifacts.length >= 2 ? votedArtifacts[1] : null;
 
+		// 取前兩名（一定會公布前兩名）
+		const topTwo = votedArtifacts.slice(0, 2);
+
 		// 廣播投票結果給房間內所有玩家
-		emitToRoom(params.name!, 'voting-completed', {
+		const eventData = {
 			phase: 'result',
-			topTwo: votedArtifacts.slice(0, 2).map((a) => ({
+			topTwo: topTwo.map((a) => ({
 				id: a.id,
 				animal: a.animal,
 				votes: a.votes
@@ -105,12 +109,19 @@ export const POST: RequestHandler = async ({ request, params }) => {
 						isGenuine: secondPlace.isGenuine
 					}
 				: null
-		});
+		};
+
+		console.log(`[submit-votes] 準備廣播 voting-completed 事件到房間 ${params.name}`);
+		console.log(`[submit-votes] 事件數據:`, JSON.stringify(eventData, null, 2));
+
+		emitToRoom(params.name!, 'voting-completed', eventData);
+
+		console.log(`[submit-votes] 已調用 emitToRoom`);
 
 		return json({
 			success: true,
 			message: '投票提交成功',
-			topTwo: votedArtifacts.slice(0, 2).map((a) => ({
+			topTwo: topTwo.map((a) => ({
 				id: a.id,
 				animal: a.animal,
 				votes: a.votes

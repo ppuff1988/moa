@@ -17,15 +17,6 @@
 </script>
 
 <div class="skill-phase">
-	<!--  <div class="skills-header">-->
-	<!--    <h4 class="action-subtitle">使用角色技能</h4>-->
-	<!--    {#if hasActualSkills}-->
-	<!--      <p class="skills-description">選擇並使用你的角色技能，或直接完成此階段</p>-->
-	<!--    {:else}-->
-	<!--      <p class="skills-description">你的角色沒有可用的技能</p>-->
-	<!--    {/if}-->
-	<!--  </div>-->
-
 	{#if skillActions}
 		<div class="skills-section">
 			<!-- 鑑定玩家 -->
@@ -44,66 +35,84 @@
 						</div>
 					</div>
 					{#if remainingSkills && remainingSkills.checkPeople > 0}
-						<div class="player-list-inline">
+						<p class="skill-description">選擇一位玩家來查看其陣營</p>
+						<div class="player-grid">
 							{#each players as player (player.id)}
 								{#if player.nickname !== currentUser?.nickname}
 									{@const identified = identifiedPlayers.find((ip) => ip.playerId === player.id)}
 									{#if identified}
-										<div class="player-btn-inline identified-result">
-											<div
-												class="player-dot"
-												style:background-color={player.colorCode || '#888'}
-											></div>
-											<div class="player-btn-content">
-												<span>{player.nickname}</span>
+										<div class="player-card identified">
+											<div class="player-card-header">
 												<span
-													class="player-camp-label"
+													class="player-avatar"
+													style:background-color={player.colorCode || '#888'}
+												></span>
+												<span class="player-card-name">{player.nickname}</span>
+											</div>
+											<div class="player-card-result">
+												<span
+													class="camp-badge"
 													class:camp-good={identified.camp === 'good'}
 													class:camp-bad={identified.camp === 'bad'}
 												>
 													{identified.camp === 'good'
-														? '許愿陣營'
+														? '✓ 許愿陣營'
 														: identified.camp === 'bad'
-															? '老朝奉陣營'
+															? '✗ 老朝奉陣營'
 															: identified.camp}
 												</span>
 											</div>
 										</div>
 									{:else}
-										<button class="player-btn-inline" on:click={() => onCheckPlayer(player.id)}>
-											<span class="player-dot" style:background-color={player.colorCode || '#888'}
-											></span>
-											<span class="player-btn-content">
-												<span>{player.nickname}</span>
-											</span>
+										<button class="player-card clickable" on:click={() => onCheckPlayer(player.id)}>
+											<div class="player-card-header">
+												<span
+													class="player-avatar"
+													style:background-color={player.colorCode || '#888'}
+												></span>
+												<span class="player-card-name">{player.nickname}</span>
+											</div>
+											<div class="player-card-action">
+												<span class="action-hint">點擊鑑定</span>
+												<span class="action-icon">→</span>
+											</div>
 										</button>
 									{/if}
 								{/if}
 							{/each}
 						</div>
 					{:else if identifiedPlayers.length > 0}
-						<div class="identified-players-list">
-							{#each identifiedPlayers as identified (identified.playerId)}
-								{@const player = players.find((p) => p.id === identified.playerId)}
-								{#if player}
-									<div class="identified-player-item">
-										<span class="player-dot" style:background-color={player.colorCode || '#888'}
-										></span>
-										<span class="player-name">{identified.nickname}</span>
-										<span
-											class="player-camp-badge"
-											class:camp-good={identified.camp === 'good'}
-											class:camp-bad={identified.camp === 'bad'}
-										>
-											{identified.camp === 'good'
-												? '許愿陣營'
-												: identified.camp === 'bad'
-													? '老朝奉陣營'
-													: identified.camp}
-										</span>
-									</div>
-								{/if}
-							{/each}
+						<div class="skill-result-summary">
+							<p class="result-title">✓ 鑑定結果</p>
+							<div class="player-grid">
+								{#each identifiedPlayers as identified (identified.playerId)}
+									{@const player = players.find((p) => p.id === identified.playerId)}
+									{#if player}
+										<div class="player-card identified">
+											<div class="player-card-header">
+												<span
+													class="player-avatar"
+													style:background-color={player.colorCode || '#888'}
+												></span>
+												<span class="player-card-name">{identified.nickname}</span>
+											</div>
+											<div class="player-card-result">
+												<span
+													class="camp-badge"
+													class:camp-good={identified.camp === 'good'}
+													class:camp-bad={identified.camp === 'bad'}
+												>
+													{identified.camp === 'good'
+														? '✓ 許愿陣營'
+														: identified.camp === 'bad'
+															? '✗ 老朝奉陣營'
+															: identified.camp}
+												</span>
+											</div>
+										</div>
+									{/if}
+								{/each}
+							</div>
 						</div>
 					{:else}
 						<p class="skill-used-message">✓ 本回合已鑑定</p>
@@ -124,7 +133,7 @@
 						</div>
 					</div>
 					{#if remainingSkills && remainingSkills.block > 0}
-						<p class="skill-instruction">點擊上方的獸首進行封鎖</p>
+						<p class="skill-description">點擊上方的獸首進行封鎖</p>
 						<button
 							class="confirm-btn"
 							disabled={selectedBeastHead === null}
@@ -155,12 +164,22 @@
 						</div>
 					</div>
 					{#if remainingSkills && remainingSkills.attack > 0}
-						<div class="player-list-inline">
+						<p class="skill-description">選擇一位玩家進行偷襲，使其下回合無法行動</p>
+						<div class="player-grid">
 							{#each attackablePlayers as player (player.id)}
-								<button class="player-btn-inline" on:click={() => onAttackPlayer(player.id)}>
-									<span class="player-dot" style:background-color={player.colorCode || '#888'}
-									></span>
-									<span>{player.nickname}</span>
+								<button
+									class="player-card clickable attack"
+									on:click={() => onAttackPlayer(player.id)}
+								>
+									<div class="player-card-header">
+										<span class="player-avatar" style:background-color={player.colorCode || '#888'}
+										></span>
+										<span class="player-card-name">{player.nickname}</span>
+									</div>
+									<div class="player-card-action">
+										<span class="action-hint">點擊偷襲</span>
+										<span class="action-icon attack-icon">⚔️</span>
+									</div>
 								</button>
 							{/each}
 						</div>
@@ -206,7 +225,7 @@
 	.skill-phase {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 1.5rem;
 	}
 
 	.skills-section {
@@ -276,122 +295,168 @@
 		gap: 0.5rem;
 	}
 
-	.skill-instruction {
+	.skill-description {
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
 		margin: 0;
 		text-align: center;
+		padding: 0 1rem;
 	}
 
-	.player-list-inline {
-		display: flex;
-		flex-wrap: wrap;
+	/* 玩家網格佈局 */
+	.player-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 		gap: 0.75rem;
-		justify-content: center;
 		padding: 0.5rem 0;
+		width: 100%;
 	}
 
-	.player-btn-inline {
+	/* 統一的玩家卡片設計 */
+	.player-card {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
 		gap: 0.5rem;
-		padding: 0.5rem 1rem;
+		padding: 1rem;
 		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.2);
+		border: 2px solid rgba(255, 255, 255, 0.2);
 		border-radius: calc(var(--radius));
-		color: hsl(var(--foreground));
-		font-weight: 500;
-		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.2s ease;
+		position: relative;
+		overflow: hidden;
 	}
 
-	.player-btn-inline:hover {
+	.player-card::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.1), transparent);
+		transition: left 0.5s ease;
+	}
+
+	.player-card.clickable {
+		cursor: pointer;
+		border: none;
+		text-align: left;
+	}
+
+	.player-card.clickable:hover::before {
+		left: 100%;
+	}
+
+	.player-card.clickable:hover {
 		background: rgba(255, 255, 255, 0.1);
 		border-color: rgba(212, 175, 55, 0.5);
 		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
 	}
 
-	.player-btn-inline.identified-result {
-		cursor: default;
+	.player-card.clickable.attack:hover {
+		border-color: rgba(239, 68, 68, 0.5);
+		box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+	}
+
+	.player-card.identified {
+		background: rgba(34, 197, 94, 0.08);
 		border-color: rgba(34, 197, 94, 0.3);
-		background: rgba(34, 197, 94, 0.1);
 	}
 
-	.player-btn-inline.identified-result:hover {
-		transform: none;
-	}
-
-	.player-dot {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		display: inline-block;
-	}
-
-	.player-btn-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		align-items: flex-start;
-	}
-
-	.player-camp-label {
-		font-size: 0.75rem;
-		padding: 0.125rem 0.5rem;
-		border-radius: calc(var(--radius) - 4px);
-		font-weight: 600;
-	}
-
-	.player-camp-label.camp-good {
-		background: rgba(34, 197, 94, 0.3);
-		color: #22c55e;
-	}
-
-	.player-camp-label.camp-bad {
-		background: rgba(239, 68, 68, 0.3);
-		color: #ef4444;
-	}
-
-	.identified-players-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.5rem 0;
-	}
-
-	.identified-player-item {
+	.player-card-header {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.5rem 1rem;
-		background: rgba(34, 197, 94, 0.1);
-		border: 1px solid rgba(34, 197, 94, 0.3);
-		border-radius: calc(var(--radius));
-		justify-content: center;
 	}
 
-	.player-name {
+	.player-avatar {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		display: inline-block;
+		border: 2px solid rgba(255, 255, 255, 0.4);
+		box-shadow: 0 0 10px currentColor;
+		flex-shrink: 0;
+	}
+
+	.player-card-name {
 		font-weight: 600;
+		font-size: 0.9375rem;
 		color: hsl(var(--foreground));
+		flex: 1;
 	}
 
-	.player-camp-badge {
-		padding: 0.25rem 0.75rem;
+	.player-card-action {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding-top: 0.5rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.action-hint {
+		font-size: 0.8125rem;
+		color: hsl(var(--muted-foreground));
+		font-weight: 500;
+	}
+
+	.action-icon {
+		font-size: 1.125rem;
+		color: #d4af37;
+		transition: transform 0.2s ease;
+	}
+
+	.player-card.clickable:hover .action-icon {
+		transform: translateX(3px);
+	}
+
+	.attack-icon {
+		color: #ef4444;
+	}
+
+	.player-card.clickable.attack:hover .attack-icon {
+		transform: scale(1.2);
+	}
+
+	.player-card-result {
+		padding-top: 0.5rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.camp-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
 		border-radius: calc(var(--radius) - 2px);
 		font-size: 0.875rem;
 		font-weight: 600;
 	}
 
-	.player-camp-badge.camp-good {
-		background: rgba(34, 197, 94, 0.3);
+	.camp-badge.camp-good {
+		background: rgba(34, 197, 94, 0.2);
 		color: #22c55e;
+		border: 1px solid rgba(34, 197, 94, 0.4);
 	}
 
-	.player-camp-badge.camp-bad {
-		background: rgba(239, 68, 68, 0.3);
+	.camp-badge.camp-bad {
+		background: rgba(239, 68, 68, 0.2);
 		color: #ef4444;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+	}
+
+	/* 技能結果總結區 */
+	.skill-result-summary {
+		width: 100%;
+	}
+
+	.result-title {
+		color: hsl(var(--foreground));
+		font-size: 0.9375rem;
+		font-weight: 600;
+		text-align: center;
+		margin: 0 0 1rem 0;
 	}
 
 	.confirm-btn {
@@ -464,6 +529,40 @@
 		}
 		100% {
 			transform: rotate(360deg);
+		}
+	}
+
+	/* 響應式設計 */
+	@media (max-width: 768px) {
+		.player-grid {
+			grid-template-columns: 1fr;
+			gap: 0.625rem;
+		}
+
+		.player-card {
+			padding: 0.875rem;
+		}
+
+		.player-avatar {
+			width: 32px;
+			height: 32px;
+		}
+
+		.player-card-name {
+			font-size: 0.875rem;
+		}
+
+		.action-hint {
+			font-size: 0.75rem;
+		}
+
+		.camp-badge {
+			font-size: 0.8125rem;
+			padding: 0.3125rem 0.625rem;
+		}
+
+		.skill-description {
+			font-size: 0.8125rem;
 		}
 	}
 </style>
