@@ -64,14 +64,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.phase-number {
-		color: #f4e285;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
 	.phase-title {
 		color: hsl(var(--foreground));
 		font-size: 1.25rem;
@@ -106,20 +98,6 @@
 		min-width: 70px;
 	}
 
-	.step-number {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.1);
-		border: 2px solid rgba(255, 255, 255, 0.2);
-		font-weight: 700;
-		font-size: 0.875rem;
-		transition: all 0.3s ease;
-	}
-
 	.step-label {
 		font-size: 0.8125rem;
 		transition: all 0.3s ease;
@@ -128,12 +106,6 @@
 	.step.completed {
 		background: rgba(34, 197, 94, 0.1);
 		border-color: rgba(34, 197, 94, 0.4);
-		color: #22c55e;
-	}
-
-	.step.completed .step-number {
-		background: rgba(34, 197, 94, 0.2);
-		border-color: rgba(34, 197, 94, 0.5);
 		color: #22c55e;
 	}
 
@@ -152,12 +124,6 @@
 		border-color: rgba(212, 175, 55, 0.6);
 		box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
 		animation: activeGlow 2s ease-in-out infinite;
-	}
-
-	.step.active .step-number {
-		background: rgba(255, 255, 255, 0.3);
-		border-color: rgba(255, 255, 255, 0.5);
-		color: hsl(var(--secondary-foreground));
 	}
 
 	@keyframes activeGlow {
@@ -191,10 +157,6 @@
 			margin-bottom: 0.75rem;
 		}
 
-		.phase-number {
-			font-size: 0.75rem;
-		}
-
 		.phase-title {
 			font-size: 1rem;
 		}
@@ -206,12 +168,6 @@
 		.step {
 			padding: 0.5rem 0.75rem;
 			min-width: 60px;
-		}
-
-		.step-number {
-			width: 24px;
-			height: 24px;
-			font-size: 0.8125rem;
 		}
 
 		.step-label {

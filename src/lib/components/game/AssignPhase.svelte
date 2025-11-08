@@ -347,10 +347,6 @@
 			grid-template-columns: 1fr;
 		}
 
-		.progress-section {
-			padding: 0.75rem;
-		}
-
 		.action-subtitle {
 			font-size: 1rem;
 		}

@@ -66,7 +66,7 @@
 	let showIdentifyConfirmModal = $state(false);
 	let pendingIdentifyBeastId: number | null = $state(null);
 	let isIdentifying = $state(false);
-	let actionAreaElement: HTMLDivElement | null = null;
+	let actionAreaElement: HTMLDivElement | null = $state(null);
 
 	// roomName 需要立即從 URL 參數初始化
 	let roomName = $state($page.params.name || '');
@@ -1126,7 +1126,7 @@
 
 								<div class="discussion-host-actions">
 									<!--                  <p class="action-hint" style="color: #22c55e;">你是房主，可以開始投票階段</p>-->
-									<button class="primary-btn" on:click={startVoting}> 開始投票 </button>
+									<button class="primary-btn" onclick={startVoting}> 開始投票 </button>
 								</div>
 							{:else}
 								<div class="skills-header">
