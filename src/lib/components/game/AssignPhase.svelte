@@ -44,14 +44,6 @@
 				</button>
 			{/each}
 		</div>
-
-		<!-- 快捷提示 -->
-		{#if assignablePlayers.length === 1}
-			<div class="hint-message">
-				<span class="hint-icon">💡</span>
-				<span>這是最後一位待指派的玩家</span>
-			</div>
-		{/if}
 	{/if}
 </div>
 
@@ -208,25 +200,6 @@
 		color: #d4af37;
 	}
 
-	/* 提示訊息 */
-	.hint-message {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		background: rgba(212, 175, 55, 0.15);
-		border: 1px solid rgba(212, 175, 55, 0.3);
-		border-radius: calc(var(--radius));
-		color: #f4e285;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.hint-icon {
-		font-size: 1.125rem;
-	}
-
 	/* 載入狀態 */
 	.loading-skills {
 		display: flex;
@@ -344,7 +317,26 @@
 	/* 響應式設計 */
 	@media (max-width: 768px) {
 		.player-list-inline {
-			grid-template-columns: 1fr;
+			grid-template-columns: repeat(2, 1fr); /* 改為雙欄 */
+			gap: 0.5rem; /* 縮小間距以適應雙欄 */
+		}
+
+		.player-btn-inline {
+			padding: 0.75rem 0.875rem; /* 縮小內邊距以適應雙欄 */
+			gap: 0.5rem;
+		}
+
+		.player-dot {
+			width: 12px;
+			height: 12px;
+		}
+
+		.player-name {
+			font-size: 0.875rem; /* 縮小字體以適應雙欄 */
+		}
+
+		.assign-arrow {
+			font-size: 1rem;
 		}
 
 		.action-subtitle {
