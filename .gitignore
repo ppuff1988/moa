@@ -47,3 +47,11 @@ lerna-debug.log*
 *.env.local
 *.env.production
 docker-compose.override.yml
+
+# Local SSL certificates (for HTTPS development)
+localhost-key.pem
+localhost.pem
+*.key
+*.crt
+*.cert
+
