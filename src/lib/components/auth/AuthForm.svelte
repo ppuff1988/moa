@@ -387,28 +387,25 @@
 	}
 
 	.divider {
-		position: relative;
+		display: flex;
+		align-items: center;
 		text-align: center;
 		margin: 1.5rem 0;
+		gap: 1rem;
 	}
 
-	.divider::before {
+	.divider::before,
+	.divider::after {
 		content: '';
-		position: absolute;
-		top: 50%;
-		left: 0;
-		right: 0;
+		flex: 1;
 		height: 1px;
 		background: hsl(var(--border));
 	}
 
 	.divider span {
-		position: relative;
-		display: inline-block;
-		padding: 0 1rem;
-		background: var(--gradient-antique);
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
+		flex-shrink: 0;
 	}
 
 	.oauth-section {
