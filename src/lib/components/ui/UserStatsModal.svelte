@@ -25,6 +25,7 @@
 	let isLoading = true;
 	let error = '';
 	let portalTarget: HTMLElement | null = null;
+	let modalContainer: HTMLDivElement | null = null;
 
 	async function loadStats() {
 		isLoading = true;
@@ -49,9 +50,11 @@
 	}
 
 	onMount(() => {
-		// 創建 portal 容器（未使用，但保留供未來擴展）
+		// 創建 portal target 在 body 的最外層
 		portalTarget = document.createElement('div');
 		portalTarget.id = 'user-stats-modal-portal';
+		portalTarget.style.cssText =
+			'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;';
 		document.body.appendChild(portalTarget);
 
 		if (isOpen) {
@@ -88,6 +91,15 @@
 		}
 	}
 
+	// Portal 功能：將 modal 容器添加到 portal target
+	$: if (portalTarget && modalContainer) {
+		if (isOpen) {
+			portalTarget.appendChild(modalContainer);
+		} else if (modalContainer.parentElement === portalTarget) {
+			portalTarget.removeChild(modalContainer);
+		}
+	}
+
 	function formatDate(dateString: string | null): string {
 		if (!dateString) return '未知';
 		const date = new Date(dateString);
@@ -105,132 +117,144 @@
 			onClose();
 		}
 	}
+
+	function handleTouchMove(event: TouchEvent) {
+		// 防止背景滾動
+		const target = event.target as HTMLElement;
+		const modalContent = target.closest('.modal-content');
+
+		if (!modalContent) {
+			event.preventDefault();
+		}
+	}
 </script>
 
-{#if isOpen}
-	<!-- svelte-ignore a11y-click-events-have-key-events -->
-	<!-- svelte-ignore a11y-no-static-element-interactions -->
-	<div class="modal-backdrop" on:click={handleBackdropClick}>
-		<div class="modal-container">
-			<!-- 標題 -->
-			<div class="modal-header">
-				<h2>戰績統計</h2>
-				<button class="close-btn" on:click={onClose} aria-label="關閉">
-					<svg
-						width="20"
-						height="20"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<line x1="18" y1="6" x2="6" y2="18"></line>
-						<line x1="6" y1="6" x2="18" y2="18"></line>
-					</svg>
-				</button>
-			</div>
+<div bind:this={modalContainer} style="display: {isOpen ? 'block' : 'none'};">
+	{#if isOpen}
+		<!-- svelte-ignore a11y-click-events-have-key-events -->
+		<!-- svelte-ignore a11y-no-static-element-interactions -->
+		<div class="modal-backdrop" on:click={handleBackdropClick} on:touchmove={handleTouchMove}>
+			<div class="modal-container">
+				<!-- 標題 -->
+				<div class="modal-header">
+					<h2>戰績統計</h2>
+					<button class="close-btn" on:click={onClose} aria-label="關閉">
+						<svg
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<line x1="18" y1="6" x2="6" y2="18"></line>
+							<line x1="6" y1="6" x2="18" y2="18"></line>
+						</svg>
+					</button>
+				</div>
 
-			<!-- 內容 -->
-			<div class="modal-content">
-				{#if isLoading}
-					<div class="loading">
-						<div class="spinner"></div>
-						<p>載入中...</p>
-					</div>
-				{:else if error}
-					<div class="error-message">
-						<p>{error}</p>
-					</div>
-				{:else if stats}
-					<!-- 總覽統計 -->
-					<div class="stats-grid">
-						<div class="stat-card">
-							<div class="stat-label">總場次</div>
-							<div class="stat-value">{stats.totalGames}</div>
+				<!-- 內容 -->
+				<div class="modal-content">
+					{#if isLoading}
+						<div class="loading">
+							<div class="spinner"></div>
+							<p>載入中...</p>
 						</div>
-						<div class="stat-card">
-							<div class="stat-label">勝場</div>
-							<div class="stat-value highlight">{stats.totalWins}</div>
+					{:else if error}
+						<div class="error-message">
+							<p>{error}</p>
 						</div>
-						<div class="stat-card">
-							<div class="stat-label">勝率</div>
-							<div class="stat-value highlight">{stats.winRate}%</div>
-						</div>
-					</div>
-
-					<!-- 陣營統計 -->
-					<div class="section">
-						<h3>陣營戰績</h3>
-						<div class="camp-grid">
-							<div class="camp-item xuyuan">
-								<div class="camp-name">許愿陣營</div>
-								<div class="camp-value">{stats.xuYuanWins} 勝</div>
+					{:else if stats}
+						<!-- 總覽統計 -->
+						<div class="stats-grid">
+							<div class="stat-card">
+								<div class="stat-label">總場次</div>
+								<div class="stat-value">{stats.totalGames}</div>
 							</div>
-							<div class="camp-item laochaofeng">
-								<div class="camp-name">老朝奉陣營</div>
-								<div class="camp-value">{stats.laoChaoFengWins} 勝</div>
+							<div class="stat-card">
+								<div class="stat-label">勝場</div>
+								<div class="stat-value highlight">{stats.totalWins}</div>
+							</div>
+							<div class="stat-card">
+								<div class="stat-label">勝率</div>
+								<div class="stat-value highlight">{stats.winRate}%</div>
 							</div>
 						</div>
-					</div>
 
-					<!-- 角色統計 -->
-					<div class="section">
-						<h3>角色使用</h3>
-						{#if stats.roleStats.length > 0}
-							<div class="role-list">
-								{#each stats.roleStats as role (role.name)}
-									<div class="role-row">
-										<span class="role-name">{role.name}</span>
-										<div class="role-bar-bg">
-											<div
-												class="role-bar"
-												style="width: {(role.count / stats.totalGames) * 100}%"
-											></div>
-										</div>
-										<span class="role-count">{role.count}</span>
-									</div>
-								{/each}
+						<!-- 陣營統計 -->
+						<div class="section">
+							<h3>陣營戰績</h3>
+							<div class="camp-grid">
+								<div class="camp-item xuyuan">
+									<div class="camp-name">許愿陣營</div>
+									<div class="camp-value">{stats.xuYuanWins} 勝</div>
+								</div>
+								<div class="camp-item laochaofeng">
+									<div class="camp-name">老朝奉陣營</div>
+									<div class="camp-value">{stats.laoChaoFengWins} 勝</div>
+								</div>
 							</div>
-						{:else}
-							<div class="empty">尚無角色資料</div>
-						{/if}
-					</div>
+						</div>
 
-					<!-- 近期記錄 -->
-					<div class="section">
-						<h3>近期戰績</h3>
-						{#if stats.recentGames.length > 0}
-							<div class="game-list">
-								{#each stats.recentGames as game (game.gameId)}
-									<div class="game-item" class:win={game.result === '勝利'}>
-										<div class="game-result">
-											<span class="result-badge" class:victory={game.result === '勝利'}>
-												{game.result === '勝利' ? '勝' : '敗'}
-											</span>
-										</div>
-										<div class="game-details">
-											<div class="game-role">{game.roleName}</div>
-											<div class="game-meta">
-												<span class="game-camp">{game.camp}</span>
-												<span class="game-divider">•</span>
-												<span class="game-score">{game.score} 分</span>
+						<!-- 角色統計 -->
+						<div class="section">
+							<h3>角色使用</h3>
+							{#if stats.roleStats.length > 0}
+								<div class="role-list">
+									{#each stats.roleStats as role (role.name)}
+										<div class="role-row">
+											<span class="role-name">{role.name}</span>
+											<div class="role-bar-bg">
+												<div
+													class="role-bar"
+													style="width: {(role.count / stats.totalGames) * 100}%"
+												></div>
 											</div>
+											<span class="role-count">{role.count}</span>
 										</div>
-										<div class="game-date">{formatDate(game.finishedAt)}</div>
-									</div>
-								{/each}
-							</div>
-						{:else}
-							<div class="empty">
-								<p>尚無完成的遊戲記錄</p>
-							</div>
-						{/if}
-					</div>
-				{/if}
+									{/each}
+								</div>
+							{:else}
+								<div class="empty">尚無角色資料</div>
+							{/if}
+						</div>
+
+						<!-- 近期記錄 -->
+						<div class="section">
+							<h3>近期戰績</h3>
+							{#if stats.recentGames.length > 0}
+								<div class="game-list">
+									{#each stats.recentGames as game (game.gameId)}
+										<div class="game-item" class:win={game.result === '勝利'}>
+											<div class="game-result">
+												<span class="result-badge" class:victory={game.result === '勝利'}>
+													{game.result === '勝利' ? '勝' : '敗'}
+												</span>
+											</div>
+											<div class="game-details">
+												<div class="game-role">{game.roleName}</div>
+												<div class="game-meta">
+													<span class="game-camp">{game.camp}</span>
+													<span class="game-divider">•</span>
+													<span class="game-score">{game.score} 分</span>
+												</div>
+											</div>
+											<div class="game-date">{formatDate(game.finishedAt)}</div>
+										</div>
+									{/each}
+								</div>
+							{:else}
+								<div class="empty">
+									<p>尚無完成的遊戲記錄</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.modal-backdrop {
@@ -247,6 +271,9 @@
 		z-index: 9999;
 		animation: fadeIn 0.15s ease;
 		padding: 1rem;
+		pointer-events: auto;
+		overscroll-behavior: contain;
+		touch-action: none;
 	}
 
 	@keyframes fadeIn {
@@ -268,6 +295,8 @@
 			0 20px 25px -5px rgba(0, 0, 0, 0.1),
 			0 10px 10px -5px rgba(0, 0, 0, 0.04);
 		animation: slideUp 0.2s ease;
+		overscroll-behavior: contain;
+		touch-action: pan-y;
 	}
 
 	@keyframes slideUp {
@@ -302,7 +331,6 @@
 		transition: all 0.15s;
 		display: flex;
 		align-items: center;
-		justify-content: center;
 	}
 
 	.close-btn:hover {
@@ -313,7 +341,8 @@
 	.modal-content {
 		flex: 1;
 		overflow-y: auto;
-		padding: 1.5rem;
+		overscroll-behavior: contain;
+		padding: 0.75rem 1.5rem 1.5rem 1.5rem;
 	}
 
 	/* Loading */
@@ -388,6 +417,10 @@
 	/* Section */
 	.section {
 		margin-bottom: 1.5rem;
+	}
+
+	.section:last-child {
+		margin-bottom: 0;
 	}
 
 	.section h3 {
@@ -595,9 +628,10 @@
 		}
 
 		.modal-container {
-			max-height: 85vh;
+			max-height: 90vh;
 			border-radius: 16px 16px 0 0;
 			margin: 0;
+			width: 100%;
 		}
 
 		.modal-header {
@@ -605,7 +639,7 @@
 		}
 
 		.modal-content {
-			padding: 1rem;
+			padding: 0.5rem 1rem 1rem 1rem;
 		}
 
 		h2 {
@@ -615,11 +649,11 @@
 		.stats-grid {
 			grid-template-columns: 1fr;
 			gap: 0.75rem;
-			margin-bottom: 1rem;
+			margin-bottom: 0.75rem;
 		}
 
 		.stat-card {
-			padding: 1rem;
+			padding: 0.75rem;
 		}
 
 		.stat-value {
@@ -627,12 +661,12 @@
 		}
 
 		.section {
-			margin-bottom: 1rem;
+			margin-bottom: 0.75rem;
 		}
 
 		.section h3 {
 			font-size: 0.9rem;
-			margin-bottom: 0.75rem;
+			margin-bottom: 0.5rem;
 		}
 
 		.camp-grid {
@@ -641,7 +675,7 @@
 		}
 
 		.camp-item {
-			padding: 1rem;
+			padding: 0.75rem;
 		}
 
 		.camp-value {
