@@ -401,8 +401,24 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 		}
 	}
 
-	// 確認在首頁並等待關鍵元素
-	await page.waitForSelector('button:has-text("創建房間"), button:has-text("回到房間")', {
+	// 確認在首頁並等待關鍵元素（ActionButton 的文字在 button 標籤內）
+	// 先確保 URL 是首頁
+	if (!page.url().includes('localhost:5173/') || page.url().includes('/auth/')) {
+		console.log('當前不在首頁，正在導航...');
+		await page.goto('/');
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.waitForTimeout(1000);
+	}
+
+	// 等待首頁的載入狀態結束
+	const loadingSpinner = page.locator('text=載入中');
+	const isLoadingVisible = await loadingSpinner.isVisible({ timeout: 1000 }).catch(() => false);
+	if (isLoadingVisible) {
+		await loadingSpinner.waitFor({ state: 'hidden', timeout: 10000 });
+	}
+
+	// 等待按鈕出現
+	await page.waitForSelector('button.action-btn, button:has-text("離開房間")', {
 		state: 'visible',
 		timeout: 15000
 	});
@@ -428,7 +444,7 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 		}
 
 		// 等待回到首頁並確保顯示創建房間按鈕
-		await page.waitForSelector('button:has-text("創建房間")', {
+		await page.waitForSelector('button.action-btn', {
 			state: 'visible',
 			timeout: 10000
 		});

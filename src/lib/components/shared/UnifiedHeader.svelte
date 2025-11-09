@@ -31,7 +31,7 @@
 </script>
 
 <div class="unified-header">
-	<div class="room-info">
+	<div class="room-info" data-testid="room-info">
 		<div class="info-row">
 			<!-- 返回首頁按鈕 -->
 			<a href="/" class="back-home-btn" title="返回首頁" aria-label="返回首頁">
@@ -69,7 +69,7 @@
 				{#if currentPlayerRole}
 					<div class="info-section">
 						<span class="label">角色</span>
-						<span class="value role-name">{currentPlayerRole}</span>
+						<span class="value role-name role-highlight">{currentPlayerRole}</span>
 					</div>
 				{/if}
 

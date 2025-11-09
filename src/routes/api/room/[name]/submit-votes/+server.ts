@@ -136,8 +136,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				: null
 		});
 	} catch (error) {
-		console.error('提交投票時發生錯誤:', error);
-		const message = error instanceof Error ? error.message : '提交投票失敗';
-		return json({ message }, { status: 400 });
+		console.error('[submit-votes] 錯誤:', error);
+		return json({ message: '投票提交失敗' }, { status: 500 });
 	}
 };

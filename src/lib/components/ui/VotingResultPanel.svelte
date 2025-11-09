@@ -24,16 +24,17 @@
 	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
 
 	// 獲取所有獸首並排序（按票數和生肖順序）
-	$: sortedBeasts = beastHeads.sort((a, b) => {
-		// 先按票數降序
-		if (b.votes !== a.votes) {
-			return b.votes - a.votes;
-		}
-		// 票數相同時按生肖順序
-		const orderA = ZODIAC_ORDER.indexOf(a.animal);
-		const orderB = ZODIAC_ORDER.indexOf(b.animal);
-		return orderA - orderB;
-	});
+	$: sortedBeasts = beastHeads
+		.filter((b) => b.votes >= 0)
+		.sort((a, b) => {
+			if (b.votes !== a.votes) {
+				return b.votes - a.votes;
+			}
+			// 票數相同時按生肖順序
+			const orderA = ZODIAC_ORDER.indexOf(a.animal);
+			const orderB = ZODIAC_ORDER.indexOf(b.animal);
+			return orderA - orderB;
+		});
 
 	// 獲取前兩名（一定會有前兩名，即使第二名是0票）
 	$: topTwo = sortedBeasts.slice(0, 2);
@@ -492,6 +493,16 @@
 
 		.vote-count {
 			font-size: 0.9375rem;
+		}
+
+		.beast-status-large {
+			font-size: 0.75rem;
+			padding: 0.5rem 0.625rem;
+		}
+
+		.beast-status-pending {
+			font-size: 0.75rem;
+			padding: 0.5rem 0.625rem;
 		}
 	}
 </style>

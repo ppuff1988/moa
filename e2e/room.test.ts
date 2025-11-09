@@ -36,7 +36,7 @@ test.describe('房間功能', () => {
 			expect(roomCode.length).toBeGreaterThan(0);
 
 			// 應該在頁面上看到房間代碼
-			await expect(page.locator('[data-testid="room-title"]')).toContainText(roomCode);
+			await expect(page.locator('.room-number')).toContainText(roomCode);
 		});
 
 		test('創建者應該是房主', async ({ page }) => {
@@ -532,8 +532,8 @@ test.describe('房間功能', () => {
 						.catch(() => false)
 				]);
 
-				// 驗證房間標題仍然存在（使用更精確的選擇器，只檢查 h1 標題）
-				await expect(pages[0].locator('h1.room-title').first()).toBeVisible();
+				// 驗證房間標題仍然存在
+				await expect(pages[0].locator('.room-number').first()).toBeVisible();
 			} finally {
 				for (const ctx of contexts) {
 					await ctx.close();
