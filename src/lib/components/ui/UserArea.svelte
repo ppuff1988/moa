@@ -9,9 +9,11 @@
 		| undefined = undefined;
 
 	import EditProfileModal from './EditProfileModal.svelte';
+	import UserStatsModal from './UserStatsModal.svelte';
 
 	let isDropdownOpen = false;
 	let isEditModalOpen = false;
+	let isStatsModalOpen = false;
 
 	// 從 email 或 nickname 生成頭像文字（取第一個字符）
 	$: avatarText = (nickname || email || '?').charAt(0).toUpperCase();
@@ -35,6 +37,11 @@
 
 	function openEditModal() {
 		isEditModalOpen = true;
+		closeDropdown();
+	}
+
+	function openStatsModal() {
+		isStatsModalOpen = true;
 		closeDropdown();
 	}
 
@@ -105,6 +112,23 @@
 				</svg>
 				編輯個人資料
 			</button>
+			<button class="dropdown-item" on:click={openStatsModal}>
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M18 20V10"></path>
+					<path d="M12 20V4"></path>
+					<path d="M6 20v-6"></path>
+				</svg>
+				歷史戰績
+			</button>
 			<div class="dropdown-divider"></div>
 			<button class="dropdown-item logout" on:click={onLogout}>
 				<svg
@@ -135,6 +159,8 @@
 	on:save={handleProfileSave}
 	on:close={() => (isEditModalOpen = false)}
 />
+
+<UserStatsModal bind:isOpen={isStatsModalOpen} onClose={() => (isStatsModalOpen = false)} />
 
 <style>
 	.user-area {
