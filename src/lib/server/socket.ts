@@ -35,6 +35,11 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 		transports: ['polling', 'websocket']
 	});
 
+	// 將 io 實例同時掛載到 global，確保開發和生產環境都能訪問
+	(globalThis as { io?: SocketIOServer }).io = io;
+
+	console.log('[initSocketIO] Socket.IO 實例已初始化並掛載到 global');
+
 	// 身份驗證中間件
 	io.use(async (socket, next) => {
 		try {
@@ -86,7 +91,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 					return;
 				}
 
-				// 獲取用戶暱稱
+				// 獲取用戶暱稱和頭像
 				const { user } = await import('./db/schema');
 				const [userInfo] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
 
@@ -94,6 +99,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				socket.join(roomName);
 				socket.data.roomName = roomName;
 				socket.data.nickname = userInfo?.nickname || `玩家${userId}`;
+				socket.data.avatar = userInfo?.avatar || null;
 
 				// 更新玩家在線狀態
 				await updatePlayerOnlineStatus(game.id, userId, true);
@@ -116,7 +122,8 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				// 通知其他玩家有新玩家加入
 				socket.to(roomName).emit('player-joined', {
 					userId,
-					nickname: socket.data.nickname
+					nickname: socket.data.nickname,
+					avatar: socket.data.avatar
 				});
 			} catch {
 				socket.emit('error', { message: '加入房間失敗，請稍後再試' });
@@ -300,12 +307,34 @@ async function handleLeaveRoom(socket: Socket) {
 }
 
 // 向房間發送事件
-export function emitToRoom(roomName: string, event: string, data: unknown): void {
+export async function emitToRoom(roomName: string, event: string, data: unknown): Promise<void> {
 	const socketIO = getSocketIO();
 	if (!socketIO) {
+		console.error(`[emitToRoom] Socket.IO 未初始化！無法發送事件 ${event} 到房間 ${roomName}`);
 		return;
 	}
-	socketIO.to(roomName).emit(event, data);
+
+	try {
+		// 獲取房間內的所有 socket 連接
+		const sockets = await socketIO.in(roomName).fetchSockets();
+		console.log(
+			`[emitToRoom] 發送事件 ${event} 到房間 ${roomName}，房間內有 ${sockets.length} 個連接`
+		);
+
+		if (sockets.length === 0) {
+			console.warn(`[emitToRoom] ⚠️  房間 ${roomName} 內沒有任何連接！`);
+		} else {
+			console.log(
+				`[emitToRoom] 房間內的用戶 ID:`,
+				sockets.map((s) => s.data.userId || 'unknown')
+			);
+		}
+
+		socketIO.to(roomName).emit(event, data);
+		console.log(`[emitToRoom] ✅ 事件 ${event} 已發送給 ${sockets.length} 個連接`);
+	} catch (error) {
+		console.error(`[emitToRoom] 發送事件 ${event} 到房間 ${roomName} 時發生錯誤:`, error);
+	}
 }
 
 // 向特定用戶發送事件

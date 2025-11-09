@@ -34,6 +34,18 @@
 	let previousIsReady = player.isReady || false;
 	let hasLoadedRoles = false;
 
+	// 從 nickname 生成頭像文字（取第一個字符）
+	$: avatarText = (player.nickname || '?').charAt(0).toUpperCase();
+
+	// 根據 userId 生成顏色（確保每個用戶的顏色是穩定且唯一的）
+	function userIdToColor(userId: number): string {
+		// 使用 userId 來生成穩定的顏色
+		const hue = (userId * 137.508) % 360; // 使用黃金角度來分散顏色
+		return `hsl(${hue}, 65%, 55%)`;
+	}
+
+	$: avatarBgColor = userIdToColor(player.userId);
+
 	// 同步 player 的 isReady 狀態
 	$: isLocked = player.isReady || false;
 
@@ -269,6 +281,16 @@
 	<!-- 玩家資訊 -->
 	<div class="player-info">
 		<div class="name-row">
+			<div
+				class="player-avatar"
+				style="background-color: {player.avatar ? 'transparent' : avatarBgColor}"
+			>
+				{#if player.avatar}
+					<img src={player.avatar} alt="{player.nickname}的頭像" class="avatar-img" />
+				{:else}
+					{avatarText}
+				{/if}
+			</div>
 			<div class="player-name">{player.nickname}</div>
 			{#if player.isHost}
 				<div class="host-badge">房主</div>
@@ -492,12 +514,45 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-bottom: 0.5rem;
+		min-width: 0;
+	}
+
+	.player-avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: white;
+		font-weight: 700;
+		font-size: 1.1rem;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+		border: 2px solid rgba(255, 255, 255, 0.2);
+		flex-shrink: 0;
+		transition: transform 0.2s ease;
+	}
+
+	.player-card:hover .player-avatar {
+		transform: scale(1.05);
+	}
+
+	.avatar-img {
+		width: 100%;
+		height: 100%;
+		border-radius: 50%;
+		object-fit: cover;
 	}
 
 	.player-name {
 		font-size: 1.1rem;
 		font-weight: 600;
 		text-shadow: 0 2px 4px hsl(var(--background) / 0.8);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+		flex: 1;
 	}
 
 	.host-badge {
@@ -508,6 +563,7 @@
 		font-size: 0.7rem;
 		font-weight: 600;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
 
 	.player-role,
@@ -621,44 +677,73 @@
 
 	.confirm-btn {
 		width: 100%;
-		padding: 0.6rem 1rem;
-		border: none;
+		padding: 0.75rem 1.25rem;
+		border: 2px solid rgba(198, 166, 100, 0.5);
 		border-radius: calc(var(--radius) * 0.75);
 		background: var(--gradient-gold);
 		color: rgba(0, 0, 0, 0.85);
-		font-size: 0.9rem;
-		font-weight: 600;
+		font-size: 0.95rem;
+		font-weight: 700;
 		cursor: pointer;
 		transition: var(--transition-elegant);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+		box-shadow:
+			0 4px 12px rgba(0, 0, 0, 0.2),
+			inset 0 1px 0 rgba(255, 255, 255, 0.2);
+		position: relative;
+		overflow: hidden;
+	}
+
+	.confirm-btn::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: -100%;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transition: left 0.5s ease;
+	}
+
+	.confirm-btn:hover:not(:disabled)::before {
+		left: 100%;
 	}
 
 	.confirm-btn:hover:not(:disabled) {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		box-shadow:
+			0 6px 16px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.3),
+			0 0 20px rgba(212, 175, 55, 0.3);
+		border-color: rgba(212, 175, 55, 0.8);
+	}
+
+	.confirm-btn:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.confirm-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 		background: rgba(100, 100, 100, 0.5);
+		border-color: rgba(100, 100, 100, 0.3);
 	}
 
 	.confirm-btn.locked {
-		background: linear-gradient(
-			135deg,
-			hsl(var(--destructive)) 0%,
-			hsl(var(--destructive) / 0.85) 100%
-		);
+		background: linear-gradient(135deg, #dc2626, #b91c1c);
 		color: hsl(var(--destructive-foreground));
+		border-color: rgba(220, 38, 38, 0.5);
 	}
 
 	.confirm-btn.locked:hover:not(:disabled) {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+		box-shadow:
+			0 6px 16px rgba(220, 38, 38, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.2),
+			0 0 20px rgba(220, 38, 38, 0.3);
+		border-color: rgba(220, 38, 38, 0.8);
 	}
 
 	.error-message {

@@ -75,7 +75,7 @@ test.describe('頁面導航', () => {
 			await expect(page).toHaveURL(/\/room\/.+/);
 
 			// 應該顯示房間資訊（房間代碼）
-			await expect(page.locator('body')).toContainText(/房間：\d+/);
+			await expect(page.locator('body')).toContainText(/房間 \d+/);
 		});
 
 		test('應該能夠從房間返回首頁', async ({ page }) => {

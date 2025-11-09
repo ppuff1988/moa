@@ -36,7 +36,7 @@
 					stroke-width="2"
 				/>
 			</svg>
-			<div class="seal-text">偽</div>
+			<div class="seal-text">贗</div>
 		</div>
 
 		<h2>OAuth 驗證失敗</h2>

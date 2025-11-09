@@ -139,36 +139,58 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.25rem 1.5rem;
-		border-bottom: 1px solid rgba(212, 175, 55, 0.3);
-		background: linear-gradient(90deg, rgba(212, 175, 55, 0.1) 0%, transparent 100%);
+		padding: 1.5rem 1.75rem;
+		border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+		background: linear-gradient(90deg, rgba(212, 175, 55, 0.12) 0%, transparent 100%);
 		flex-shrink: 0;
+		position: relative;
+	}
+
+	.modal-header::after {
+		content: '';
+		position: absolute;
+		bottom: -2px;
+		left: 0;
+		width: 100%;
+		height: 2px;
+		background: linear-gradient(90deg, rgba(212, 175, 55, 0.5), transparent);
 	}
 
 	.modal-title {
 		margin: 0;
 		font-size: 1.5rem;
-		font-weight: 600;
+		font-weight: 700;
 		color: #d4af37;
-		text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+		text-shadow:
+			0 0 10px rgba(212, 175, 55, 0.5),
+			0 2px 4px rgba(0, 0, 0, 0.3);
+		letter-spacing: 0.02em;
 	}
 
 	.close-button {
-		background: none;
-		border: none;
+		background: rgba(212, 175, 55, 0.1);
+		border: 1px solid rgba(212, 175, 55, 0.3);
 		color: #d4af37;
 		cursor: pointer;
 		padding: 0.5rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.2s;
-		border-radius: 4px;
+		transition: var(--transition-elegant);
+		border-radius: calc(var(--radius) * 0.5);
+		width: 36px;
+		height: 36px;
 	}
 
 	.close-button:hover {
 		background: rgba(212, 175, 55, 0.2);
-		transform: scale(1.1);
+		border-color: rgba(212, 175, 55, 0.6);
+		transform: scale(1.1) rotate(90deg);
+		box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+	}
+
+	.close-button:active {
+		transform: scale(1) rotate(90deg);
 	}
 
 	.modal-body {

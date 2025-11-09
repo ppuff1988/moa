@@ -15,17 +15,37 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	// 驗證 state 和 code
 	if (!code || !state || !storedState || state !== storedState || !storedCodeVerifier) {
-		// 清理可能存在的 cookies
-		cookies.delete('google_oauth_state', { path: '/' });
-		cookies.delete('google_oauth_code_verifier', { path: '/' });
+		// 清理可能存在的 cookies - 使用與設定時相同的參數
+		cookies.delete('google_oauth_state', {
+			path: '/',
+			secure: true,
+			httpOnly: true,
+			sameSite: 'none'
+		});
+		cookies.delete('google_oauth_code_verifier', {
+			path: '/',
+			secure: true,
+			httpOnly: true,
+			sameSite: 'none'
+		});
 
 		// 重定向到友好的錯誤頁面
 		throw redirect(302, '/auth/oauth-error');
 	}
 
-	// 立即清除 OAuth cookies 以防止重複使用
-	cookies.delete('google_oauth_state', { path: '/' });
-	cookies.delete('google_oauth_code_verifier', { path: '/' });
+	// 立即清除 OAuth cookies 以防止重複使用 - 使用與設定時相同的參數
+	cookies.delete('google_oauth_state', {
+		path: '/',
+		secure: true,
+		httpOnly: true,
+		sameSite: 'none'
+	});
+	cookies.delete('google_oauth_code_verifier', {
+		path: '/',
+		secure: true,
+		httpOnly: true,
+		sameSite: 'none'
+	});
 
 	// 檢查是否需要返回 JWT（用於 API 客戶端）
 	const returnJwt = url.searchParams.get('return_jwt') === 'true';

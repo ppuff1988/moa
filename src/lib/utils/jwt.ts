@@ -59,6 +59,10 @@ export async function logout(): Promise<void> {
 		console.error('登出錯誤:', error);
 	} finally {
 		removeJWTToken();
+		// 清除所有 localStorage
+		if (typeof window !== 'undefined') {
+			localStorage.clear();
+		}
 		window.location.href = '/auth/login';
 	}
 }

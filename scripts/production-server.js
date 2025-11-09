@@ -101,14 +101,18 @@ try {
 					return;
 				}
 
-				// 獲取用戶信息
-				const userResult = await pool.query('SELECT nickname FROM users WHERE id = $1', [userId]);
+				// 獲取用戶信息（包含頭像）
+				const userResult = await pool.query('SELECT nickname, avatar FROM users WHERE id = $1', [
+					userId
+				]);
 				const nickname = userResult.rows[0]?.nickname || `玩家${userId}`;
+				const avatar = userResult.rows[0]?.avatar || null;
 
 				// 加入 Socket.IO 房間
 				socket.join(roomName);
 				socket.data.roomName = roomName;
 				socket.data.nickname = nickname;
+				socket.data.avatar = avatar;
 
 				// 更新玩家在線狀態
 				await pool.query(
@@ -139,7 +143,8 @@ try {
 						gp.can_action,
 						gp.joined_at,
 						gp.last_active_at,
-						u.nickname
+						u.nickname,
+						u.avatar
 					FROM game_players gp
 					LEFT JOIN users u ON gp.user_id = u.id
 					WHERE gp.game_id = $1
@@ -172,14 +177,16 @@ try {
 						canAction: p.can_action,
 						joinedAt: p.joined_at,
 						lastActiveAt: p.last_active_at,
-						nickname: p.nickname
+						nickname: p.nickname,
+						avatar: p.avatar
 					}))
 				});
 
 				// 通知其他玩家有新玩家加入
 				socket.to(roomName).emit('player-joined', {
 					userId,
-					nickname
+					nickname,
+					avatar
 				});
 			} catch (error) {
 				console.error('[Socket] 加入房間錯誤:', error);
@@ -240,7 +247,8 @@ try {
 						gp.can_action,
 						gp.joined_at,
 						gp.last_active_at,
-						u.nickname
+						u.nickname,
+						u.avatar
 					FROM game_players gp
 					LEFT JOIN users u ON gp.user_id = u.id
 					WHERE gp.game_id = $1
@@ -280,7 +288,8 @@ try {
 						canAction: p.can_action,
 						joinedAt: p.joined_at,
 						lastActiveAt: p.last_active_at,
-						nickname: p.nickname
+						nickname: p.nickname,
+						avatar: p.avatar
 					}))
 				});
 
@@ -343,7 +352,8 @@ try {
 							gp.can_action,
 							gp.joined_at,
 							gp.last_active_at,
-							u.nickname
+							u.nickname,
+							u.avatar
 						FROM game_players gp
 						LEFT JOIN users u ON gp.user_id = u.id
 						WHERE gp.game_id = $1
@@ -379,7 +389,8 @@ try {
 							canAction: p.can_action,
 							joinedAt: p.joined_at,
 							lastActiveAt: p.last_active_at,
-							nickname: p.nickname
+							nickname: p.nickname,
+							avatar: p.avatar
 						}))
 					});
 

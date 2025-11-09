@@ -43,33 +43,45 @@
 </div>
 
 <style>
-	:global(html, body) {
+	:global(html) {
 		margin: 0;
 		padding: 0;
-		width: 100vw;
-		height: 100vh;
+		width: 100%;
+		height: 100%;
 		box-sizing: border-box;
+		overflow-x: hidden;
+	}
+
+	:global(body) {
+		margin: 0;
+		padding: 0;
+		width: 100%;
+		min-height: 100vh;
+		box-sizing: border-box;
+		overflow-x: hidden;
+		position: relative;
 	}
 
 	.layout {
 		background-color: hsl(var(--background));
 		position: relative;
 		min-height: 100vh;
-		width: 100vw;
+		width: 100%;
+		overflow-x: hidden;
 	}
 
 	.background-blur {
-		position: absolute;
+		position: fixed;
 		top: 0;
 		left: 0;
-		width: 100vw;
-		height: 100vh;
+		width: 100%;
+		height: 100%;
 		background-image: url('/background.jpg');
 		background-size: cover;
 		background-position: center;
 		background-repeat: no-repeat;
 		filter: blur(12px) brightness(0.7);
 		z-index: 0;
-		pointer-events: none; /* 允許點擊穿透背景層 */
+		pointer-events: none;
 	}
 </style>

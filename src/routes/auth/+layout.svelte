@@ -19,20 +19,21 @@
 		background-color: hsl(var(--background));
 		position: relative;
 		min-height: 100vh;
-		width: 100vw;
-		overflow: hidden;
+		width: 100%;
+		overflow-x: hidden;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
 		align-items: center;
+		padding: 2rem 0;
 	}
 
 	.background-blur {
-		position: absolute;
+		position: fixed;
 		top: 0;
 		left: 0;
-		width: 100vw;
-		height: 100vh;
+		width: 100%;
+		height: 100%;
 		background-image: url('/background.jpg');
 		background-size: cover;
 		background-position: center;
@@ -83,5 +84,20 @@
 	.content:hover {
 		box-shadow: var(--gradient-shadow);
 		transform: translateY(-2px);
+	}
+
+	@media (max-width: 768px) {
+		.auth-layout {
+			padding: 1rem 0;
+		}
+
+		.main-title {
+			font-size: 2.5rem;
+		}
+
+		.content {
+			margin: 0 1rem;
+			padding: 1.5rem;
+		}
 	}
 </style>
