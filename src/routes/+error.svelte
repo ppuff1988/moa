@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
-	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
 
 	const getErrorTitle = (status: number) => {
 		switch (status) {
@@ -35,202 +33,195 @@
 	};
 </script>
 
-<div class="error-page">
-	<div class="error-container">
-		<div class="error-decoration">
-			<div class="ancient-pattern top-left"></div>
-			<div class="ancient-pattern top-right"></div>
-			<div class="ancient-pattern bottom-left"></div>
-			<div class="ancient-pattern bottom-right"></div>
-		</div>
+<div class="error-layout">
+	<div class="background-blur"></div>
 
-		<div class="error-content">
-			<div class="error-code">{$page.status}</div>
-
-			<MainTitle title={getErrorTitle($page.status)} subtitle={getErrorSubtitle($page.status)} />
-
-			<div class="action-area">
-				<ActionButton
-					onClick={goHome}
-					variant="primary"
-					title="返回首頁"
-					subtitle="回到古董局中局的起點"
-				/>
-			</div>
-		</div>
-
-		<FooterDecoration text="古董局中局" />
+	<div class="header">
+		<h1 class="main-title">古董局中局</h1>
+		<div class="gradient-line"></div>
 	</div>
+
+	<div class="error-card">
+		<div class="error-code">{$page.status}</div>
+
+		<h2 class="error-title">{getErrorTitle($page.status)}</h2>
+		<p class="error-subtitle">{getErrorSubtitle($page.status)}</p>
+
+		<div class="gradient-divider"></div>
+
+		<ActionButton
+			onClick={goHome}
+			variant="primary"
+			title="返回首頁"
+			subtitle="回到古董局中局的起點"
+		/>
+	</div>
+
+	<p class="footer-text">傳承千年智慧，品鑑古董真偽</p>
 </div>
 
 <style>
-	.error-page {
+	.error-layout {
+		background-color: hsl(var(--background));
+		position: relative;
 		min-height: 100vh;
 		width: 100%;
+		overflow-x: hidden;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
 		justify-content: center;
+		align-items: center;
+		padding: 2rem 0;
+	}
+
+	.background-blur {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 		background-image: url('/background.jpg');
 		background-size: cover;
 		background-position: center;
-		background-attachment: fixed;
-		position: relative;
-		padding: 2rem;
-	}
-
-	.error-page::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: radial-gradient(
-			circle at center,
-			hsl(var(--background) / 0.9),
-			hsl(var(--background) / 0.97)
-		);
+		background-repeat: no-repeat;
+		filter: blur(12px) brightness(0.7);
 		z-index: 0;
 	}
 
-	.error-container {
+	.header {
 		position: relative;
 		z-index: 1;
-		width: 100%;
-		max-width: 900px;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 3rem;
+		margin-bottom: 2rem;
 	}
 
-	.error-decoration {
-		position: absolute;
-		top: -40px;
-		left: -40px;
-		right: -40px;
-		bottom: -40px;
-		pointer-events: none;
-		z-index: -1;
+	.main-title {
+		color: hsl(var(--foreground));
+		font-size: 3.5rem;
+		font-weight: 400;
+		text-align: center;
+		margin: 0;
+		text-shadow: 0 4px 8px hsl(var(--background) / 0.8);
+		letter-spacing: 0.1em;
 	}
 
-	.ancient-pattern {
-		position: absolute;
-		width: 80px;
-		height: 80px;
-		border: 2px solid hsl(var(--primary) / 0.4);
-		transition: var(--transition-elegant);
+	.gradient-line {
+		width: 10rem;
+		height: 0.25rem;
+		background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--secondary)));
+		margin: 1.25rem auto 0;
+		border-radius: 9999px;
 	}
 
-	.ancient-pattern::before {
-		content: '';
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		border: 1px solid hsl(var(--secondary) / 0.3);
-		top: 8px;
-		left: 8px;
-	}
-
-	.top-left {
-		top: 0;
-		left: 0;
-		border-right: none;
-		border-bottom: none;
-	}
-
-	.top-right {
-		top: 0;
-		right: 0;
-		border-left: none;
-		border-bottom: none;
-	}
-
-	.bottom-left {
-		bottom: 0;
-		left: 0;
-		border-right: none;
-		border-top: none;
-	}
-
-	.bottom-right {
-		bottom: 0;
-		right: 0;
-		border-left: none;
-		border-top: none;
-	}
-
-	.error-content {
-		width: 100%;
-		background: linear-gradient(135deg, hsl(var(--card)), hsl(38 20% 80%));
+	.error-card {
+		position: relative;
+		z-index: 1;
+		padding: 3rem 2.5rem;
 		border-radius: calc(var(--radius) * 2);
-		padding: 4rem 3rem;
-		box-shadow:
-			0 10px 40px -10px hsl(var(--background) / 0.8),
-			inset 0 1px 0 hsl(42 30% 90% / 0.4);
-		border: 1px solid hsl(var(--secondary) / 0.2);
-		backdrop-filter: blur(10px);
+		box-shadow: var(--shadow-antique);
+		background: var(--gradient-antique);
+		border: 1px solid hsl(var(--border));
+		min-width: 320px;
+		max-width: 600px;
+		width: 100%;
+		margin: 0 2rem;
+		transition: var(--transition-elegant);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2rem;
+		text-align: center;
+	}
+
+	.error-card:hover {
+		box-shadow: var(--gradient-shadow);
+		transform: translateY(-2px);
 	}
 
 	.error-code {
-		font-size: 8rem;
+		font-size: 5rem;
 		font-weight: 700;
-		background: linear-gradient(135deg, hsl(var(--primary)), hsl(1 70% 45%));
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+		color: #dc2626;
 		line-height: 1;
-		margin: 0;
-		letter-spacing: 0.1em;
-		filter: drop-shadow(0 4px 12px hsl(var(--primary) / 0.3));
+		margin: 0 0 1.5rem 0;
+		letter-spacing: -0.02em;
+		opacity: 0.8;
 	}
 
-	.action-area {
-		margin-top: 1rem;
-		width: 100%;
+	.error-title {
+		font-size: 2rem;
+		font-weight: 600;
+		color: hsl(var(--card-foreground));
+		margin: 0 0 1rem 0;
+		letter-spacing: 0.05em;
+		text-shadow: 0 2px 4px hsl(var(--background) / 0.3);
+	}
+
+	.error-subtitle {
+		font-size: 1rem;
+		color: hsl(var(--muted-foreground));
+		margin: 0 0 2rem 0;
+		line-height: 1.6;
+	}
+
+	.gradient-divider {
+		width: 8rem;
+		height: 0.2rem;
+		background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--secondary)));
+		margin: 1.5rem auto;
+		border-radius: 9999px;
+	}
+
+	.footer-text {
+		position: relative;
+		z-index: 1;
+		margin-top: 2rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 1.1rem;
+		font-style: italic;
+		opacity: 0.8;
 		display: flex;
-		justify-content: center;
+		align-items: center;
+		gap: 1rem;
+		width: 100%;
+		max-width: 600px;
+	}
+
+	.footer-text::before,
+	.footer-text::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(
+			to right,
+			transparent,
+			hsl(var(--muted-foreground) / 0.3),
+			transparent
+		);
 	}
 
 	@media (max-width: 768px) {
-		.error-page {
-			padding: 1rem;
+		.error-layout {
+			padding: 1rem 0;
 		}
 
-		.error-content {
-			padding: 3rem 2rem;
+		.main-title {
+			font-size: 2.5rem;
 		}
 
-		.error-code {
-			font-size: 5rem;
+		.error-card {
+			margin: 0 1rem;
+			padding: 2rem 1.5rem;
 		}
 
-		.ancient-pattern {
-			width: 50px;
-			height: 50px;
-		}
-
-		.error-decoration {
-			top: -20px;
-			left: -20px;
-			right: -20px;
-			bottom: -20px;
-		}
-	}
-
-	@media (max-width: 480px) {
 		.error-code {
 			font-size: 4rem;
 		}
 
-		.ancient-pattern {
-			width: 40px;
-			height: 40px;
+		.error-title {
+			font-size: 1.5rem;
+		}
+
+		.error-subtitle {
+			font-size: 0.9rem;
 		}
 	}
 </style>
