@@ -24,7 +24,7 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 RUN npm run build
 
 # Production stage - Main App
-FROM node:20-alpine AS app
+FROM node:22-alpine AS app
 
 WORKDIR /app
 
