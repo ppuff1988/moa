@@ -70,7 +70,7 @@ export const games = pgTable(
 		hostId: integer('host_id')
 			.notNull()
 			.references(() => user.id),
-		status: text('status').notNull().default('waiting'), // waiting: 等待玩家, selecting: 選角階段, playing: 遊戲中, finished: 已結束
+		status: text('status').notNull().default('waiting'), // waiting: 等待玩家, selecting: 選角階段, playing: 遊戲中, finished: 正常結束, terminated: 強制結束
 		playerCount: integer('player_count').notNull().default(0),
 		totalScore: integer('total_score').default(0), // 許愿陣營總分
 		createdAt: timestamp('created_at').defaultNow(),

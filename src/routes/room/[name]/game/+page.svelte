@@ -103,13 +103,6 @@
 		currentGameStatus.set(gameStatus);
 	});
 
-	// Initialize game service
-	$effect(() => {
-		if (roomName) {
-			gameService = new GameService(roomName);
-		}
-	});
-
 	// 當進入技能或指派階段時，自動滾動到行動區域
 	$effect(() => {
 		if (
@@ -245,18 +238,27 @@
 		// 如果遊戲已結束，不再更新狀態
 		if ($isGameFinished) return;
 
-		const data = await gameService.fetchRoundStatus();
-		if (!data) return;
-
-		if (data.phase) {
-			roundPhase.set(data.phase);
-			// 如果 API 返回 finished，設置遊戲結束標記
-			if (data.phase === 'finished') {
-				isGameFinished.set(true);
+		try {
+			const data = await gameService.fetchRoundStatus();
+			if (!data) {
+				console.warn('[fetchRoundStatus] API 返回空數據，跳過更新');
+				return;
 			}
-		}
-		if (data.isHost !== undefined) {
-			isHost.set(data.isHost);
+
+			if (data.phase) {
+				roundPhase.set(data.phase);
+				// 如果 API 返回 finished，設置遊戲結束標記
+				if (data.phase === 'finished') {
+					isGameFinished.set(true);
+				}
+			}
+			if (data.isHost !== undefined) {
+				isHost.set(data.isHost);
+			}
+		} catch (error) {
+			// 捕獲錯誤但不阻止遊戲載入
+			console.error('[fetchRoundStatus] 獲取回合狀態失敗:', error);
+			// 不拋出錯誤，讓遊戲繼續載入
 		}
 	}
 
@@ -829,6 +831,9 @@
 	// ==================== Lifecycle ====================
 
 	onMount(async () => {
+		// 立即初始化 gameService
+		gameService = new GameService(roomName);
+
 		// 檢查用戶是否已登入
 		const token = getJWTToken();
 		if (!token) {

@@ -140,6 +140,7 @@ export function useRoomLobby(roomName: string) {
 		socket.off('player-locked');
 		socket.off('player-unlocked');
 		socket.off('room-closed');
+		socket.off('game-force-ended');
 		socket.off('error');
 
 		// Room update event
@@ -167,7 +168,11 @@ export function useRoomLobby(roomName: string) {
 
 		// Player left event
 		socket.on('player-left', (data: { userId: number; nickname: string }) => {
-			addNotification(`${data.nickname} 離開了房間`, 'info');
+			// 在 selecting 狀態下不顯示通知（避免干擾選角）
+			const status = get(gameStatus);
+			if (status !== 'selecting') {
+				addNotification(`${data.nickname} 離開了房間`, 'info');
+			}
 		});
 
 		// Player kicked event
@@ -261,6 +266,28 @@ export function useRoomLobby(roomName: string) {
 				});
 			});
 		});
+
+		// Game force ended event (人數不足強制結束)
+		socket.on(
+			'game-force-ended',
+			(data: {
+				reason: string;
+				playerLeft?: { userId: number; nickname: string };
+				kickedPlayer?: { userId: number; nickname: string };
+			}) => {
+				const message = data.reason || '由於人數不足，遊戲已強制結束';
+
+				console.log('[📥 game-force-ended] 收到強制結束事件:', message);
+
+				// 立即導向首頁
+				void goto('/', { replaceState: true, invalidateAll: true });
+
+				// 延遲顯示 alert，避免阻塞導航
+				setTimeout(() => {
+					alert(message);
+				}, 100);
+			}
+		);
 
 		// Room closed event
 		socket.on('room-closed', (data: { message: string; roomName: string }) => {
@@ -389,6 +416,7 @@ export function useRoomLobby(roomName: string) {
 			socket.off('player-locked');
 			socket.off('player-unlocked');
 			socket.off('room-closed');
+			socket.off('game-force-ended');
 			socket.off('error');
 		}
 	}
