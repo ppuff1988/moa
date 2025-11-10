@@ -47,10 +47,16 @@
 		return '';
 	}
 
+	let isStartingNextRound = false;
+
 	// 開始下一回合
 	const startNextRound = async () => {
+		if (isStartingNextRound) return;
+
 		const token = getJWTToken();
 		if (!token) return;
+
+		isStartingNextRound = true;
 
 		try {
 			const nextRound = currentRound + 1;
@@ -73,6 +79,8 @@
 		} catch (error) {
 			console.error('開始下一回合錯誤:', error);
 			addNotification('開始下一回合失敗，請檢查網路連接', 'error');
+		} finally {
+			isStartingNextRound = false;
 		}
 	};
 </script>
@@ -116,8 +124,17 @@
 					{#if isHost}
 						<div class="host-actions">
 							{#if currentRound < 3}
-								<button class="primary-btn start-round-btn" on:click={startNextRound}>
-									開始第{chineseNumeral(currentRound + 1)}回合
+								<button
+									class="primary-btn start-round-btn"
+									on:click={startNextRound}
+									disabled={isStartingNextRound}
+								>
+									{#if isStartingNextRound}
+										<span class="spinner"></span>
+										<span>啟動中...</span>
+									{:else}
+										開始第{chineseNumeral(currentRound + 1)}回合
+									{/if}
 								</button>
 							{:else}
 								<SettlementButton {roomName} {currentRound} {isHost} />
@@ -396,6 +413,24 @@
 		cursor: not-allowed;
 		background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
 		animation: none;
+	}
+
+	.spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(26, 26, 26, 0.3);
+		border-top: 2px solid #1a1a1a;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
 	}
 
 	@keyframes pulse-glow {
