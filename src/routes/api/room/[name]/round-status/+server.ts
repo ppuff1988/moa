@@ -12,14 +12,14 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const { game, player } = verifyResult;
 
 	try {
-		// 檢查遊戲是否已結束
-		if (game.status === 'finished') {
+		// 檢查遊戲是否已結束（正常結束或強制結束）
+		if (game.status === 'finished' || game.status === 'terminated') {
 			return json({
 				success: true,
-				phase: 'finished',
+				phase: game.status === 'finished' ? 'finished' : 'terminated',
 				round: 3,
 				isHost: player.isHost,
-				gameStatus: 'finished'
+				gameStatus: game.status
 			});
 		}
 

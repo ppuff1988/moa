@@ -3,7 +3,7 @@
  * 包含所有測試檔案共用的工具函數，避免重複程式碼
  */
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type BrowserContext } from '@playwright/test';
 
 /**
  * 測試用戶類型
@@ -47,6 +47,16 @@ export const TEST_USERS = {
 		username: 'testuser6@test.com',
 		password: 'Test123456!',
 		nickname: '測試玩家6'
+	},
+	user7: {
+		username: 'testuser7@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家7'
+	},
+	user8: {
+		username: 'testuser8@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家8'
 	}
 };
 
@@ -620,4 +630,242 @@ export async function expectErrorMessage(page: Page, message: string) {
 
 	// 檢查錯誤訊息包含預期文本
 	await expect(errorLocator).toContainText(message);
+}
+
+/**
+ * 開始選角階段（房主操作）
+ */
+export async function startRoleSelection(page: Page) {
+	// 等待選擇角色按鈕出現
+	await page.waitForSelector('button:has-text("選擇角色")', {
+		state: 'visible',
+		timeout: 10000
+	});
+
+	// 點擊選擇角色
+	await page.click('button:has-text("選擇角色")');
+
+	// 等待選角介面出現（角色選擇下拉選單）
+	await page.waitForSelector(
+		'select.selection-dropdown, select:has(option:has-text("請選擇角色"))',
+		{
+			timeout: 10000
+		}
+	);
+
+	// 額外等待確保所有玩家的選角介面都已載入
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 選擇角色並鎖定
+ */
+export async function selectAndLockRole(page: Page, roleName: string, color: string) {
+	// 等待角色選擇下拉選單
+	const roleSelect = page.locator('select.selection-dropdown').first();
+	await roleSelect.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 選擇角色
+	await roleSelect.selectOption({ label: roleName });
+	console.log(`選擇角色: ${roleName}`);
+
+	// 等待一下確保選擇已註冊
+	await page.waitForTimeout(500);
+
+	// 選擇顏色（使用下拉選單）
+	const colorSelect = page.locator('select.color-dropdown, select.selection-dropdown').nth(1);
+	if (await colorSelect.isVisible()) {
+		// 嘗試根據顏色名稱選擇
+		const colorOptions = await colorSelect.locator('option').allTextContents();
+		const colorMapping: { [key: string]: string } = {
+			red: '紅色',
+			blue: '藍色',
+			green: '綠色',
+			yellow: '黃色',
+			purple: '紫色',
+			orange: '橙色',
+			pink: '粉色',
+			cyan: '青色'
+		};
+
+		const chineseColor = colorMapping[color.toLowerCase()] || color;
+		if (colorOptions.some((opt) => opt.includes(chineseColor))) {
+			await colorSelect.selectOption({ label: chineseColor });
+		} else {
+			// 如果找不到對應的顏色，選擇第一個可用的
+			const firstColor = colorOptions.find(
+				(c) => c && c !== '請選擇顏色' && c !== '自訂顏色' && c.trim() !== ''
+			);
+			if (firstColor) {
+				await colorSelect.selectOption({ label: firstColor });
+			}
+		}
+		console.log(`選擇顏色: ${chineseColor}`);
+	}
+
+	// 等待一下確保選擇已註冊
+	await page.waitForTimeout(500);
+
+	// 點擊鎖定按鈕
+	const lockButton = page.locator('button.confirm-btn:has-text("鎖定")');
+	if (await lockButton.isVisible()) {
+		await lockButton.click();
+		console.log('已點擊鎖定按鈕');
+	}
+
+	// 等待鎖定狀態更新
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 解鎖角色
+ */
+export async function unlockRole(page: Page) {
+	await page.click('button:has-text("解除鎖定"), button:has-text("取消鎖定")');
+	await page.waitForTimeout(500);
+}
+
+/**
+ * 檢查玩家是否已鎖定
+ */
+export async function isPlayerLocked(page: Page, playerNickname: string): Promise<boolean> {
+	// 找到該玩家的 PlayerCard
+	const playerCard = page
+		.locator('[data-testid="player-card"], .player-card')
+		.filter({ hasText: playerNickname })
+		.first();
+
+	// 檢查該玩家卡片中的鎖定狀態圖示
+	const lockStatus = playerCard.locator('.lock-status.locked');
+	const isLocked = await lockStatus.isVisible({ timeout: 1000 }).catch(() => false);
+
+	if (isLocked) {
+		console.log(`✓ 玩家 ${playerNickname} 已鎖定`);
+	} else {
+		console.log(`✗ 玩家 ${playerNickname} 未鎖定`);
+	}
+
+	return isLocked;
+}
+
+/**
+ * 獲取房間內玩家數量
+ */
+export async function getPlayerCount(page: Page): Promise<number> {
+	return await page.locator('[data-testid="player-card"], .player-card').count();
+}
+
+/**
+ * 點擊首頁圖示
+ */
+export async function clickHomeIcon(page: Page) {
+	// 找到首頁圖示或連結（返回首頁按鈕）
+	const homeIcon = page
+		.locator('a.back-home-btn, a[href="/"], [title="返回首頁"], .home-link')
+		.first();
+	await homeIcon.click();
+
+	// 等待導航到首頁
+	await page.waitForURL('/', { timeout: 10000 });
+
+	// 等待首頁載入完成
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 在首頁點擊離開房間按鈕並確認
+ */
+export async function confirmLeaveGame(page: Page) {
+	// 等待「離開房間」按鈕出現
+	const leaveButton = page.locator('button:has-text("離開房間"), .action-btn:has-text("離開房間")');
+	await leaveButton.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 點擊離開房間按鈕
+	await leaveButton.click();
+
+	// 等待確認對話框出現
+	const confirmDialog = page.locator('.modal, [role="dialog"]').filter({ hasText: '確認離開' });
+	await confirmDialog.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 點擊確認按鈕
+	const confirmButton = confirmDialog
+		.locator('button:has-text("確認離開"), button:has-text("確認"), button:has-text("確定")')
+		.first();
+	await confirmButton.click();
+
+	// 等待處理完成
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 等待遊戲強制結束的 modal 出現
+ */
+export async function waitForGameForceEndedModal(page: Page) {
+	// 等待強制結束的通知或 modal
+	await page.waitForFunction(
+		() => {
+			return window.confirm || document.querySelector('.modal, [role="dialog"]');
+		},
+		{ timeout: 10000 }
+	);
+
+	// 處理 alert/confirm
+	page.on('dialog', async (dialog) => {
+		console.log('Dialog message:', dialog.message());
+		await dialog.accept();
+	});
+}
+
+/**
+ * 獲取可選角色列表
+ */
+export async function getAvailableRoles(page: Page): Promise<string[]> {
+	// 等待角色選擇下拉選單出現
+	const roleSelect = page.locator('select.selection-dropdown').first();
+	await roleSelect.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 獲取所有角色選項
+	const roleOptions = await roleSelect.locator('option').allTextContents();
+
+	// 過濾掉空選項和「請選擇角色」
+	const roles = roleOptions
+		.filter((role) => role && role !== '請選擇角色' && role.trim() !== '')
+		.map((role) => role.trim());
+
+	return roles;
+}
+
+/**
+ * 創建指定數量玩家的房間
+ */
+export async function createRoomWithPlayers(
+	browser: { newContext: () => Promise<BrowserContext> },
+	playerCount: number,
+	roomPassword: string = 'test123'
+): Promise<{ contexts: Array<BrowserContext>; pages: Array<Page>; roomCode: string }> {
+	const contexts: Array<BrowserContext> = [];
+	const pages: Array<Page> = [];
+
+	// 創建所有玩家的上下文和頁面
+	for (let i = 0; i < playerCount; i++) {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		contexts.push(context);
+		pages.push(page);
+	}
+
+	// 第一個玩家創建房間
+	const testUsers = Object.values(TEST_USERS);
+	await ensureLoggedIn(pages[0], testUsers[0]);
+	await createRoom(pages[0], roomPassword);
+	const roomCode = getRoomCodeFromUrl(pages[0].url());
+
+	// 其他玩家加入房間
+	for (let i = 1; i < playerCount; i++) {
+		await ensureLoggedIn(pages[i], testUsers[i]);
+		await joinRoom(pages[i], roomCode, roomPassword);
+		await pages[i].waitForTimeout(500);
+	}
+
+	return { contexts, pages, roomCode };
 }

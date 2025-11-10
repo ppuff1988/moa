@@ -36,7 +36,7 @@ export default defineConfig({
 			name: 'chromium',
 			use: {
 				...devices['Desktop Chrome'],
-				headless: true // CI 上自動 headless
+				headless: false // CI 上自動 headless
 			}
 		}
 	],

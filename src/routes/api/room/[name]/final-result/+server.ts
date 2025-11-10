@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const { game } = verifyResult;
 
 	// 檢查遊戲是否已結束
-	if (game.status !== 'finished') {
+	if (game.status !== 'finished' && game.status !== 'terminated') {
 		return json({ message: '遊戲尚未結束' }, { status: 400 });
 	}
 

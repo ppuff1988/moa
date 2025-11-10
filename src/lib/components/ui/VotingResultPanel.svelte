@@ -20,10 +20,17 @@
 	export let onNextRound: () => void = () => {};
 	export let isOpen: boolean = true;
 
-	// 12生肖排序
+	// 十二生肖順序
 	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
 
-	// 獲取所有獸首並排序（按票數和生肖順序）
+	let isStartingNextRound = false;
+
+	// 獲取排名徽章
+	const getRankBadge = (beast: BeastHead) => {
+		return beast.voteRank ?? 0;
+	};
+
+	// 排序獸首並獲取前兩名
 	$: sortedBeasts = beastHeads
 		.filter((b) => b.votes >= 0)
 		.sort((a, b) => {
@@ -36,25 +43,15 @@
 			return orderA - orderB;
 		});
 
-	// 獲取前兩名（一定會有前兩名，即使第二名是0票）
 	$: topTwo = sortedBeasts.slice(0, 2);
 
-	// 獲取排名徽章
-	function getRankBadge(beast: BeastHead): string {
-		const index = topTwo.findIndex((b) => b.id === beast.id);
-		if (index === 0) return '🥇'; // 第一名
-		if (index === 1) return '🥈'; // 第二名
-		return '';
-	}
-
-	let isStartingNextRound = false;
-
-	// 開始下一回合
 	const startNextRound = async () => {
 		if (isStartingNextRound) return;
-
 		const token = getJWTToken();
-		if (!token) return;
+		if (!token) {
+			addNotification('未取得登入資訊', 'error');
+			return;
+		}
 
 		isStartingNextRound = true;
 
@@ -70,7 +67,6 @@
 			});
 
 			if (response.ok) {
-				// 移除本地通知，因為 socket 事件 'round-started' 會通知所有玩家
 				onNextRound();
 			} else {
 				const error = await response.json();
@@ -93,9 +89,8 @@
 					<h4 class="result-title">投票結果公布</h4>
 					<p class="result-description">本回合投票已完成</p>
 				</div>
-
 				<div class="result-content">
-					{#if topTwo.length > 0}
+					{#if topTwo && topTwo.length > 0}
 						<div class="all-results">
 							{#each topTwo as beast, index (beast.id)}
 								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
@@ -104,13 +99,13 @@
 										<h5 class="beast-name">{beast.animal}首</h5>
 										<div class="vote-count">{beast.votes} 票</div>
 									</div>
-									{#if index === 1}
+									{#if index === 0}
+										<div class="beast-status-pending">待揭曉</div>
+									{:else if index === 1}
 										<!-- 第二名一定會公布真偽 -->
 										<div class="beast-status-large" class:is-real={beast.isGenuine}>
 											{beast.isGenuine ? '真品 ✓' : '贗品 ✗'}
 										</div>
-									{:else if index === 0}
-										<div class="beast-status-pending">待揭曉</div>
 									{/if}
 								</div>
 							{/each}
@@ -140,14 +135,6 @@
 								<SettlementButton {roomName} {currentRound} {isHost} />
 							{/if}
 						</div>
-					{:else}
-						<p class="action-hint">
-							{#if currentRound < 3}
-								等待房主開始下一回合...
-							{:else}
-								等待房主進行遊戲結算...
-							{/if}
-						</p>
 					{/if}
 				</div>
 			</div>
@@ -441,14 +428,6 @@
 		50% {
 			box-shadow: 0 8px 24px rgba(212, 175, 55, 0.6);
 		}
-	}
-
-	.action-hint {
-		color: #e8d4a0;
-		text-align: center;
-		padding: 1.5rem;
-		font-size: 1rem;
-		margin: 0;
 	}
 
 	@media (max-width: 768px) {

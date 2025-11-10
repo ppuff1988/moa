@@ -3,7 +3,7 @@
  * 測試房間創建、加入、玩家互動等功能
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Dialog } from '@playwright/test';
 import {
 	TEST_USERS,
 	ensureLoggedIn,
@@ -12,7 +12,14 @@ import {
 	cleanupTestData,
 	joinRoom,
 	registerAndLogin,
-	createTestUser
+	createTestUser,
+	createRoomWithPlayers,
+	startRoleSelection,
+	selectAndLockRole,
+	clickHomeIcon,
+	confirmLeaveGame,
+	getPlayerCount,
+	isPlayerLocked
 } from './helpers';
 
 test.describe('房間功能', () => {
@@ -604,6 +611,137 @@ test.describe('房間功能', () => {
 			await page.waitForTimeout(1000);
 
 			// 應該在玩家列表中看到自己
+		});
+	});
+
+	test.describe('玩家離開導致遊戲強制結束', () => {
+		test('8人遊戲部分玩家已鎖定，3位玩家依序離開後人數降至5人，遊戲強制結束', async ({
+			browser
+		}) => {
+			const roomPassword = 'test123';
+			const playerCount = 8;
+
+			// 創建8人房間
+			const { contexts, pages, roomCode } = await createRoomWithPlayers(
+				browser,
+				playerCount,
+				roomPassword
+			);
+
+			try {
+				console.log(`✅ 已創建 ${playerCount} 人房間，房間代碼: ${roomCode}`);
+
+				// 驗證所有玩家都在房間內
+				for (let i = 0; i < playerCount; i++) {
+					const count = await getPlayerCount(pages[i]);
+					expect(count).toBe(playerCount);
+				}
+
+				// 房主開始選角
+				await startRoleSelection(pages[0]);
+				console.log('✅ 房主已開始選角');
+
+				// 等待所有玩家看到選角介面
+				for (let i = 0; i < playerCount; i++) {
+					await pages[i].waitForSelector(
+						'select.selection-dropdown, select:has(option:has-text("請選擇角色"))',
+						{
+							timeout: 10000
+						}
+					);
+				}
+				console.log('✅ 所有玩家已進入選角介面');
+
+				// 玩家1-4鎖定角色（部分玩家鎖定）
+				const rolesToLock = [
+					{ player: 0, role: '許愿', color: 'red' },
+					{ player: 2, role: '黃煙煙', color: 'blue' },
+					{ player: 3, role: '方震', color: 'green' },
+					{ player: 4, role: '木戶加奈', color: 'yellow' }
+				];
+
+				for (const { player, role, color } of rolesToLock) {
+					await selectAndLockRole(pages[player], role, color);
+					console.log(`✅ 玩家${player + 1} 已鎖定角色: ${role}`);
+					await pages[player].waitForTimeout(1000);
+				}
+				console.log('✅ 所有玩家已執行鎖定操作');
+
+				// ===== 第一位玩家離開：8人 -> 7人 =====
+				console.log('\n--- 第一位玩家離開 (8人 -> 7人) ---');
+				await clickHomeIcon(pages[1]);
+				await confirmLeaveGame(pages[1]);
+				await pages[1].waitForURL('/', { timeout: 10000 });
+				await pages[0].waitForTimeout(2000);
+
+				// 驗證人數變為7人
+				let count = await getPlayerCount(pages[0]);
+				expect(count).toBe(7);
+				console.log(`✅ 人數降至 7 人`);
+
+				// 驗證鎖定狀態被取消
+				const testUsers = Object.values(TEST_USERS);
+				const isLocked = await isPlayerLocked(pages[0], testUsers[0].nickname);
+				expect(isLocked).toBe(false);
+				console.log(`✅ 鎖定狀態已取消`);
+
+				// ===== 第二位玩家離開：7人 -> 6人 =====
+				console.log('\n--- 第二位玩家離開 (7人 -> 6人) ---');
+				await clickHomeIcon(pages[5]);
+				await confirmLeaveGame(pages[5]);
+				await pages[5].waitForURL('/', { timeout: 10000 });
+				await pages[0].waitForTimeout(2000);
+
+				// 驗證人數變為6人
+				count = await getPlayerCount(pages[0]);
+				expect(count).toBe(6);
+				console.log(`✅ 人數降至 6 人`);
+
+				// ===== 第三位玩家離開：6人 -> 5人（觸發強制結束）=====
+				console.log('\n--- 第三位玩家離開 (6人 -> 5人，觸發強制結束) ---');
+
+				// 設定 dialog 處理器（處理強制結束的 alert）
+				const dialogPromises: Promise<void>[] = [];
+				const remainingPlayers = [0, 2, 3, 4, 7]; // 剩餘的玩家索引
+
+				for (const playerIndex of remainingPlayers) {
+					if (playerIndex === 7) continue; // 跳過即將離開的玩家
+
+					const dialogPromise = new Promise<void>((resolve) => {
+						pages[playerIndex].once('dialog', async (dialog: Dialog) => {
+							console.log(`玩家${playerIndex + 1} 收到強制結束通知:`, dialog.message());
+							expect(dialog.message()).toContain('人數不足');
+							await dialog.accept();
+							resolve();
+						});
+					});
+					dialogPromises.push(dialogPromise);
+				}
+
+				// 玩家8離開
+				await clickHomeIcon(pages[7]);
+				await confirmLeaveGame(pages[7]);
+				await pages[7].waitForURL('/', { timeout: 10000 });
+
+				// 等待其他玩家自動被導向首頁（遊戲強制結束）
+				console.log('等待其他玩家自動導向首頁...');
+				for (const playerIndex of remainingPlayers) {
+					if (playerIndex === 7) continue;
+					await pages[playerIndex].waitForURL('/', { timeout: 15000 });
+					console.log(`✅ 玩家${playerIndex + 1} 已被自動導向首頁`);
+				}
+
+				// 等待所有 alert 被處理
+				await Promise.race([Promise.all(dialogPromises), pages[0].waitForTimeout(10000)]);
+				console.log('✅ 所有玩家已收到強制結束通知');
+
+				console.log('\n✅ 測試完成：8人遊戲有3人依序離開，最後觸發強制結束');
+			} finally {
+				// 清理：關閉所有上下文
+				for (const context of contexts) {
+					await context.close();
+				}
+			}
 		});
 	});
 });
