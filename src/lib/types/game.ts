@@ -26,6 +26,7 @@ export interface BeastHead {
 	id: number;
 	animal: string;
 	isGenuine: boolean;
+	isBlocked?: boolean;
 	votes: number;
 	voteRank?: number | null;
 	round?: number;

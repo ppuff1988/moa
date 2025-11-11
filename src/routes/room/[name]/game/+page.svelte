@@ -940,8 +940,8 @@
 							currentRound.set(data.round);
 						}
 
-						// Reset game state for new round
-						gameState.resetSkillsForNewTurn();
+						// Reset game state for new round - 清除舊回合的所有狀態
+						gameState.resetForNewRound();
 
 						// Refresh all game data
 						await fetchArtifacts();
@@ -960,6 +960,9 @@
 						const isNowMyTurn = $currentActionPlayer?.id === myPlayer?.id;
 
 						if (isNowMyTurn) {
+							// Refresh artifacts to ensure we have the latest round's data
+							await fetchArtifacts();
+
 							// Fetch role info to check canAction status
 							const roleData = await gameService.fetchMyRole();
 
@@ -1229,7 +1232,7 @@
 							await fetchArtifacts();
 							await updatePlayersAndRound();
 							await fetchRoundStatus();
-							gameState.resetSkillsForNewTurn();
+							gameState.resetForNewRound();
 						}}
 					/>
 				{:else if $roundPhase === 'identification'}

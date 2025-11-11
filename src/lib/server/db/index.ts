@@ -51,3 +51,13 @@ if (!isBuildTime) {
 }
 
 export const db = drizzle(client, { schema });
+
+// 導出清理函數，用於測試或應用關閉時清理資源
+export async function closeDatabase() {
+	try {
+		await client.end({ timeout: 5 });
+		console.log('✅ 資料庫連接已關閉');
+	} catch (error) {
+		console.error('❌ 關閉資料庫連接時發生錯誤:', error);
+	}
+}
