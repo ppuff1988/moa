@@ -1,6 +1,7 @@
 import { beforeAll, afterAll } from 'vitest';
 import dotenvFlow from 'dotenv-flow';
 import dotenvExpand from 'dotenv-expand';
+import { closeDatabase } from '$lib/server/db';
 
 // 先加载环境变量，再展开变量替换
 const myEnv = dotenvFlow.config();
@@ -20,4 +21,17 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	console.log('✅ API 測試完成');
+
+	// 清理測試資源
+	console.log('🧹 清理測試資源...');
+
+	try {
+		// 關閉資料庫連接
+		await closeDatabase();
+	} catch (error) {
+		console.error('清理資源時發生錯誤:', error);
+	}
+
+	// 給予額外時間讓所有待處理的異步操作完成
+	await new Promise((resolve) => setTimeout(resolve, 500));
 });

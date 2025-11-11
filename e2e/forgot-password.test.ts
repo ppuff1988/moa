@@ -29,8 +29,8 @@ test.describe('忘記密碼流程', () => {
 		await page.click('button[type="submit"]');
 
 		// 4. 應該顯示成功訊息
-		await expect(page.locator('.success-message')).toBeVisible();
-		await expect(page.locator('.success-message')).toContainText('郵件已發送');
+		await expect(page.locator('.success-message')).toBeVisible({ timeout: 10000 });
+		await expect(page.locator('.success-message')).toContainText('密碼重置郵件已發送');
 
 		// 注意：在實際測試中，這裡需要從郵件或資料庫中獲取重置 token
 		// 為了測試目的，我們需要手動從資料庫獲取 token

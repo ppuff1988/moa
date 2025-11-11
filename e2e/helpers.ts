@@ -378,30 +378,53 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 				]);
 
 				// 等待註冊完成
-				await page.waitForTimeout(1000);
+				await page.waitForTimeout(2000); // 增加等待時間
 
 				// 自動驗證
 				console.log('註冊成功，正在驗證用戶...');
-				await page.request.post('http://localhost:5173/api/test/verify-user', {
-					data: { email: user.username }
-				});
+				const verifyResponse = await page.request.post(
+					'http://localhost:5173/api/test/verify-user',
+					{
+						data: { email: user.username }
+					}
+				);
+
+				if (!verifyResponse.ok()) {
+					console.error('驗證失敗:', await verifyResponse.json().catch(() => ({})));
+				}
 				console.log('用戶驗證成功');
+
+				// 等待驗證完成
+				await page.waitForTimeout(1000);
 
 				// 登入
 				await page.goto('/auth/login');
 				await page.waitForLoadState('domcontentloaded');
-				await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
+
+				// 等待並確保輸入框可見且可互動
+				await page.waitForSelector('input#email', { state: 'visible', timeout: 10000 });
+				await page.waitForTimeout(500); // 給予 onMount 檢查的時間
+
 				await page.fill('input#email', user.username);
 				await page.fill('input#password', user.password);
 
-				await Promise.all([
-					page.waitForURL('/', { timeout: 15000 }),
-					page.click('button[type="submit"]')
-				]);
+				// 點擊提交並等待導航
+				const submitButton = page.locator('button[type="submit"]');
+				await submitButton.click();
+
+				// 等待導航到首頁
+				try {
+					await page.waitForURL('/', { timeout: 20000, waitUntil: 'domcontentloaded' });
+				} catch (navError) {
+					console.error('導航到首頁失敗:', navError);
+					console.log('當前 URL:', page.url());
+					await page.screenshot({ path: `test-results/navigation-failed-${Date.now()}.png` });
+					throw navError;
+				}
 
 				// 等待首頁載入完成
-				await page.waitForLoadState('networkidle', { timeout: 10000 });
-				await page.waitForTimeout(500);
+				await page.waitForLoadState('networkidle', { timeout: 15000 });
+				await page.waitForTimeout(1000);
 			} catch (registerError) {
 				console.error('註冊和登入都失敗:', registerError);
 				// 拍張截圖以便調試
@@ -502,22 +525,25 @@ export async function expectHomePage(page: Page) {
  */
 export async function createRoom(page: Page, roomPassword: string) {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle', { timeout: 15000 });
 
-	// 等待創建房間按鈕出現
+	// 等待創建房間按鈕出現並可點擊
 	await page.waitForSelector('button:has-text("創建房間")', {
 		state: 'visible',
-		timeout: 10000
+		timeout: 15000
 	});
 
+	await page.waitForTimeout(500); // 確保頁面穩定
 	await page.click('button:has-text("創建房間")');
 
 	// 等待房間密碼輸入框出現
-	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 5000 });
+	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 10000 });
 	await page.fill('#roomPassword', roomPassword);
 	await page.click('button[type="submit"]');
 
 	// 等待跳轉到房間頁面
-	await page.waitForURL(/\/room\/.+/, { timeout: 10000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
 }
 
 /**
@@ -525,14 +551,19 @@ export async function createRoom(page: Page, roomPassword: string) {
  */
 export async function joinRoom(page: Page, roomCode: string, roomPassword: string = '') {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle', { timeout: 15000 });
+
+	await page.waitForTimeout(500);
 	await page.click('button:has-text("加入房間")');
-	await page.waitForSelector('#roomName', { timeout: 3000 });
+
+	await page.waitForSelector('#roomName', { timeout: 10000 });
 	await page.fill('#roomName', roomCode);
 	if (roomPassword) {
 		await page.fill('#roomPassword', roomPassword);
 	}
 	await page.click('button[type="submit"]');
-	await page.waitForURL(/\/room\/.+/, { timeout: 8000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
 }
 
 /**

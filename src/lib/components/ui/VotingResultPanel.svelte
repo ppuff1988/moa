@@ -25,9 +25,11 @@
 
 	let isStartingNextRound = false;
 
-	// 獲取排名徽章
-	const getRankBadge = (beast: BeastHead) => {
-		return beast.voteRank ?? 0;
+	// 獲取排名徽章（使用獎牌圖示）
+	const getRankBadge = (rank: number) => {
+		if (rank === 1) return '🥇';
+		if (rank === 2) return '🥈';
+		return rank.toString();
 	};
 
 	// 排序獸首並獲取前兩名
@@ -94,7 +96,7 @@
 						<div class="all-results">
 							{#each topTwo as beast, index (beast.id)}
 								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
-									<div class="rank-badge-large">{getRankBadge(beast)}</div>
+									<div class="rank-badge-large">{getRankBadge(index + 1)}</div>
 									<div class="beast-info">
 										<h5 class="beast-name">{beast.animal}首</h5>
 										<div class="vote-count">{beast.votes} 票</div>
