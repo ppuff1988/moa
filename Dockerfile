@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -29,7 +29,8 @@ FROM node:22-alpine AS app
 WORKDIR /app
 
 # Install curl for healthcheck
-RUN apk add --no-cache curl
+# Use --break-glass to skip triggers that may fail in QEMU emulation
+RUN apk add --no-cache --break-glass curl || apk add --no-cache curl
 
 # Copy package files
 COPY package*.json ./
@@ -56,7 +57,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD ["node", "scripts/production-server.js"]
 
 # Worker stage - Email Worker (輕量化)
-FROM node:20-alpine AS worker
+FROM node:22-alpine AS worker
 
 WORKDIR /app
 
