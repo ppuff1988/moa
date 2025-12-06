@@ -1,7 +1,7 @@
 {
 	"name": "moa",
 	"private": true,
-	"version": "1.0.26",
+	"version": "1.0.27",
 	"type": "module",
 	"scripts": {
 		"dev": "cross-env NODE_ENV=development node scripts/dev-server.js",
