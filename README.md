@@ -190,10 +190,24 @@ Push to main
 ## 📚 完整文件
 
 - 📖 [遊戲規則說明](docs/RULE.md) - 遊戲玩法與規則
+- 🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
 - 🚀 [生產環境部署](docs/PRODUCTION-DEPLOYMENT.md) - 部署到生產環境
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
+- 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）
 - 📱 [Telegram Bot 設定](docs/TELEGRAM-BOT-SETUP.md) - 設定部署通知機器人
 - 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範
+
+### 📧 關於郵件隊列系統
+
+本專案使用 **pg-boss** 管理郵件發送隊列，所有郵件相關的資料表由 pg-boss 自動管理，您不需要手動創建任何 email queue 相關的表。
+
+**重要說明**：
+
+- ✅ pg-boss 會自動在您的 PostgreSQL 資料庫中創建所需的表（在 `pgboss` schema 下）
+- ✅ 您的 `migrations/` 資料夾中不應包含 email queue 相關的 SQL
+- ✅ 只需確保 `DATABASE_URL` 配置正確，pg-boss 會處理其他一切
+
+詳細說明請參考：[郵件隊列系統完整指南](docs/EMAIL-QUEUE-GUIDE.md)
 
 ## 🤝 貢獻指南
 

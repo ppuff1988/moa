@@ -1,4 +1,5 @@
 <script lang="ts">
+	export let userId: number;
 	export let nickname: string;
 	export let email: string = '';
 	export let avatar: string | null = null;
@@ -8,24 +9,23 @@
 		| undefined = undefined;
 
 	import EditProfileModal from './EditProfileModal.svelte';
+	import UserStatsModal from './UserStatsModal.svelte';
 
 	let isDropdownOpen = false;
 	let isEditModalOpen = false;
+	let isStatsModalOpen = false;
 
 	// 從 email 或 nickname 生成頭像文字（取第一個字符）
 	$: avatarText = (nickname || email || '?').charAt(0).toUpperCase();
 
-	// 根據字串生成顏色
-	function stringToColor(str: string): string {
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			hash = str.charCodeAt(i) + ((hash << 5) - hash);
-		}
-		const hue = hash % 360;
+	// 根據 userId 生成顏色（確保每個用戶的顏色是穩定且唯一的，與 PlayerCard 一致）
+	function userIdToColor(userId: number): string {
+		// 使用 userId 來生成穩定的顏色
+		const hue = (userId * 137.508) % 360; // 使用黃金角度來分散顏色
 		return `hsl(${hue}, 65%, 55%)`;
 	}
 
-	$: avatarBgColor = stringToColor(email || nickname);
+	$: avatarBgColor = userIdToColor(userId);
 
 	function toggleDropdown() {
 		isDropdownOpen = !isDropdownOpen;
@@ -37,6 +37,11 @@
 
 	function openEditModal() {
 		isEditModalOpen = true;
+		closeDropdown();
+	}
+
+	function openStatsModal() {
+		isStatsModalOpen = true;
 		closeDropdown();
 	}
 
@@ -107,6 +112,23 @@
 				</svg>
 				編輯個人資料
 			</button>
+			<button class="dropdown-item" on:click={openStatsModal}>
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M18 20V10"></path>
+					<path d="M12 20V4"></path>
+					<path d="M6 20v-6"></path>
+				</svg>
+				歷史戰績
+			</button>
 			<div class="dropdown-divider"></div>
 			<button class="dropdown-item logout" on:click={onLogout}>
 				<svg
@@ -137,6 +159,8 @@
 	on:save={handleProfileSave}
 	on:close={() => (isEditModalOpen = false)}
 />
+
+<UserStatsModal bind:isOpen={isStatsModalOpen} onClose={() => (isStatsModalOpen = false)} />
 
 <style>
 	.user-area {

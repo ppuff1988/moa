@@ -339,13 +339,13 @@
 		justify-content: center;
 		align-items: center;
 		z-index: 1000;
-		padding: 1rem;
+		padding: 0.5rem;
 	}
 
 	.modal-content {
 		background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
 		border-radius: 16px;
-		max-width: 800px;
+		max-width: 1200px;
 		width: 100%;
 		max-height: 90vh;
 		display: flex;
@@ -358,14 +358,14 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.5rem 2rem;
+		padding: 1rem 1.25rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.modal-header h2 {
 		margin: 0;
 		color: #f8fafc;
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		font-weight: 600;
 	}
 
@@ -384,9 +384,30 @@
 	}
 
 	.modal-body {
-		padding: 1.5rem 2rem;
+		padding: 1rem 1.25rem;
 		overflow-y: auto;
 		flex: 1;
+	}
+
+	/* ...existing code... */
+
+	/* 桌面版樣式優化 */
+	@media (min-width: 768px) {
+		.modal-overlay {
+			padding: 1rem;
+		}
+
+		.modal-header {
+			padding: 1.5rem 2rem;
+		}
+
+		.modal-header h2 {
+			font-size: 1.5rem;
+		}
+
+		.modal-body {
+			padding: 1.5rem 2rem;
+		}
 	}
 
 	.loading,

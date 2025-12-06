@@ -34,11 +34,15 @@ CREATE TABLE users (
     nickname TEXT NOT NULL,
     password_hash TEXT,
     avatar TEXT,
+    email_verified BOOLEAN DEFAULT FALSE,
+    email_verification_token TEXT,
+    email_verification_token_expires_at TIMESTAMPTZ,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX users_email_idx ON users(email);
+CREATE INDEX users_email_verification_token_idx ON users(email_verification_token) WHERE email_verification_token IS NOT NULL;
 
 -- 2. OAuth 帳號表
 CREATE TABLE oauth_accounts (
@@ -79,7 +83,7 @@ CREATE TABLE games (
     room_name TEXT NOT NULL UNIQUE,
     room_password TEXT NOT NULL,
     host_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'selecting', 'playing', 'finished')),
+    status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'selecting', 'playing', 'finished', 'terminated')),
     player_count INTEGER NOT NULL DEFAULT 0 CHECK (player_count >= 0 AND player_count <= 8),
     total_score INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),

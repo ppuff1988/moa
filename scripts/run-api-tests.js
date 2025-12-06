@@ -107,18 +107,47 @@ function runTests() {
 }
 
 // 停止開發伺服器
-function stopDevServer() {
+async function stopDevServer() {
 	if (devServerProcess) {
 		console.log('\n🛑 停止開發伺服器...');
 
-		if (process.platform === 'win32') {
-			// Windows 需要使用 taskkill 來終止處理程序樹
-			spawn('taskkill', ['/pid', devServerProcess.pid, '/f', '/t']);
-		} else {
-			devServerProcess.kill('SIGTERM');
-		}
+		return new Promise((resolve) => {
+			if (process.platform === 'win32') {
+				// Windows 需要使用 taskkill 來終止處理程序樹
+				const killProcess = spawn('taskkill', ['/pid', devServerProcess.pid, '/f', '/t']);
 
-		devServerProcess = null;
+				killProcess.on('close', () => {
+					console.log('✅ 開發伺服器已停止');
+					devServerProcess = null;
+					resolve();
+				});
+
+				killProcess.on('error', (err) => {
+					console.error('停止伺服器時發生錯誤:', err);
+					devServerProcess = null;
+					resolve();
+				});
+
+				// 設置超時，避免永久等待
+				setTimeout(() => {
+					devServerProcess = null;
+					resolve();
+				}, 3000);
+			} else {
+				devServerProcess.kill('SIGTERM');
+				devServerProcess.on('exit', () => {
+					console.log('✅ 開發伺服器已停止');
+					devServerProcess = null;
+					resolve();
+				});
+
+				// 設置超時
+				setTimeout(() => {
+					devServerProcess = null;
+					resolve();
+				}, 3000);
+			}
+		});
 	}
 }
 
@@ -143,25 +172,29 @@ async function main() {
 		exitCode = 1;
 	} finally {
 		// 4. 清理：停止開發伺服器
-		stopDevServer();
+		await stopDevServer();
 
-		// 給一點時間讓處理程序完全關閉
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		// 給更多時間讓處理程序完全關閉和清理資源
+		console.log('⏳ 等待資源清理...');
+		await new Promise((resolve) => setTimeout(resolve, 2000));
 
+		console.log('✅ 清理完成，準備退出');
 		process.exit(exitCode);
 	}
 }
 
 // 處理中斷訊號
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
 	console.log('\n\n⚠️  收到中斷訊號...');
-	stopDevServer();
+	await stopDevServer();
+	await new Promise((resolve) => setTimeout(resolve, 1000));
 	process.exit(130);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
 	console.log('\n\n⚠️  收到終止訊號...');
-	stopDevServer();
+	await stopDevServer();
+	await new Promise((resolve) => setTimeout(resolve, 1000));
 	process.exit(143);
 });
 

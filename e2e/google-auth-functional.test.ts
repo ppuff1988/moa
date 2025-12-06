@@ -11,26 +11,39 @@ import { createTestUser, type TestUser } from './helpers';
  * 輔助函數：註冊一個普通用戶並獲取 JWT token
  * 這可以用來測試 OAuth 登入後的功能
  */
-async function createAndLoginUser(page: Page, user: TestUser) {
-	// 註冊用戶
+async function createAndLoginUser(page: Page, testUser: TestUser) {
+	// 1. 註冊用戶
 	const registerResponse = await page.request.post('/api/auth/register', {
 		data: {
-			email: user.username,
-			password: user.password,
-			nickname: user.nickname
+			email: testUser.username,
+			password: testUser.password,
+			nickname: testUser.nickname
 		}
 	});
 
-	if (registerResponse.ok()) {
-		const data = await registerResponse.json();
-		return data.token as string;
+	// 2. 如果註冊成功，使用測試 API 驗證 Email
+	if (registerResponse.ok() || registerResponse.status() === 201) {
+		// 調用測試專用的驗證 API
+		const verifyResponse = await page.request.post('/api/test/verify-email', {
+			data: {
+				email: testUser.username
+			}
+		});
+
+		if (!verifyResponse.ok()) {
+			const errorText = await verifyResponse.text();
+			console.error(`❌ Email 驗證失敗: ${verifyResponse.status()} - ${errorText}`);
+			throw new Error(`Email 驗證失敗: ${verifyResponse.status()} - ${errorText}`);
+		}
+
+		console.log(`✅ Email 已驗證: ${testUser.username}`);
 	}
 
-	// 如果用戶已存在，嘗試登入
+	// 3. 登入獲取 token
 	const loginResponse = await page.request.post('/api/auth/login', {
 		data: {
-			email: user.username,
-			password: user.password
+			email: testUser.username,
+			password: testUser.password
 		}
 	});
 
@@ -39,7 +52,9 @@ async function createAndLoginUser(page: Page, user: TestUser) {
 		return data.token as string;
 	}
 
-	throw new Error('無法創建或登入用戶');
+	// 4. 如果登入失敗，拋出詳細錯誤
+	const errorData = await loginResponse.json();
+	throw new Error(`無法登入用戶: ${errorData.message || loginResponse.status()}`);
 }
 
 test.describe('Google OAuth - Login Flow UI Tests', () => {
@@ -105,16 +120,16 @@ test.describe('Google OAuth - Error Handling', () => {
 		const heading = page.locator('h2:has-text("OAuth 驗證失敗")');
 		await expect(heading).toBeVisible();
 
-		// 檢查返回登入的按鈕
-		const retryButton = page.locator('button:has-text("重新登入")');
-		await expect(retryButton).toBeVisible();
+		// 檢查返回登入的連結
+		const retryLink = page.locator('a[href="/auth/login"]:has-text("重新登入")');
+		await expect(retryLink).toBeVisible();
 	});
 
 	test('should be able to retry login from error page', async ({ page }) => {
 		await page.goto('/auth/oauth-error');
 
-		// 點擊重新登入按鈕
-		await page.click('button:has-text("重新登入")');
+		// 點擊重新登入連結
+		await page.click('a[href="/auth/login"]:has-text("重新登入")');
 
 		// 確認回到登入頁面
 		await expect(page).toHaveURL('/auth/login');

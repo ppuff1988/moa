@@ -14,6 +14,7 @@ export interface Player {
 	isHost: boolean;
 	isReady: boolean;
 	isOnline: boolean;
+	avatar?: string | null; // Player's avatar URL
 }
 
 export interface User {
@@ -25,6 +26,7 @@ export interface BeastHead {
 	id: number;
 	animal: string;
 	isGenuine: boolean;
+	isBlocked?: boolean;
 	votes: number;
 	voteRank?: number | null;
 	round?: number;

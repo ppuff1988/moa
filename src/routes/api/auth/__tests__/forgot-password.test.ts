@@ -10,14 +10,15 @@ describe('Forgot Password API', () => {
 	const testPassword = 'testpass123';
 
 	beforeAll(async () => {
-		// 建立測試用戶
+		// 建立測試用戶（已驗證）
 		const hashedPassword = await hashPassword(testPassword);
 		const result = await db
 			.insert(user)
 			.values({
 				email: testEmail,
 				nickname: 'Forgot Password Test User',
-				passwordHash: hashedPassword
+				passwordHash: hashedPassword,
+				emailVerified: true // 設置為已驗證，以便測試登入
 			})
 			.returning();
 
@@ -85,30 +86,34 @@ describe('Forgot Password API', () => {
 		});
 
 		it('應該拒絕 OAuth 用戶重置密碼', async () => {
-			// 建立 OAuth 用戶
+			// 建立 OAuth 用戶（使用唯一的 email）
+			const oauthEmail = `oauth-test-${Date.now()}@example.com`;
 			const oauthUser = await db
 				.insert(user)
 				.values({
-					email: 'oauth-test@example.com',
+					email: oauthEmail,
 					nickname: 'OAuth Test User',
-					passwordHash: null
+					passwordHash: null,
+					emailVerified: true
 				})
 				.returning();
 
-			const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ email: 'oauth-test@example.com' })
-			});
+			try {
+				const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ email: oauthEmail })
+				});
 
-			expect(response.status).toBe(400);
-			const data = await response.json();
-			expect(data.message).toContain('第三方登入');
-
-			// 清理
-			await db.delete(user).where(eq(user.id, oauthUser[0].id));
+				expect(response.status).toBe(400);
+				const data = await response.json();
+				expect(data.message).toContain('第三方登入');
+			} finally {
+				// 確保清理測試數據
+				await db.delete(user).where(eq(user.id, oauthUser[0].id));
+			}
 		});
 	});
 

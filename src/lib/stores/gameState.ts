@@ -153,11 +153,28 @@ export function createGameState() {
 			canAction.set(true);
 			gamePhase.set('identification');
 			selectedBeastHead.set(null);
-			// identifiedPlayers.set([]);
-			// identifiedArtifacts.set([]);
-			// blockedArtifacts.set([]);
-			// failedIdentifications.set([]);
-			// performedActions.set([]);
+			// 不清除鑑定狀態 - 這些應該在整個回合中保留
+			// 只有在新回合開始時才清除
+		},
+
+		resetForNewRound: () => {
+			// 新回合開始時，清除所有舊回合的狀態
+			usedSkills.set({
+				checkArtifact: 0,
+				checkPeople: 0,
+				block: 0,
+				attack: 0,
+				swap: 0
+			});
+			skillActions.set(null);
+			hasLoadedSkills.set(false);
+			canAction.set(true);
+			gamePhase.set('identification');
+			selectedBeastHead.set(null);
+			identifiedArtifacts.set([]);
+			blockedArtifacts.set([]);
+			failedIdentifications.set([]);
+			performedActions.set([]);
 		}
 	};
 }

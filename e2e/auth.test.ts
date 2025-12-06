@@ -6,7 +6,6 @@
 import { test, expect } from '@playwright/test';
 import {
 	TEST_USERS,
-	registerUser,
 	loginUser,
 	logoutUser,
 	ensureLoggedIn,
@@ -22,7 +21,7 @@ test.describe('用戶認證', () => {
 	});
 
 	test.describe('用戶註冊', () => {
-		test('應該成功註冊新用戶', async ({ page }) => {
+		test('應該成功註冊新用戶並顯示驗證郵件提示', async ({ page }) => {
 			const timestamp = Date.now();
 			const user = {
 				username: `newuser_${timestamp}@test.com`,
@@ -30,10 +29,32 @@ test.describe('用戶認證', () => {
 				nickname: `新用戶_${timestamp}`
 			};
 
-			await registerUser(page, user.username, user.password, user.nickname);
+			// 前往註冊頁面
+			await page.goto('/auth/register');
+			await page.waitForLoadState('networkidle');
 
-			// 註冊成功後應該重定向到登入頁或首頁
-			await expect(page).toHaveURL(/\/(auth\/login|$)/);
+			// 填寫註冊表單
+			await page.fill('input#nickname', user.nickname);
+			await page.fill('input#email', user.username);
+			await page.fill('input#password', user.password);
+			await page.fill('input#confirmPassword', user.password);
+
+			// 勾選同意條款
+			await page.check('input[type="checkbox"]');
+
+			// 提交表單
+			await page.click('button[type="submit"]');
+
+			// 等待成功訊息出現
+			await page.waitForTimeout(1000);
+
+			// 應該顯示驗證郵件提示訊息
+			const successMessage = page.locator('.success-message');
+			await expect(successMessage).toBeVisible();
+			await expect(successMessage).toContainText('請檢查您的信箱');
+
+			// 應該停留在註冊頁面
+			await expect(page).toHaveURL(/\/auth\/register/);
 		});
 
 		test('應該拒絕弱密碼', async ({ page }) => {
@@ -43,6 +64,10 @@ test.describe('用戶認證', () => {
 			await page.fill('input#password', '123'); // 弱密碼
 			await page.fill('input#confirmPassword', '123');
 			await page.fill('input#nickname', '測試用戶');
+
+			// 勾選同意條款
+			await page.check('input[type="checkbox"]');
+
 			await page.click('button[type="submit"]');
 
 			// 等待錯誤訊息出現
@@ -72,6 +97,10 @@ test.describe('用戶認證', () => {
 			await page.fill('input#email', user.username);
 			await page.fill('input#password', user.password);
 			await page.fill('input#confirmPassword', user.password);
+
+			// 勾選同意條款
+			await page.check('input[type="checkbox"]');
+
 			await page.click('button[type="submit"]');
 
 			// 等待錯誤訊息出現
@@ -88,6 +117,41 @@ test.describe('用戶認證', () => {
 			// 應該有表單驗證錯誤
 			const emailInput = page.locator('input#email');
 			await expect(emailInput).toHaveAttribute('required', '');
+		});
+
+		test('未驗證的用戶應該無法登入', async ({ page }) => {
+			const timestamp = Date.now();
+			const user = {
+				username: `unverified_${timestamp}@test.com`,
+				password: 'Test123456!',
+				nickname: `未驗證_${timestamp}`
+			};
+
+			// 註冊新用戶（但不驗證）
+			await page.goto('/auth/register');
+			await page.waitForLoadState('networkidle');
+			await page.fill('input#nickname', user.nickname);
+			await page.fill('input#email', user.username);
+			await page.fill('input#password', user.password);
+			await page.fill('input#confirmPassword', user.password);
+			await page.check('input[type="checkbox"]');
+			await page.click('button[type="submit"]');
+
+			// 等待註冊成功訊息
+			await page.waitForTimeout(1000);
+
+			// 嘗試登入
+			await page.goto('/auth/login');
+			await page.waitForLoadState('networkidle');
+			await page.fill('input#email', user.username);
+			await page.fill('input#password', user.password);
+			await page.click('button[type="submit"]');
+
+			// 等待錯誤訊息
+			await page.waitForTimeout(1000);
+
+			// 應該顯示需要驗證的錯誤訊息
+			await expectErrorMessage(page, '驗證');
 		});
 	});
 

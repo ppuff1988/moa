@@ -8,7 +8,7 @@ import { getSocketIO } from '$lib/server/socket';
 import { getGameState } from '$lib/server/game';
 
 export const POST: RequestHandler = async ({ request, params }) => {
-	const verifyResult = await verifyHostWithStatus(request, params.name!, 'waiting');
+	const verifyResult = await verifyHostWithStatus(request, params.name!, ['waiting', 'selecting']);
 	if ('error' in verifyResult) {
 		return verifyResult.error;
 	}
@@ -59,16 +59,96 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, targetUserId)));
 
 	// 更新房間玩家數量
+	const newPlayerCount = game.playerCount - 1;
+
+	// 取得 Socket.IO 實例
+	const io = getSocketIO();
+
+	// 如果是 selecting 狀態，解鎖所有玩家（取消 lock 狀態）
+	if (game.status === 'selecting') {
+		await db.update(gamePlayers).set({ isReady: false }).where(eq(gamePlayers.gameId, game.id));
+
+		// 先更新玩家數量
+		await db
+			.update(games)
+			.set({
+				playerCount: newPlayerCount,
+				updatedAt: new Date()
+			})
+			.where(eq(games.id, game.id));
+
+		// 發送 room-update 讓前端更新玩家列表
+		if (io) {
+			// 先通知被踢玩家
+			io.to(`user-${targetUserId}`).emit('player-kicked', {
+				userId: targetUserId,
+				nickname: kickedUser?.nickname
+			});
+
+			// 讓被踢玩家離開房間
+			const socketsInRoom = await io.in(game.roomName).fetchSockets();
+			for (const socket of socketsInRoom) {
+				if (socket.data.userId === targetUserId) {
+					socket.leave(game.roomName);
+				}
+			}
+
+			// 獲取更新後的遊戲狀態
+			const gameState = await getGameState(game.id);
+
+			// 廣播完整的房間更新給剩餘的玩家
+			io.to(game.roomName).emit('room-update', {
+				game: gameState.game,
+				players: gameState.players
+			});
+
+			// 通知其他玩家有人被踢出（但前端在 selecting 狀態下可能不顯示）
+			io.to(game.roomName).emit('player-kicked', {
+				userId: targetUserId,
+				nickname: kickedUser?.nickname
+			});
+		}
+
+		// 檢查人數是否不足6人，如果是則強制結束遊戲
+		if (newPlayerCount < 6) {
+			const { forceEndGame } = await import('$lib/server/game');
+			await forceEndGame(game.id, '由於人數不足，遊戲已強制結束');
+
+			// 通知房間內的其他玩家遊戲被強制結束
+			if (io) {
+				io.to(game.roomName).emit('game-force-ended', {
+					reason: '由於人數不足，遊戲已強制結束',
+					kickedPlayer: {
+						userId: targetUserId,
+						nickname: kickedUser?.nickname
+					}
+				});
+			}
+
+			return json({
+				message: '成功踢出玩家，因人數不足遊戲已結束',
+				targetUserId,
+				gameEnded: true
+			});
+		}
+
+		// 如果人數足夠，只是踢出玩家
+		return json({
+			message: '成功踢出玩家',
+			targetUserId
+		});
+	}
+
+	// waiting 狀態的處理
 	await db
 		.update(games)
 		.set({
-			playerCount: game.playerCount - 1,
+			playerCount: newPlayerCount,
 			updatedAt: new Date()
 		})
 		.where(eq(games.id, game.id));
 
 	// 通過 Socket.IO 廣播房間更新
-	const io = getSocketIO();
 	if (io) {
 		try {
 			// 先通知被踢玩家（使用個人頻道）

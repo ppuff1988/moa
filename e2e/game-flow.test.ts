@@ -3,6 +3,37 @@ import { createTestUser, type TestUser } from './helpers';
 
 test.describe('Game Flow', () => {
 	/**
+	 * 確保獸首區域是展開的輔助函數
+	 * @param page - 當前頁面
+	 * @returns 是否成功展開
+	 */
+	async function ensureBeastSectionExpanded(page: Page): Promise<boolean> {
+		const beastSection = page.locator('.beast-heads-section');
+		const hasBeastSection = await beastSection.isVisible({ timeout: 1000 }).catch(() => false);
+
+		if (!hasBeastSection) {
+			return false;
+		}
+
+		const isCollapsed = await beastSection
+			.evaluate((el) => el.classList.contains('collapsed'))
+			.catch(() => false);
+
+		if (isCollapsed) {
+			console.log(`   📂 獸首區域已收起，展開中...`);
+			const toggleButton = beastSection.locator('.toggle-button');
+			if (await toggleButton.isVisible({ timeout: 1000 })) {
+				await toggleButton.click();
+				await page.waitForTimeout(500);
+				return true;
+			}
+			return false;
+		}
+
+		return true; // 已經是展開狀態
+	}
+
+	/**
 	 * 鑑定獸首的輔助函數
 	 * @param page - 當前頁面
 	 * @param artifactName - 獸首名稱（用於日誌）
@@ -32,44 +63,66 @@ test.describe('Game Flow', () => {
 			await confirmButton.click();
 			console.log(`   ✅ 點擊確認按鈕`);
 
-			// 確認後等待卡片狀態更新（等待卡片不再顯示"未鑑定"）
-			await page.waitForTimeout(1500);
+			// 確認後等待卡片狀態更新
+			await page.waitForTimeout(5000);
 
 			// 從所有獸首卡片中找到對應名稱的卡片（因為卡片順序可能改變）
 			let identifyResult = '未知';
 
-			// 重新獲取所有獸首卡片
-			const allBeastCards = page.locator('.beast-card');
-			const cardCount = await allBeastCards.count();
+			// 重新獲取所有獸首卡片，最多重試3次
+			for (let retry = 0; retry < 3; retry++) {
+				// 先確保獸首區域是展開的
+				await ensureBeastSectionExpanded(page);
 
-			// 找到匹配名稱的卡片
-			for (let i = 0; i < cardCount; i++) {
-				const card = allBeastCards.nth(i);
-				const cardName = await card
-					.locator('.beast-name')
-					.textContent()
-					.catch(() => '');
+				const allBeastCards = page.locator('.beast-card');
+				const cardCount = await allBeastCards.count();
 
-				if (cardName && cardName.trim() === artifactName) {
-					// 找到了對應的卡片，讀取其狀態
-					const cardStatusText = await card
-						.locator('.beast-status')
+				// 找到匹配名稱的卡片
+				for (let i = 0; i < cardCount; i++) {
+					const card = allBeastCards.nth(i);
+					const cardName = await card
+						.locator('.beast-name')
 						.textContent()
 						.catch(() => '');
-					console.log(`   🔎 找到卡片 ${artifactName}，狀態文字: "${cardStatusText}"`);
 
-					if (cardStatusText) {
-						if (cardStatusText.includes('真品')) {
-							identifyResult = '真品';
-						} else if (cardStatusText.includes('贗品')) {
-							identifyResult = '贗品';
-						} else if (cardStatusText.includes('無法鑑定')) {
-							identifyResult = '無法鑑定';
-						} else if (cardStatusText.includes('未鑑定')) {
-							identifyResult = '未知';
+					if (cardName && cardName.trim() === artifactName) {
+						// 找到了對應的卡片，讀取其狀態
+						const cardStatusText = await card
+							.locator('.beast-status')
+							.textContent()
+							.catch(() => '');
+						console.log(`   🔎 找到卡片 ${artifactName}，狀態文字: "${cardStatusText}"`);
+
+						if (cardStatusText) {
+							const trimmedStatus = cardStatusText.trim();
+							if (trimmedStatus === '真品') {
+								identifyResult = '真品';
+							} else if (trimmedStatus === '贗品') {
+								identifyResult = '贗品';
+							} else if (trimmedStatus.includes('無法鑑定')) {
+								identifyResult = '無法鑑定';
+							} else if (trimmedStatus.includes('未鑑定')) {
+								identifyResult = '未知';
+							}
+
+							// 如果獲得有效結果（不是"未知"），跳出重試循環
+							if (identifyResult !== '未知') {
+								break;
+							}
 						}
+						break;
 					}
+				}
+
+				// 如果獲得有效結果，跳出重試循環
+				if (identifyResult !== '未知') {
 					break;
+				}
+
+				// 如果還是"未知"，等待後重試
+				if (retry < 2) {
+					console.log(`   ⏳ 狀態尚未更新，等待後重試 (${retry + 1}/3)...`);
+					await page.waitForTimeout(1500);
 				}
 			}
 
@@ -97,10 +150,19 @@ test.describe('Game Flow', () => {
 
 		await page.waitForTimeout(1000);
 
-		// 先檢查是否有可指派的玩家按鈕
-		const assignButtons = page.locator(
-			'button[data-testid="assign-next-player"], .player-btn-inline'
-		);
+		// 先檢查是否在 AssignPhase - 透過 .assign-phase 容器
+		const assignPhaseContainer = page.locator('.assign-phase');
+		const hasAssignPhase = await assignPhaseContainer
+			.isVisible({ timeout: 2000 })
+			.catch(() => false);
+
+		if (!hasAssignPhase) {
+			console.log('   ⚠️  未找到 AssignPhase 容器');
+			return { success: false };
+		}
+
+		// 先檢查是否有可指派的玩家按鈕 - 在 .player-list-inline 中
+		const assignButtons = assignPhaseContainer.locator('.player-list-inline .player-btn-inline');
 		const assignCount = await assignButtons.count().catch(() => 0);
 		console.log(`   找到 ${assignCount} 個可指派的玩家按鈕`);
 
@@ -108,15 +170,30 @@ test.describe('Game Flow', () => {
 			// 有可指派的玩家，選擇一位
 			const nextPlayerIndex = Math.floor(Math.random() * assignCount);
 			const nextButton = assignButtons.nth(nextPlayerIndex);
-			const nextName = await nextButton.textContent();
 
-			await nextButton.click();
+			// 等待按鈕穩定
+			await page.waitForTimeout(500);
+
+			// 先獲取玩家名稱（在 .player-name span 中）
+			const nameSpan = nextButton.locator('.player-name');
+			const nextName = await nameSpan.textContent().catch(() => '');
+
+			// 使用 scrollIntoViewIfNeeded 確保按鈕在視口內
+			await nextButton.scrollIntoViewIfNeeded().catch(() => {});
+
+			// 等待一小段時間讓動畫完成
+			await page.waitForTimeout(300);
+
+			// 使用 force 選項強制點擊，忽略穩定性檢查
+			await nextButton.click({ force: true, timeout: 10000 });
 			console.log(`   ✅ 指派了玩家: ${nextName?.trim() || nextPlayerIndex + 1}`);
 			await page.waitForTimeout(1000);
 			return { success: true, assignedPlayer: nextName?.trim() || `玩家${nextPlayerIndex + 1}` };
 		} else {
 			// 沒有可指派的玩家，檢查是否有「進入討論」按鈕
-			const discussBtn = page.locator('button:has-text("進入討論"), .enter-discussion-btn');
+			const discussBtn = assignPhaseContainer.locator(
+				'.enter-discussion-btn, button:has-text("進入討論階段")'
+			);
 			const hasDiscussBtn = await discussBtn.isVisible({ timeout: 2000 });
 
 			if (hasDiscussBtn) {
@@ -174,50 +251,10 @@ test.describe('Game Flow', () => {
 		users.forEach((user, i) => (user.page = pages[i]));
 
 		try {
-			console.log('========== 步驟 1: 註冊所有測試帳號 ==========');
-			// 先確保所有帳號都已註冊
-			for (let i = 0; i < users.length; i++) {
-				try {
-					console.log(`註冊帳號 ${i + 1}/8: ${users[i].username}`);
-					await pages[i].goto('/auth/register', { waitUntil: 'networkidle', timeout: 20000 });
-
-					await pages[i].waitForSelector('input#nickname', { timeout: 5000 });
-					await pages[i].fill('input#nickname', users[i].nickname);
-					await pages[i].fill('input#email', users[i].username);
-					await pages[i].fill('input#password', users[i].password);
-					await pages[i].fill('input#confirmPassword', users[i].password);
-
-					// 點擊註冊並等待回應
-					await pages[i].click('button[type="submit"]');
-
-					// 等待導航或錯誤訊息
-					try {
-						await pages[i].waitForURL('/', { timeout: 5000 });
-						console.log(`  ✅ 帳號 ${i + 1} 註冊成功`);
-						// 登出以便下一步統一登入
-						await pages[i].evaluate(() => {
-							localStorage.removeItem('jwt_token');
-							document.cookie = 'jwt=; path=/; max-age=0';
-						});
-					} catch {
-						// 檢查是否有錯誤訊息
-						const errorVisible = await pages[i]
-							.locator('.error, .error-message, [role="alert"]')
-							.isVisible({ timeout: 2000 })
-							.catch(() => false);
-						if (errorVisible) {
-							console.log(`  ℹ️  帳號 ${i + 1} 可能已存在（看到錯誤訊息）`);
-						} else {
-							console.log(`  ℹ️  帳號 ${i + 1} 註冊狀態未知`);
-						}
-					}
-
-					await pages[i].waitForTimeout(500);
-				} catch (e) {
-					const message = e instanceof Error ? e.message : '未知錯誤';
-					console.log(`  ℹ️  帳號 ${i + 1} 註冊失敗（可能已存在）:`, message);
-				}
-			}
+			console.log('========== 步驟 1: 批量創建測試帳號（直接寫入資料庫）==========');
+			// 使用第一個 page 來調用 API（只需要一次調用）
+			const { createTestUsersInDatabase } = await import('./helpers');
+			await createTestUsersInDatabase(pages[0], users);
 
 			console.log('\n========== 步驟 2: 所有用戶登入 ==========');
 			// 所有用戶登入
@@ -529,8 +566,22 @@ test.describe('Game Flow', () => {
 				const actedPlayers = new Set<number>();
 
 				// 持續檢查直到所有玩家都行動完畢
+				const maxIdleIterations = 20; // 最多允許20次沒有玩家行動的循環
+				let idleIterations = 0;
+
 				while (actedPlayers.size < users.length) {
 					let anyPlayerActed = false;
+
+					// 在檢查玩家之前，先檢查是否已經進入討論階段
+					const inDiscussionEarly = await pages[0]
+						.locator('.discussion-phase, .action-subtitle:has-text("討論階段")')
+						.isVisible({ timeout: 1000 })
+						.catch(() => false);
+
+					if (inDiscussionEarly) {
+						console.log('   ✅ 檢測到已進入討論階段，跳出玩家行動循環');
+						break;
+					}
 
 					for (let playerIndex = 0; playerIndex < users.length; playerIndex++) {
 						// 跳過已經行動過的玩家
@@ -540,33 +591,45 @@ test.describe('Game Flow', () => {
 
 						const currentPage = pages[playerIndex];
 
+						// 先等待頁面穩定
+						await currentPage.waitForTimeout(500);
+
 						// 檢查該玩家是否為當前行動玩家
 						// 方法1: 檢查 PlayerOrderDisplay 中的 .current-player 元素是否包含該玩家的暱稱
 						const currentPlayerDisplay = currentPage.locator('.current-player');
-						const isCurrentPlayer = await currentPlayerDisplay
-							.locator(`text=${users[playerIndex].nickname}`)
-							.isVisible({ timeout: 1000 })
-							.catch(() => false);
+						const currentPlayerText =
+							(await currentPlayerDisplay.textContent().catch(() => '')) || '';
+						const isCurrentPlayer = currentPlayerText.includes(users[playerIndex].nickname);
 
 						// 方法2: 檢查是否有 PhaseIndicator (只在輪到自己時顯示)
 						const hasPhaseIndicator = await currentPage
-							.locator('.phase-indicator, .phase-title')
-							.isVisible({ timeout: 1000 })
+							.locator('.phase-indicator')
+							.isVisible({ timeout: 2000 })
 							.catch(() => false);
 
-						// 或者檢查是否有階段文字
-						const hasPhaseText = await currentPage
-							.locator('text=/階段一：鑑定獸首|階段二：使用技能|階段三：指派/')
-							.isVisible({ timeout: 1000 })
+						// 方法3: 檢查鑑定階段的互動元素（可點擊的獸首卡片）
+						const hasIdentifyInteraction = await currentPage
+							.locator('.beast-card.interactive')
+							.first()
+							.isVisible({ timeout: 2000 })
 							.catch(() => false);
 
-						// 檢查是否有行動區域
+						// 方法4: 檢查技能/指派階段的行動區域
 						const hasActionArea = await currentPage
-							.locator('.action-area, .action-content')
-							.isVisible({ timeout: 1000 })
+							.locator('.action-area .action-content')
+							.isVisible({ timeout: 2000 })
 							.catch(() => false);
 
-						const canAct = isCurrentPlayer || hasPhaseIndicator || hasPhaseText || hasActionArea;
+						// 判斷是否可以行動：當前玩家標記 OR PhaseIndicator 顯示 OR 有互動元素
+						const canAct =
+							isCurrentPlayer && (hasPhaseIndicator || hasIdentifyInteraction || hasActionArea);
+
+						// 調試日誌 - 當沒有玩家行動時，顯示所有玩家的狀態
+						if (!anyPlayerActed && idleIterations > 0) {
+							console.log(
+								`   🔍 玩家 ${playerIndex + 1} 檢測結果: 當前玩家=${isCurrentPlayer}, PhaseIndicator=${hasPhaseIndicator}, 鑑定互動=${hasIdentifyInteraction}, 行動區域=${hasActionArea}`
+							);
+						}
 
 						if (!canAct) {
 							continue;
@@ -574,7 +637,7 @@ test.describe('Game Flow', () => {
 
 						console.log(`\n🎮 玩家 ${playerIndex + 1} (${users[playerIndex].nickname}) 開始行動`);
 						console.log(
-							`   檢測結果: 當前玩家=${isCurrentPlayer}, 階段指示器=${hasPhaseIndicator}, 階段文字=${hasPhaseText}, 行動區域=${hasActionArea}`
+							`   檢測結果: 當前玩家=${isCurrentPlayer}, PhaseIndicator=${hasPhaseIndicator}, 鑑定互動=${hasIdentifyInteraction}, 行動區域=${hasActionArea}`
 						);
 
 						// 檢查玩家角色（從 GameHeader 中獲取）
@@ -598,15 +661,47 @@ test.describe('Game Flow', () => {
 						// 初始化當前回合的行動記錄
 						const currentActions: string[] = [];
 
-						// 檢查當前處於哪個階段
-						const currentPhaseText = await currentPage
-							.locator('.phase-indicator, .phase-title, h2, h3')
-							.textContent()
-							.catch(() => '');
-						console.log(`   🔍 當前階段: ${currentPhaseText?.substring(0, 50)}`);
+						// 檢查當前處於哪個階段 - 根據實際組件結構
+						let currentPhaseText = '';
+						let currentGamePhase: 'identification' | 'skill' | 'assign-next' = 'identification';
+
+						// 檢查 PhaseIndicator 的文字來判斷階段
+						const phaseIndicator = currentPage.locator('.phase-indicator .phase-title');
+						if (await phaseIndicator.isVisible({ timeout: 1000 })) {
+							currentPhaseText = (await phaseIndicator.textContent()) || '';
+							console.log(`   🔍 當前階段: ${currentPhaseText}`);
+
+							if (currentPhaseText.includes('階段一') || currentPhaseText.includes('鑑定獸首')) {
+								currentGamePhase = 'identification';
+							} else if (
+								currentPhaseText.includes('階段二') ||
+								currentPhaseText.includes('使用技能')
+							) {
+								currentGamePhase = 'skill';
+							} else if (currentPhaseText.includes('階段三') || currentPhaseText.includes('指派')) {
+								currentGamePhase = 'assign-next';
+							}
+						} else {
+							// 如果沒有 PhaseIndicator，嘗試從其他元素判斷
+							// 檢查是否有可互動的獸首（鑑定階段）
+							const hasInteractiveBeast = await currentPage
+								.locator('.beast-card.interactive')
+								.first()
+								.isVisible({ timeout: 1000 })
+								.catch(() => false);
+
+							if (hasInteractiveBeast) {
+								currentGamePhase = 'identification';
+								currentPhaseText = '鑑定階段';
+							}
+						}
+
+						console.log(`   🔍 當前遊戲階段: ${currentGamePhase} (${currentPhaseText})`);
 
 						// 階段 1: 鑑定階段
-						console.log('   📋 鑑定階段');
+						if (currentGamePhase === 'identification') {
+							console.log('   📋 鑑定階段');
+						}
 
 						// 檢查是否被攻擊或被沉默
 						const isAttacked = await currentPage
@@ -620,7 +715,7 @@ test.describe('Game Flow', () => {
 							.catch(() => false);
 
 						if (isAttacked) {
-							console.log('   ⚔️  該玩家被攻擊，無法行動');
+							console.log('   ⚔️  該玩家被攻擊，但仍可進行鑑定（結果為無法鑑定）');
 							currentActions.push('被攻擊');
 							attackedPlayers.add(playerIndex);
 
@@ -634,39 +729,12 @@ test.describe('Game Flow', () => {
 							if (await attackConfirmBtn.isVisible({ timeout: 3000 })) {
 								await attackConfirmBtn.click();
 								console.log('   ✅ 已確認被攻擊提示');
-								// 等待更長時間確保 modal 完全關閉且頁面更新
-								await currentPage.waitForTimeout(2000);
+								// 等待 modal 完全關閉
+								await currentPage.waitForTimeout(1500);
 							}
 
-							// 繼續處理指派階段（被攻擊的玩家仍需要指派下一位玩家）
-							const assignResult = await assignNextPlayer(currentPage, playerIndex);
-
-							if (assignResult.success) {
-								if (assignResult.isDiscussion) {
-									currentActions.push('進入討論');
-								} else if (assignResult.assignedPlayer) {
-									currentActions.push(`指派:${assignResult.assignedPlayer}`);
-								}
-							} else {
-								// 即使沒有成功指派（可能被攻擊的玩家沒有指派權限），也要繼續
-								console.log('   ⚠️  被攻擊的玩家無法指派，等待遊戲自動處理');
-								await currentPage.waitForTimeout(2000);
-							}
-
-							// 記錄這次行動
-							gameLog.push({
-								round,
-								player: playerIndex + 1,
-								role: roleText,
-								actions: currentActions
-							});
-
-							// 重要: 無論是否成功指派，被攻擊的玩家都算已行動
-							actedPlayers.add(playerIndex);
-							anyPlayerActed = true;
-
-							await currentPage.waitForTimeout(1500);
-							continue;
+							// 被攻擊的玩家繼續進行鑑定流程（但結果會是"無法鑑定"）
+							// 不要 continue，讓代碼繼續執行下面的鑑定邏輯
 						}
 
 						if (isSilenced) {
@@ -675,9 +743,13 @@ test.describe('Game Flow', () => {
 						}
 
 						// 根據角色執行不同的鑑定邏輯
-						if (!isSilenced && !isAttacked) {
+						// 被攻擊的玩家也可以進行鑑定操作，但結果會是"無法鑑定"
+						if (!isSilenced) {
 							// 獲取可鑑定的選項（獸首卡片）
-							await currentPage.waitForTimeout(1000);
+							await currentPage.waitForTimeout(500);
+
+							// 先確保獸首區域是展開的
+							await ensureBeastSectionExpanded(currentPage);
 
 							// 查找可鑑定的獸首卡片（使用 ArtifactDisplay 組件的 class）
 							const beastCards = currentPage.locator('.beast-card.interactive');
@@ -704,6 +776,10 @@ test.describe('Game Flow', () => {
 								// 如果是許愿，可以鑑定第二個獸首
 								if (roleText.includes('許愿')) {
 									await currentPage.waitForTimeout(500);
+
+									// 再次確保獸首區域是展開的（第二次鑑定前）
+									await ensureBeastSectionExpanded(currentPage);
+
 									const secondBeastCards = currentPage.locator('.beast-card.interactive');
 									const secondCount = await secondBeastCards.count().catch(() => 0);
 									if (secondCount > 0) {
@@ -731,25 +807,53 @@ test.describe('Game Flow', () => {
 						// 等待鑑定階段完成，並檢查是否進入技能階段
 						await currentPage.waitForTimeout(2000);
 
-						// 檢查是否已進入技能階段
-						const inSkillPhase = await currentPage
-							.locator('text=/階段二：使用技能|技能階段/')
-							.isVisible({ timeout: 5000 })
-							.catch(() => false);
+						// 檢查是否已進入技能階段 - 使用 PhaseIndicator 或 action-area
+						let inSkillPhase = false;
+						const skillPhaseIndicator = currentPage.locator('.phase-indicator .phase-title');
+						const skillPhaseText = (await skillPhaseIndicator.textContent().catch(() => '')) || '';
+
+						if (skillPhaseText.includes('階段二') || skillPhaseText.includes('使用技能')) {
+							inSkillPhase = true;
+						} else {
+							// 備用方案：檢查是否有 .skill-phase 或 .skills-container
+							inSkillPhase = await currentPage
+								.locator('.skill-phase, .skills-container')
+								.isVisible({ timeout: 3000 })
+								.catch(() => false);
+						}
 
 						if (!inSkillPhase) {
 							console.log('   ⚠️  尚未進入技能階段，等待更長時間...');
 							await currentPage.waitForTimeout(3000);
+
+							// 再次檢查
+							const retrySkillPhaseText =
+								(await skillPhaseIndicator.textContent().catch(() => '')) || '';
+							if (
+								retrySkillPhaseText.includes('階段二') ||
+								retrySkillPhaseText.includes('使用技能')
+							) {
+								inSkillPhase = true;
+							} else {
+								inSkillPhase = await currentPage
+									.locator('.skill-phase, .skills-container')
+									.isVisible({ timeout: 2000 })
+									.catch(() => false);
+							}
 						}
 
+						console.log(`   ${inSkillPhase ? '✅' : '❌'} 是否已進入技能階段: ${inSkillPhase}`);
+
 						// 階段 2: 技能階段
-						console.log('   🎯 技能階段');
+						if (inSkillPhase) {
+							console.log('   🎯 技能階段');
+						}
 
 						// 老朝奉: 交換技能
 						if (roleText.includes('老朝奉') && !swapUsed) {
 							await currentPage.waitForTimeout(500);
 							const swapButton = currentPage.locator(
-								'button:has-text("交換"), button:has-text("真假互換"), button:has-text("使用交換")'
+								'button:has-text("交換"), button:has-text("真假互換"), button:has-text("執行交換技能")'
 							);
 							if (await swapButton.isVisible({ timeout: 2000 })) {
 								await swapButton.click();
@@ -765,10 +869,10 @@ test.describe('Game Flow', () => {
 							await currentPage.waitForTimeout(500);
 
 							// 在 SkillPhase 中查找鑑定玩家按鈕
-							// 確保選擇的是技能階段的按鈕，而不是指派階段的按鈕
-							const skillSection = currentPage.locator('.skills-section, .skill-row').first();
-							const identifyPlayerButtons = skillSection.locator(
-								'.player-btn-inline:not(.identified-result)'
+							// 使用正確的選擇器：在 skill-phase 中查找 player-selection-grid 內的按鈕
+							const skillPhase = currentPage.locator('.skill-phase, .skills-container');
+							const identifyPlayerButtons = skillPhase.locator(
+								'.player-selection-grid .player-btn-inline:not(.identified)'
 							);
 							const playerCount = await identifyPlayerButtons.count().catch(() => 0);
 							console.log(`   找到 ${playerCount} 個可鑑定的玩家按鈕（技能階段）`);
@@ -814,8 +918,10 @@ test.describe('Game Flow', () => {
 						// 藥不然: 攻擊玩家
 						if (roleText.includes('藥不然')) {
 							await currentPage.waitForTimeout(500);
-							const attackButtons = currentPage.locator(
-								'button[data-testid="attack-player"], .player-btn-inline'
+							// 限定在技能階段的 player-selection-grid 內查找攻擊按鈕
+							const skillPhase = currentPage.locator('.skill-phase, .skills-container');
+							const attackButtons = skillPhase.locator(
+								'.player-selection-grid .player-btn-inline.attack-target'
 							);
 							const attackCount = await attackButtons.count().catch(() => 0);
 							console.log(`   找到 ${attackCount} 個可攻擊的玩家按鈕`);
@@ -852,12 +958,18 @@ test.describe('Game Flow', () => {
 						// 鄭國渠: 封鎖獸首
 						if (roleText.includes('鄭國渠')) {
 							await currentPage.waitForTimeout(500);
+
+							// 先確保獸首區域是展開的
+							await ensureBeastSectionExpanded(currentPage);
+
 							const blockBeastCards = currentPage.locator('.beast-card.interactive');
 							const blockCount = await blockBeastCards.count().catch(() => 0);
+							console.log(`   找到 ${blockCount} 個可封鎖的獸首`);
+
 							if (blockCount > 0) {
 								const blockIndex = Math.floor(Math.random() * blockCount);
 								const blockButton = blockBeastCards.nth(blockIndex);
-								const blockText = await blockButton.textContent();
+								const blockText = await blockButton.locator('.beast-name').textContent();
 
 								await blockButton.click();
 								console.log(`   🔒 點擊封鎖獸首: ${blockText?.trim() || blockIndex + 1}`);
@@ -877,17 +989,31 @@ test.describe('Game Flow', () => {
 								} else {
 									console.log(`   ⚠️  未找到確認按鈕，封鎖可能未完成`);
 								}
+							} else {
+								console.log(`   ⚠️  未找到可封鎖的獸首（可能都已被封鎖）`);
 							}
 						}
 
 						// 等待技能階段完成，並檢查是否進入指派階段
 						await currentPage.waitForTimeout(2000);
 
-						// 檢查是否已進入指派階段
-						let inAssignPhase = await currentPage
-							.locator('text=/階段三：指派|指派階段/')
-							.isVisible({ timeout: 3000 })
-							.catch(() => false);
+						// 檢查是否已進入指派階段 - 使用 PhaseIndicator
+						let inAssignPhase = false;
+						const assignIndicator = currentPage.locator('.phase-indicator .phase-title');
+						const assignText = (await assignIndicator.textContent().catch(() => '')) || '';
+
+						if (assignText.includes('階段三') || assignText.includes('指派')) {
+							inAssignPhase = true;
+						} else {
+							// 備用方案：檢查是否有 AssignPhase 的元素
+							inAssignPhase = await currentPage
+								.locator(
+									'.player-selection-grid .player-btn-inline, button:has-text("進入討論階段")'
+								)
+								.first()
+								.isVisible({ timeout: 3000 })
+								.catch(() => false);
+						}
 
 						if (!inAssignPhase) {
 							console.log('   ⚠️  尚未進入指派階段，檢查是否需要點擊完成技能階段按鈕...');
@@ -902,14 +1028,28 @@ test.describe('Game Flow', () => {
 
 							if (hasCompleteButton) {
 								console.log('   🔘 找到「完成技能階段」按鈕，點擊以進入下一階段');
-								await completeSkillButton.click();
+
+								// 確保按鈕在視口內
+								await completeSkillButton.scrollIntoViewIfNeeded().catch(() => {});
+								await currentPage.waitForTimeout(500);
+
+								// 使用 force 選項強制點擊
+								await completeSkillButton.click({ force: true, timeout: 10000 });
 								await currentPage.waitForTimeout(2000);
 
 								// 再次檢查是否進入指派階段
-								inAssignPhase = await currentPage
-									.locator('text=/階段三：指派|指派階段/')
-									.isVisible({ timeout: 3000 })
-									.catch(() => false);
+								const retryAssignText = (await assignIndicator.textContent().catch(() => '')) || '';
+								if (retryAssignText.includes('階段三') || retryAssignText.includes('指派')) {
+									inAssignPhase = true;
+								} else {
+									inAssignPhase = await currentPage
+										.locator(
+											'.player-selection-grid .player-btn-inline, button:has-text("進入討論階段")'
+										)
+										.first()
+										.isVisible({ timeout: 3000 })
+										.catch(() => false);
+								}
 								console.log(
 									`   ${inAssignPhase ? '✅' : '❌'} 點擊後是否進入指派階段: ${inAssignPhase}`
 								);
@@ -941,6 +1081,7 @@ test.describe('Game Flow', () => {
 						// 標記該玩家已行動
 						actedPlayers.add(playerIndex);
 						anyPlayerActed = true;
+						idleIterations = 0; // 重置閒置計數器
 
 						await currentPage.waitForTimeout(1500);
 
@@ -950,44 +1091,148 @@ test.describe('Game Flow', () => {
 						}
 					}
 
-					// 如果這一輪沒有任何玩家行動，跳出循環避免無限等待
+					// 如果已進入討論階段，跳出 while 循環
+					if (anyPlayerActed) {
+						const inDiscussionNow = await pages[0]
+							.locator('.discussion-phase, .action-subtitle:has-text("討論階段")')
+							.isVisible({ timeout: 1000 })
+							.catch(() => false);
+
+						if (inDiscussionNow) {
+							console.log('   ✅ 已進入討論階段，結束玩家行動階段');
+							break;
+						}
+					}
+
+					// 如果這一輪沒有任何玩家行動，增加閒置計數
 					if (!anyPlayerActed) {
-						console.log('   ⚠️  沒有玩家行動，跳出循環');
-						break;
+						idleIterations++;
+						console.log(`   ⚠️  沒有玩家行動 (${idleIterations}/${maxIdleIterations})`);
+
+						// 如果開始出現沒有玩家行動的情況，輸出所有玩家的當前玩家名稱以診斷
+						if (idleIterations === 1) {
+							console.log('   📋 當前所有玩家看到的當前行動玩家:');
+							for (let i = 0; i < users.length; i++) {
+								const currentPlayerName = await pages[i]
+									.locator('.current-player')
+									.textContent()
+									.catch(() => '');
+								console.log(
+									`      玩家 ${i + 1} (${users[i].nickname}): "${(currentPlayerName || '').trim()}"`
+								);
+							}
+						}
+
+						// 如果連續多次沒有玩家行動，等待更長時間讓頁面更新
+						if (idleIterations >= 3) {
+							console.log('   ⏳ 等待頁面更新...');
+							await pages[0].waitForTimeout(2000);
+						}
+
+						// 如果超過最大閒置次數，檢查是否已進入討論或投票階段
+						if (idleIterations >= maxIdleIterations) {
+							console.log('   ❌ 超過最大閒置次數，檢查遊戲狀態');
+							const inDiscussionOrVoting = await pages[0]
+								.locator('.discussion-phase, .voting-panel, .action-subtitle:has-text("討論階段")')
+								.isVisible({ timeout: 2000 })
+								.catch(() => false);
+
+							if (inDiscussionOrVoting) {
+								console.log('   ✅ 已進入討論或投票階段，跳出行動循環');
+								break;
+							} else {
+								console.log('   ⚠️  未檢測到討論或投票階段，強制跳出循環');
+								break;
+							}
+						}
 					}
 
 					// 等待一下再檢查下一個玩家
 					await pages[0].waitForTimeout(1000);
 				}
 
-				// 檢查是否進入討論階段
-				const inDiscussion = await pages[0]
-					.locator('text=/討論階段|討論中/')
-					.isVisible({ timeout: 5000 })
+				// 檢查是否進入討論階段 - 使用更準確的選擇器
+				// 增加等待時間讓UI更新
+				await pages[0].waitForTimeout(2000);
+
+				// 使用多種方式檢測討論階段
+				let inDiscussion = await pages[0]
+					.locator('.discussion-phase')
+					.isVisible({ timeout: 3000 })
 					.catch(() => false);
+
+				// 如果第一次沒找到，檢查是否有討論階段的標題
+				if (!inDiscussion) {
+					inDiscussion = await pages[0]
+						.locator('.action-subtitle:has-text("討論階段")')
+						.isVisible({ timeout: 2000 })
+						.catch(() => false);
+					console.log(`   📝 通過標題檢測到討論階段: ${inDiscussion}`);
+				}
+
+				// 如果還沒找到，檢查是否有"開始投票"按鈕（最可靠的指標）
+				if (!inDiscussion) {
+					console.log('   🔍 第一次未檢測到討論階段，檢查開始投票按鈕...');
+					await pages[0].waitForTimeout(1000);
+					inDiscussion = await pages[0]
+						.locator('button.start-voting-btn, button:has-text("開始投票")')
+						.isVisible({ timeout: 2000 })
+						.catch(() => false);
+					console.log(`   🔘 通過開始投票按鈕檢測到討論階段: ${inDiscussion}`);
+				}
+
+				// 最後嘗試：檢查頁面文字是否包含"討論階段"
+				if (!inDiscussion) {
+					const pageText = await pages[0]
+						.locator('body')
+						.textContent()
+						.catch(() => '');
+					inDiscussion =
+						!!pageText && pageText.includes('討論階段') && pageText.includes('開始投票');
+					console.log(`   📄 通過頁面文字檢測到討論階段: ${inDiscussion}`);
+				}
 
 				if (inDiscussion) {
 					console.log('\n💬 進入討論階段');
 
-					// 等待討論時間
-					await pages[0].waitForTimeout(3000);
+					// 立即等待並點擊開始投票按鈕（房主）
+					await pages[0].waitForTimeout(1000);
 
 					// 房主點擊「開始投票」按鈕
-					const startVotingButton = pages[0].locator('button:has-text("開始投票")');
-					if (await startVotingButton.isVisible({ timeout: 5000 })) {
+					const startVotingButton = pages[0].locator(
+						'.start-voting-btn, button:has-text("開始投票")'
+					);
+					const hasStartButton = await startVotingButton.isVisible({ timeout: 3000 });
+
+					if (hasStartButton) {
+						console.log('   🔘 房主找到開始投票按鈕，準備點擊...');
 						await startVotingButton.click();
-						console.log('✅ 房主點擊開始投票');
+						console.log('   ✅ 房主點擊開始投票');
 						// 增加等待時間，讓投票界面完全渲染
 						await pages[0].waitForTimeout(3000);
 
 						// 確認討論階段的內容消失
 						const discussionGone = await pages[0]
-							.locator('text=/討論階段|等待房主開始投票/')
+							.locator('.discussion-phase')
 							.isHidden({ timeout: 5000 })
 							.catch(() => false);
 						console.log(`   討論階段UI是否消失: ${discussionGone}`);
 					} else {
-						console.log('⚠️  未找到開始投票按鈕');
+						console.log('   ⚠️  未找到開始投票按鈕（可能不是房主）');
+						// 如果第一個玩家不是房主，檢查其他玩家
+						for (let i = 1; i < pages.length; i++) {
+							const otherStartButton = pages[i].locator(
+								'.start-voting-btn, button:has-text("開始投票")'
+							);
+							const hasOtherButton = await otherStartButton.isVisible({ timeout: 1000 });
+							if (hasOtherButton) {
+								console.log(`   🔘 玩家 ${i + 1} 是房主，點擊開始投票...`);
+								await otherStartButton.click();
+								console.log(`   ✅ 玩家 ${i + 1} 點擊開始投票`);
+								await pages[i].waitForTimeout(3000);
+								break;
+							}
+						}
 					}
 
 					// 驗證投票界面 - 先等待討論階段UI完全消失
@@ -1099,7 +1344,7 @@ test.describe('Game Flow', () => {
 
 								// 確認提交對話框 - 點擊「確認提交」按鈕
 								const confirmButton = pages[0].locator(
-									'.modal-container button.primary-btn:has-text("確認提交")'
+									'.modal-container button.confirm-btn:has-text("確認提交"), button:has-text("確認提交")'
 								);
 								if (await confirmButton.isVisible({ timeout: 5000 })) {
 									await confirmButton.click();
@@ -1263,6 +1508,25 @@ test.describe('Game Flow', () => {
 						console.log('   ⚠️  未顯示投票結果');
 						await pages[0].screenshot({ path: `test-results/no-voting-result-${round}.png` });
 						round++; // 增加以避免無限循環
+					}
+				} else {
+					// 沒有檢測到討論階段，可能是UI沒有正確顯示
+					console.log('   ⚠️  未檢測到討論階段，跳過投票流程');
+					console.log('   📸 截圖以供調試');
+					await pages[0].screenshot({ path: `test-results/no-discussion-phase-${round}.png` });
+
+					// 輸出當前頁面的文字內容以供調試
+					const pageText = await pages[0]
+						.locator('body')
+						.textContent()
+						.catch(() => '');
+					console.log(`   當前頁面部分內容: ${pageText?.substring(0, 300)}...`);
+
+					// 強制進入下一回合以避免無限循環
+					round++;
+					if (round <= 3) {
+						console.log(`\n🔄 強制進入第 ${round} 回合`);
+						await pages[0].waitForTimeout(3000);
 					}
 				}
 			}

@@ -3,8 +3,10 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/password';
-import { generateUserJWT } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
+import { queueEmailVerification } from '$lib/server/email';
+import { generateVerificationToken } from '$lib/server/auth';
+import { env } from '$env/dynamic/private';
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -94,23 +96,36 @@ export const POST: RequestHandler = async ({ request }) => {
 		// 建立新使用者
 		const passwordHash = await hashPassword(password);
 
+		// 生成 email 驗證 token
+		const verificationToken = generateVerificationToken();
+		const verificationTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小時後過期
+
 		// 插入用戶資料（使用正規化的 email）
 		const [newUser] = await db
 			.insert(user)
 			.values({
 				email: normalizedEmail,
 				nickname,
-				passwordHash
+				passwordHash,
+				emailVerified: false,
+				emailVerificationToken: verificationToken,
+				emailVerificationTokenExpiresAt: verificationTokenExpiresAt
 			})
 			.returning();
 
-		// 生成 JWT token（使用正規化的 email）
-		const token = generateUserJWT({ id: newUser.id, email: normalizedEmail });
+		// 將驗證郵件加入隊列（非阻塞）
+		const baseUrl = env.DEPLOY_URL || `${request.url.split('/api')[0]}`;
+		const jobId = await queueEmailVerification(normalizedEmail, verificationToken, baseUrl);
+
+		if (!jobId && process.env.NODE_ENV !== 'test') {
+			console.error('❌ 驗證郵件加入隊列失敗');
+			// 即使郵件發送失敗，也不影響註冊流程
+		}
 
 		return json(
 			{
-				message: '註冊成功',
-				token,
+				message: '註冊成功！請檢查您的信箱以驗證 Email 地址',
+				requiresVerification: true,
 				user: {
 					id: newUser.id,
 					email: newUser.email,

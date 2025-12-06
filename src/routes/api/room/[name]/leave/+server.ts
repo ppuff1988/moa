@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { games, gamePlayers, user } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { getSocketIO } from '$lib/server/socket';
 import { getGameState } from '$lib/server/game';
 
@@ -21,14 +21,72 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const [gameRow] = await db.select().from(games).where(eq(games.id, game.id)).limit(1);
 	const status = gameRow?.status;
 
-	if (status === 'waiting') {
-		// waiting 狀態：直接刪除 game_players
+	if (status === 'waiting' || status === 'selecting') {
+		// waiting 或 selecting 狀態：直接刪除 game_players
 		await db
 			.delete(gamePlayers)
 			.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
 
 		// 更新房間玩家數量
 		const newPlayerCount = game.playerCount - 1;
+
+		// 如果是 selecting 狀態，解鎖所有玩家（取消 lock 狀態）
+		if (status === 'selecting') {
+			await db.update(gamePlayers).set({ isReady: false }).where(eq(gamePlayers.gameId, game.id));
+
+			// 先更新玩家數量
+			await db
+				.update(games)
+				.set({
+					playerCount: newPlayerCount,
+					updatedAt: new Date()
+				})
+				.where(eq(games.id, game.id));
+
+			// 發送 room-update 讓前端更新玩家列表
+			if (io) {
+				const gameState = await getGameState(game.id);
+				io.to(game.roomName).emit('room-update', {
+					game: gameState.game,
+					players: gameState.players
+				});
+
+				// 發送 player-left 事件（但前端在 selecting 狀態下不會顯示通知）
+				io.to(game.roomName).emit('player-left', {
+					userId: currentUser.id,
+					nickname: currentUser.nickname
+				});
+			}
+
+			// 檢查人數是否不足6人，如果是則強制結束遊戲
+			if (newPlayerCount < 6) {
+				const { forceEndGame } = await import('$lib/server/game');
+				await forceEndGame(game.id, '由於人數不足，遊戲已強制結束');
+
+				// 通知房間內的其他玩家遊戲被強制結束
+				if (io) {
+					io.to(game.roomName).emit('game-force-ended', {
+						reason: '由於人數不足，遊戲已強制結束',
+						playerLeft: {
+							userId: currentUser.id,
+							nickname: currentUser.nickname
+						}
+					});
+				}
+
+				return json({
+					message: '成功離開房間，因人數不足遊戲已結束',
+					roomName: game.roomName,
+					gameEnded: true
+				});
+			}
+
+			// 如果人數足夠，只是離開房間
+			return json({
+				message: '成功離開房間',
+				roomName: game.roomName
+			});
+		}
 
 		// 如果房間沒有玩家了，刪除房間
 		if (newPlayerCount === 0) {
@@ -140,11 +198,55 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			roomName: game.roomName
 		});
 	} else {
-		// 非 waiting 狀態：只更新 left_at
+		// 非 waiting/selecting 狀態（playing/finished）：只更新 left_at
 		await db
 			.update(gamePlayers)
 			.set({ leftAt: new Date() })
 			.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
+
+		// 如果是 playing 狀態，檢查剩餘活躍玩家人數
+		if (status === 'playing') {
+			// 計算剩餘活躍玩家（沒有 leftAt 的玩家）
+			const remainingPlayers = await db
+				.select()
+				.from(gamePlayers)
+				.where(and(eq(gamePlayers.gameId, game.id), sql`${gamePlayers.leftAt} IS NULL`));
+
+			const remainingCount = remainingPlayers.length;
+
+			// 如果剩餘人數少於6人，強制結束遊戲
+			if (remainingCount < 6) {
+				const { forceEndGame } = await import('$lib/server/game');
+				await forceEndGame(game.id, '由於人數不足，遊戲已強制結束');
+
+				// 通知房間內的其他玩家遊戲被強制結束
+				if (io) {
+					io.to(game.roomName).emit('game-force-ended', {
+						reason: '由於人數不足，遊戲已強制結束',
+						playerLeft: {
+							userId: currentUser.id,
+							nickname: currentUser.nickname
+						}
+					});
+				}
+
+				return json({
+					message: '成功離開房間，因人數不足遊戲已結束',
+					roomName: game.roomName,
+					gameEnded: true
+				});
+			}
+
+			// 通知其他玩家有人離開
+			if (io) {
+				io.to(game.roomName).emit('player-left', {
+					userId: currentUser.id,
+					nickname: currentUser.nickname,
+					remainingCount
+				});
+			}
+		}
+
 		return json({ message: '成功離開房間', roomName: game.roomName });
 	}
 };

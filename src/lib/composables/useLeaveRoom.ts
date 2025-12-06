@@ -40,7 +40,8 @@ export function useLeaveRoom() {
 				method: 'POST',
 				headers: {
 					Authorization: `Bearer ${token}`
-				}
+				},
+				credentials: 'include'
 			});
 
 			if (response.ok) {

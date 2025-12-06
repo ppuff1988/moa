@@ -19,7 +19,7 @@ describe('Authentication API', () => {
 	});
 
 	describe('POST /api/auth/register', () => {
-		it('應該成功註冊新用戶', async () => {
+		it('應該成功註冊新用戶並要求驗證 Email', async () => {
 			const testEmail = `test-${Date.now()}@example.com`;
 			testUsers.push(testEmail);
 
@@ -36,11 +36,11 @@ describe('Authentication API', () => {
 
 			expect(response.status).toBe(201);
 			const data = await response.json();
-			expect(data).toHaveProperty('token');
+			expect(data).toHaveProperty('requiresVerification', true);
 			expect(data).toHaveProperty('user');
 			expect(data.user.email).toBe(testEmail);
 			expect(data.user.nickname).toBe('Test User');
-			expect(data.message).toBe('註冊成功');
+			expect(data.message).toContain('驗證');
 		});
 
 		it('應該拒絕重複的電子郵件', async () => {
@@ -183,7 +183,7 @@ describe('Authentication API', () => {
 		const testPassword = 'TestPassword123!';
 
 		beforeAll(async () => {
-			// 創建測試用戶
+			// 創建測試用戶並標記為已驗證
 			testEmail = `test-login-${Date.now()}@example.com`;
 			testUsers.push(testEmail);
 
@@ -197,9 +197,19 @@ describe('Authentication API', () => {
 					confirmPassword: testPassword
 				})
 			});
+
+			// 直接在資料庫中標記為已驗證
+			await db
+				.update(user)
+				.set({
+					emailVerified: true,
+					emailVerificationToken: null,
+					emailVerificationTokenExpiresAt: null
+				})
+				.where(eq(user.email, testEmail));
 		});
 
-		it('應該成功登入', async () => {
+		it('應該成功登入已驗證的用戶', async () => {
 			const response = await fetch(`${API_BASE}/api/auth/login`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -215,6 +225,37 @@ describe('Authentication API', () => {
 			expect(data).toHaveProperty('user');
 			expect(data.user.email).toBe(testEmail);
 			expect(data.message).toBe('登入成功');
+		});
+
+		it('應該拒絕未驗證的用戶登入', async () => {
+			// 創建未驗證的用戶
+			const unverifiedEmail = `test-unverified-${Date.now()}@example.com`;
+			testUsers.push(unverifiedEmail);
+
+			await fetch(`${API_BASE}/api/auth/register`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					email: unverifiedEmail,
+					nickname: 'Unverified User',
+					password: testPassword,
+					confirmPassword: testPassword
+				})
+			});
+
+			const response = await fetch(`${API_BASE}/api/auth/login`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					email: unverifiedEmail,
+					password: testPassword
+				})
+			});
+
+			expect(response.status).toBe(403);
+			const data = await response.json();
+			expect(data.message).toContain('驗證');
+			expect(data).toHaveProperty('requiresVerification', true);
 		});
 
 		it('應該拒絕錯誤的密碼', async () => {

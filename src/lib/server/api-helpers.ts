@@ -58,7 +58,8 @@ const ErrorResponses = {
 			waiting: '遊戲尚未開始',
 			selecting: '必須在選角階段才能執行此操作',
 			playing: '遊戲尚未開始',
-			finished: '遊戲已結束'
+			finished: '遊戲已結束',
+			terminated: '遊戲已被強制結束'
 		};
 		return json(
 			{ message: statusMessages[requiredStatus] || '遊戲狀態不符合要求' },
@@ -70,7 +71,8 @@ const ErrorResponses = {
 			waiting: '只能在等待階段執行此操作',
 			selecting: '只能在選角階段執行此操作',
 			playing: '只能在遊戲進行中執行此操作',
-			finished: '遊戲已結束'
+			finished: '遊戲已結束',
+			terminated: '遊戲已被強制結束'
 		};
 		return json(
 			{ message: statusMessages[requiredStatus] || '遊戲狀態不符合要求' },
@@ -281,7 +283,7 @@ export async function verifyPlayerInRoomWithStatus(
 export async function verifyHostWithStatus(
 	request: Request,
 	roomName: string,
-	requiredStatus?: string
+	requiredStatus?: string | string[]
 ): Promise<HostInRoomWithStatusResult> {
 	const authResult = await verifyAuthToken(request);
 	if ('error' in authResult) {
@@ -298,8 +300,11 @@ export async function verifyHostWithStatus(
 		return { error: ErrorResponses.notHost() };
 	}
 
-	if (requiredStatus && game.status !== requiredStatus) {
-		return { error: ErrorResponses.wrongHostStatus(requiredStatus) };
+	if (requiredStatus) {
+		const allowedStatuses = Array.isArray(requiredStatus) ? requiredStatus : [requiredStatus];
+		if (!allowedStatuses.includes(game.status)) {
+			return { error: ErrorResponses.wrongHostStatus(allowedStatuses[0]) };
+		}
 	}
 
 	return { user, game };

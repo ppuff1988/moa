@@ -19,7 +19,6 @@
 	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 	import GameHeader from '$lib/components/game/GameHeader.svelte';
 	import PhaseIndicator from '$lib/components/game/PhaseIndicator.svelte';
-	import IdentifyArtifactPhase from '$lib/components/game/IdentifyArtifactPhase.svelte';
 	import SkillPhase from '$lib/components/game/SkillPhase.svelte';
 	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
 	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
@@ -56,78 +55,114 @@
 		isGameFinished
 	} = gameState;
 
-	let currentUser: User | null = null;
-	let isLoading = true;
-	let gameStatus: string = 'playing';
+	let currentUser: User | null = $state(null);
+	let isLoading = $state(true);
 	let updateInterval: number;
-	let isActionHistoryOpen = false;
+	let isActionHistoryOpen = $state(false);
 	let gameService: GameService;
 	let socket: Socket | null = null;
-	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
-	let showBlockedModal = false;
-	let showIdentifyConfirmModal = false;
-	let pendingIdentifyBeastId: number | null = null;
-	let isIdentifying = false;
+	let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = $state(null);
+	let showBlockedModal = $state(false);
+	let showIdentifyConfirmModal = $state(false);
+	let showStaleDataModal = $state(false);
+	let pendingIdentifyBeastId: number | null = $state(null);
+	let isIdentifying = $state(false);
+	let actionAreaElement: HTMLDivElement | null = $state(null);
+	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
 
-	$: roomName = $page.params.name || '';
-	$: isMyTurn =
-		$currentActionPlayer?.id === $players.find((p) => p.nickname === currentUser?.nickname)?.id;
-	$: currentUserId = $players.find((p) => p.nickname === currentUser?.nickname)?.id;
-	$: assignablePlayers = $players.filter((player) => {
-		if (player.id === $currentActionPlayer?.id) return false;
-		const hasActed = $actionedPlayers.some((ap) => ap.id === player.id);
-		return !hasActed;
+	// roomName 需要立即從 URL 參數初始化
+	let roomName = $state($page.params.name || '');
+
+	// 監聽 page 變化並更新 roomName
+	$effect(() => {
+		const newRoomName = $page.params.name || '';
+		if (newRoomName !== roomName) {
+			roomName = newRoomName;
+		}
 	});
-	$: attackablePlayers = $players.filter((player) => player.id !== currentUserId);
+
+	// 使用 $derived 代替 $: 的計算值
+	const isMyTurn = $derived(
+		$currentActionPlayer?.id === $players.find((p) => p.nickname === currentUser?.nickname)?.id
+	);
+	const currentUserId = $derived($players.find((p) => p.nickname === currentUser?.nickname)?.id);
+	const assignablePlayers = $derived(
+		$players.filter((player) => {
+			if (player.id === $currentActionPlayer?.id) return false;
+			const hasActed = $actionedPlayers.some((ap) => ap.id === player.id);
+			return !hasActed;
+		})
+	);
+	const attackablePlayers = $derived($players.filter((player) => player.id !== currentUserId));
 
 	// Update gameStatus based on roundPhase
-	$: gameStatus = $roundPhase === 'finished' ? 'finished' : 'playing';
+	let gameStatus = $derived($roundPhase === 'finished' ? 'finished' : 'playing');
 
 	// 同步遊戲狀態到通知系統
-	$: currentGameStatus.set(gameStatus);
+	$effect(() => {
+		currentGameStatus.set(gameStatus);
+	});
+
+	// 當進入技能或指派階段時，自動滾動到行動區域
+	$effect(() => {
+		if (
+			$roundPhase === 'action' &&
+			isMyTurn &&
+			($gamePhase === 'skill' || $gamePhase === 'assign-next') &&
+			actionAreaElement
+		) {
+			// 延遲一小段時間確保 DOM 已經渲染完成
+			setTimeout(() => {
+				actionAreaElement?.scrollIntoView({
+					behavior: 'smooth',
+					block: 'start'
+				});
+			}, 100);
+		}
+	});
 
 	// 自動跳過鑑定階段：當玩家沒有鑑定能力時，直接進入技能階段
-	$: if (
-		isMyTurn &&
-		$gamePhase === 'identification' &&
-		$skillActions &&
-		$skillActions.checkArtifact === 0 &&
-		$roundPhase === 'action'
-	) {
-		// 檢查是否有其他技能，如果有就進入技能階段，否則進入指派階段
-		if ($hasActualSkills) {
-			gamePhase.set('skill');
-		} else {
-			gamePhase.set('assign-next');
-			addNotification('請指派下一位玩家', 'info', 3000);
+	$effect(() => {
+		if (
+			isMyTurn &&
+			$gamePhase === 'identification' &&
+			$skillActions &&
+			$skillActions.checkArtifact === 0 &&
+			$roundPhase === 'action'
+		) {
+			// 檢查是否有其他技能，如果有就進入技能階段，否則進入指派階段
+			if ($hasActualSkills) {
+				gamePhase.set('skill');
+			} else {
+				gamePhase.set('assign-next');
+				addNotification('請指派下一位玩家', 'info', 3000);
+			}
 		}
-	}
+	});
 
 	// 自動完成技能階段：當所有技能都用完時，自動進入指派階段
-	$: if (
-		isMyTurn &&
-		$gamePhase === 'skill' &&
-		$skillActions &&
-		$remainingSkills &&
-		$roundPhase === 'action'
-	) {
-		// 檢查是否所有技能都已用完
-		const allSkillsUsed =
-			$remainingSkills.checkPeople === 0 &&
-			$remainingSkills.block === 0 &&
-			$remainingSkills.attack === 0 &&
-			$remainingSkills.swap === 0;
+	$effect(() => {
+		if (
+			isMyTurn &&
+			$gamePhase === 'skill' &&
+			$skillActions &&
+			$remainingSkills &&
+			$roundPhase === 'action' &&
+			!justUsedSkill // 剛使用完技能時不自動跳轉
+		) {
+			// 檢查是否所有技能都已用完
+			const allSkillsUsed =
+				$remainingSkills.checkPeople === 0 &&
+				$remainingSkills.block === 0 &&
+				$remainingSkills.attack === 0 &&
+				$remainingSkills.swap === 0;
 
-		if (allSkillsUsed) {
-			gamePhase.set('assign-next');
-			selectedBeastHead.set(null);
+			if (allSkillsUsed) {
+				gamePhase.set('assign-next');
+				selectedBeastHead.set(null);
+			}
 		}
-	}
-
-	// Initialize game service
-	$: if (roomName) {
-		gameService = new GameService(roomName);
-	}
+	});
 
 	// ==================== Data Fetching ====================
 
@@ -203,18 +238,27 @@
 		// 如果遊戲已結束，不再更新狀態
 		if ($isGameFinished) return;
 
-		const data = await gameService.fetchRoundStatus();
-		if (!data) return;
-
-		if (data.phase) {
-			roundPhase.set(data.phase);
-			// 如果 API 返回 finished，設置遊戲結束標記
-			if (data.phase === 'finished') {
-				isGameFinished.set(true);
+		try {
+			const data = await gameService.fetchRoundStatus();
+			if (!data) {
+				console.warn('[fetchRoundStatus] API 返回空數據，跳過更新');
+				return;
 			}
-		}
-		if (data.isHost !== undefined) {
-			isHost.set(data.isHost);
+
+			if (data.phase) {
+				roundPhase.set(data.phase);
+				// 如果 API 返回 finished，設置遊戲結束標記
+				if (data.phase === 'finished') {
+					isGameFinished.set(true);
+				}
+			}
+			if (data.isHost !== undefined) {
+				isHost.set(data.isHost);
+			}
+		} catch (error) {
+			// 捕獲錯誤但不阻止遊戲載入
+			console.error('[fetchRoundStatus] 獲取回合狀態失敗:', error);
+			// 不拋出錯誤，讓遊戲繼續載入
 		}
 	}
 
@@ -410,6 +454,12 @@
 			return;
 		}
 
+		// 檢查獸首回合是否與當前回合一致
+		if (beast.round && beast.round !== $currentRound) {
+			showStaleDataModal = true;
+			return;
+		}
+
 		pendingIdentifyBeastId = beastId;
 		showIdentifyConfirmModal = true;
 	}
@@ -498,6 +548,36 @@
 		isIdentifying = false;
 	}
 
+	function handleRefreshPage() {
+		window.location.reload();
+	}
+
+	// 處理鑑定玩家後的自動跳轉邏輯
+	function handlePostIdentifyTransition(hasRemainingCheckPeople: boolean, delayMs: number = 3000) {
+		justUsedSkill = true;
+
+		if (!hasRemainingCheckPeople) {
+			// 如果鑑人次數用完，延遲後再檢查是否需要跳轉到指派階段
+			setTimeout(() => {
+				justUsedSkill = false;
+				if ($remainingSkills) {
+					const hasOtherSkills =
+						$remainingSkills.block > 0 || $remainingSkills.attack > 0 || $remainingSkills.swap > 0;
+
+					if (!hasOtherSkills) {
+						gamePhase.set('assign-next');
+						addNotification('請指派下一位玩家', 'info', 3000);
+					}
+				}
+			}, delayMs);
+		} else {
+			// 還有鑑人次數，稍後重置標記即可
+			setTimeout(() => {
+				justUsedSkill = false;
+			}, 1500);
+		}
+	}
+
 	async function checkPlayer(playerId: number | string) {
 		if (!$remainingSkills || $remainingSkills.checkPeople <= 0) {
 			addNotification('你沒有剩餘的鑑人次數', 'error');
@@ -555,25 +635,31 @@
 					data.result.camp === 'good' ? 'success' : 'warning',
 					5000
 				);
-			} else {
-				if (data.blocked) {
-					usedSkills.update((s) => ({ ...s, checkPeople: s.checkPeople + 1 }));
-					addNotification(data.message || '無法鑑定此玩家', 'warning', 3000);
 
-					performedActions.update((list) => [
-						...list,
-						{
-							type: 'identify_player',
-							data: {
-								targetPlayerId: playerId,
-								targetPlayerNickname: targetPlayer.nickname,
-								blocked: true
-							}
+				// 處理後續跳轉邏輯
+				const hasRemainingCheckPeople = $remainingSkills && $remainingSkills.checkPeople > 0;
+				handlePostIdentifyTransition(hasRemainingCheckPeople, 3000);
+			} else if (data.blocked) {
+				usedSkills.update((s) => ({ ...s, checkPeople: s.checkPeople + 1 }));
+				addNotification(data.message || '無法鑑定此玩家', 'warning', 3000);
+
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_player',
+						data: {
+							targetPlayerId: playerId,
+							targetPlayerNickname: targetPlayer.nickname,
+							blocked: true
 						}
-					]);
-				} else {
-					addNotification(data.message || '鑑定失敗', 'error');
-				}
+					}
+				]);
+
+				// 被封鎖的情況也使用相同的跳轉邏輯，但延遲較短
+				const hasRemainingCheckPeople = $remainingSkills && $remainingSkills.checkPeople > 0;
+				handlePostIdentifyTransition(hasRemainingCheckPeople, 2000);
+			} else {
+				addNotification(data.message || '鑑定失敗', 'error');
 			}
 		} catch (error) {
 			console.error('鑑定玩家錯誤:', error);
@@ -745,6 +831,9 @@
 	// ==================== Lifecycle ====================
 
 	onMount(async () => {
+		// 立即初始化 gameService
+		gameService = new GameService(roomName);
+
 		// 檢查用戶是否已登入
 		const token = getJWTToken();
 		if (!token) {
@@ -771,16 +860,16 @@
 
 			if (roomResponse.ok) {
 				const roomData = await roomResponse.json();
-				gameStatus = roomData.game?.status || 'playing';
+				const currentGameStatus = roomData.game?.status || 'playing';
 
 				// 如果遊戲狀態是 waiting 或 selecting，導向到 lobby 頁面
-				if (gameStatus === 'waiting' || gameStatus === 'selecting') {
+				if (currentGameStatus === 'waiting' || currentGameStatus === 'selecting') {
 					goto(`/room/${encodeURIComponent(roomName)}/lobby`, { replaceState: true });
 					return;
 				}
 
 				// 如果遊戲已結束，獲取最終結果並顯示
-				if (gameStatus === 'finished') {
+				if (currentGameStatus === 'finished') {
 					const finalResultData = await gameService.fetchFinalResult();
 					if (finalResultData && finalResultData.success) {
 						finalResult.set(finalResultData);
@@ -808,23 +897,38 @@
 
 				// Initialize socket connection
 				try {
+					console.log('[socket] 初始化 socket 連接...');
 					socket = initSocket();
 
 					// Join the game room
+					console.log(`[socket] 加入房間: ${roomName}`);
 					socket.emit('join-room', roomName);
+
+					// 監聽房間加入成功事件
+					socket.on('room-update', () => {
+						console.log('[socket] 收到 room-update 事件，確認已成功加入房間');
+					});
+
+					socket.on('error', (error) => {
+						console.error('[socket] Socket 錯誤:', error);
+					});
 
 					// Listen for voting-completed event
 					socket.on('voting-completed', async (data) => {
+						console.log('[voting-completed] 收到投票完成事件:', data);
 						addNotification('投票結果已公布', 'info', 3000);
 
 						// Update phase to result
 						if (data.phase) {
+							console.log('[voting-completed] 更新階段為:', data.phase);
 							roundPhase.set(data.phase);
 						}
 
 						// Refresh artifacts to get voting results
+						console.log('[voting-completed] 刷新獸首資料...');
 						await fetchArtifacts();
 						await fetchRoundStatus();
+						console.log('[voting-completed] 數據刷新完成');
 					});
 
 					// Listen for round-started event
@@ -836,8 +940,8 @@
 							currentRound.set(data.round);
 						}
 
-						// Reset game state for new round
-						gameState.resetSkillsForNewTurn();
+						// Reset game state for new round - 清除舊回合的所有狀態
+						gameState.resetForNewRound();
 
 						// Refresh all game data
 						await fetchArtifacts();
@@ -856,6 +960,9 @@
 						const isNowMyTurn = $currentActionPlayer?.id === myPlayer?.id;
 
 						if (isNowMyTurn) {
+							// Refresh artifacts to ensure we have the latest round's data
+							await fetchArtifacts();
+
 							// Fetch role info to check canAction status
 							const roleData = await gameService.fetchMyRole();
 
@@ -975,14 +1082,47 @@
 
 		{#if !['identification', 'finished', 'discussion', 'voting', 'result'].includes($roundPhase)}
 			<PlayerOrderDisplay
-				currentRound={$currentRound}
 				currentActionPlayer={$currentActionPlayer}
 				actionedPlayers={$actionedPlayers}
 			/>
 		{/if}
 
+		<!-- 等待提示區域 - 放在行動順序和獸首之間 -->
+		{#if $roundPhase === 'action' && !isMyTurn}
+			<div class="waiting-area">
+				<div class="waiting-card">
+					<div class="waiting-icon">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="32"
+							height="32"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="waiting-spinner"
+						>
+							<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+						</svg>
+					</div>
+					<p class="waiting-text">
+						{#if $currentActionPlayer}
+							等待 <span class="highlight-player">{$currentActionPlayer.nickname}</span> 行動中...
+						{:else}
+							等待其他玩家行動中...
+						{/if}
+					</p>
+				</div>
+			</div>
+		{/if}
+
 		<div class="game-main">
 			<div class="game-content">
+				{#if $roundPhase === 'action'}
+					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
+				{/if}
+
 				{#if $roundPhase !== 'identification' && $roundPhase !== 'finished'}
 					<ArtifactDisplay
 						beastHeads={$beastHeads}
@@ -996,6 +1136,19 @@
 						canBlock={$remainingSkills ? $remainingSkills.block > 0 : false}
 						showVotingResults={$roundPhase === 'voting' || $roundPhase === 'result'}
 						currentRound={$currentRound}
+						autoCollapse={$roundPhase === 'discussion' ||
+							$roundPhase === 'voting' ||
+							($roundPhase === 'action' &&
+								isMyTurn &&
+								($gamePhase === 'skill' || $gamePhase === 'assign-next') &&
+								$currentPlayerRole !== '鄭國渠')}
+						showIdentifyHint={$roundPhase === 'action' &&
+							isMyTurn &&
+							$gamePhase === 'identification'}
+						remainingIdentifyCount={$skillActions && $usedSkills
+							? $skillActions.checkArtifact - $usedSkills.checkArtifact
+							: 0}
+						hasIdentifySkill={$skillActions ? $skillActions.checkArtifact > 0 : false}
 						onBeastClick={(beastId) => {
 							if (
 								$gamePhase === 'identification' &&
@@ -1016,30 +1169,45 @@
 					/>
 				{/if}
 
-				{#if $roundPhase === 'action'}
-					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
-				{/if}
-
 				{#if $roundPhase === 'discussion'}
 					<div class="action-area">
-						<div class="action-content">
-							{#if $isHost}
+						<div class="action-content discussion-phase">
+							<div class="phase-card">
+								<div class="phase-icon">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="48"
+										height="48"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+										<line x1="9" y1="10" x2="15" y2="10"></line>
+										<line x1="12" y1="7" x2="12" y2="13"></line>
+									</svg>
+								</div>
 								<div class="skills-header">
 									<h4 class="action-subtitle">討論階段</h4>
-									<p class="skills-description">你是房主，可以開始投票階段</p>
+									{#if $isHost}
+										<p class="skills-description">你是房主，可以開始投票階段</p>
+									{:else}
+										<p class="skills-description">所有玩家已完成行動，現在進入討論時間</p>
+									{/if}
 								</div>
 
-								<div class="discussion-host-actions">
-									<!--                  <p class="action-hint" style="color: #22c55e;">你是房主，可以開始投票階段</p>-->
-									<button class="primary-btn" on:click={startVoting}> 開始投票 </button>
-								</div>
-							{:else}
-								<div class="skills-header">
-									<h4 class="action-subtitle">討論階段</h4>
-									<p class="skills-description">所有玩家已完成行動，現在進入討論時間</p>
-								</div>
-								<p class="action-hint">等待房主開始投票...</p>
-							{/if}
+								{#if $isHost}
+									<div class="discussion-host-actions">
+										<button class="start-voting-btn" onclick={startVoting}>
+											<span>開始投票</span>
+											<span class="voting-arrow">→</span>
+										</button>
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
 				{:else if $roundPhase === 'voting'}
@@ -1055,22 +1223,18 @@
 						</div>
 					</div>
 				{:else if $roundPhase === 'result'}
-					<div class="action-area">
-						<div class="action-content">
-							<VotingResultPanel
-								{roomName}
-								beastHeads={$beastHeads}
-								isHost={$isHost}
-								currentRound={$currentRound}
-								onNextRound={async () => {
-									await fetchArtifacts();
-									await updatePlayersAndRound();
-									await fetchRoundStatus();
-									gameState.resetSkillsForNewTurn();
-								}}
-							/>
-						</div>
-					</div>
+					<VotingResultPanel
+						{roomName}
+						beastHeads={$beastHeads}
+						isHost={$isHost}
+						currentRound={$currentRound}
+						onNextRound={async () => {
+							await fetchArtifacts();
+							await updatePlayersAndRound();
+							await fetchRoundStatus();
+							gameState.resetForNewRound();
+						}}
+					/>
 				{:else if $roundPhase === 'identification'}
 					<div class="action-area">
 						<div class="action-content">
@@ -1096,17 +1260,10 @@
 							{/if}
 						</div>
 					</div>
-				{:else if isMyTurn}
-					<div class="action-area">
+				{:else if isMyTurn && $gamePhase !== 'identification'}
+					<div class="action-area" bind:this={actionAreaElement}>
 						<div class="action-content">
-							{#if $gamePhase === 'identification'}
-								<IdentifyArtifactPhase
-									skillActions={$skillActions}
-									usedSkills={$usedSkills}
-									onIdentify={openIdentifyConfirm}
-									onSkipToSkill={() => gamePhase.set('skill')}
-								/>
-							{:else if $gamePhase === 'skill'}
+							{#if $gamePhase === 'skill'}
 								<SkillPhase
 									players={$players}
 									{currentUser}
@@ -1115,6 +1272,7 @@
 									remainingSkills={$remainingSkills}
 									identifiedPlayers={$identifiedPlayers}
 									selectedBeastHead={$selectedBeastHead}
+									beastHeads={$beastHeads}
 									{attackablePlayers}
 									onCheckPlayer={checkPlayer}
 									onBlockArtifact={(beastId) => {
@@ -1134,16 +1292,6 @@
 								/>
 							{/if}
 						</div>
-					</div>
-				{:else}
-					<div class="waiting-area">
-						<p class="waiting-text">
-							{#if $currentActionPlayer}
-								等待 {$currentActionPlayer.nickname} 行動中...
-							{:else}
-								等待其他玩家行動中...
-							{/if}
-						</p>
 					</div>
 				{/if}
 			</div>
@@ -1170,6 +1318,17 @@
 		onConfirm={confirmIdentifyBeastHead}
 		onCancel={closeIdentifyConfirmModal}
 	/>
+	<ConfirmModal
+		isOpen={showStaleDataModal}
+		title="數據已過期"
+		message="獸首數據還停留在上一回合，請重新整理頁面以獲取最新數據。"
+		confirmText="重新整理"
+		cancelText="取消"
+		onConfirm={handleRefreshPage}
+		onCancel={() => {
+			showStaleDataModal = false;
+		}}
+	/>
 {/if}
 
 <style>
@@ -1184,13 +1343,22 @@
 		z-index: 1;
 	}
 
+	.loading-container p {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+	}
+
 	.loading-spinner {
 		width: 3rem;
 		height: 3rem;
-		border: 3px solid hsl(var(--muted));
-		border-top: 3px solid hsl(var(--primary));
+		border: 3px solid rgba(212, 175, 55, 0.3);
+		border-top: 3px solid #d4af37;
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
+		box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
 	}
 
 	@keyframes spin {
@@ -1223,37 +1391,33 @@
 	}
 
 	.action-area {
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		border-radius: calc(var(--radius));
+		background: rgba(255, 255, 255, 0.05);
+		border: 2px solid rgba(212, 175, 55, 0.4);
+		border-radius: calc(var(--radius) * 1.5);
 		padding: 1.5rem;
-		backdrop-filter: blur(10px);
+		backdrop-filter: blur(15px);
+		box-shadow:
+			0 8px 32px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.action-content {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.action-hint {
-		color: hsl(var(--muted-foreground));
-		text-align: center;
-		padding: 2rem;
-		font-size: 1rem;
+		gap: 0.75rem;
 	}
 
 	.skills-header {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 2rem;
+		gap: 0.375rem;
+		margin-bottom: 1rem;
 	}
 
 	.action-subtitle {
 		color: hsl(var(--foreground));
-		font-size: 1rem;
+		font-size: 1.25rem;
 		font-weight: 600;
 		text-align: center;
 		margin: 0;
@@ -1263,44 +1427,245 @@
 		color: hsl(var(--muted-foreground));
 		font-size: 0.875rem;
 		text-align: center;
+		margin: 0;
 	}
 
 	.discussion-host-actions {
 		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		align-items: center;
+		justify-content: center;
 		padding: 1rem;
+		width: 100%;
 	}
 
-	.primary-btn {
-		padding: 0.75rem 1.5rem;
-		background: var(--gradient-gold);
-		color: hsl(var(--secondary-foreground));
+	.start-voting-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.875rem;
+		padding: 1rem 2.5rem;
+		background: linear-gradient(135deg, #d4af37 0%, #f4e5b1 50%, #d4af37 100%);
+		color: #1a1a1a;
 		border: none;
-		border-radius: calc(var(--radius));
-		font-weight: 600;
+		border-radius: 0.875rem;
+		font-size: 1.0625rem;
+		font-weight: 700;
 		cursor: pointer;
-		transition: var(--transition-elegant);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);
+		position: relative;
+		overflow: hidden;
 	}
 
-	.primary-btn:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+	.start-voting-btn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+		transform: translateX(-100%);
+		transition: transform 0.6s ease;
+	}
+
+	.start-voting-btn:hover::before {
+		transform: translateX(100%);
+	}
+
+	.start-voting-btn:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 24px rgba(212, 175, 55, 0.5);
+	}
+
+	.start-voting-btn:active {
+		transform: translateY(-1px);
+	}
+
+	.voting-arrow {
+		font-size: 1.25rem;
+		transition: transform 0.3s ease;
+	}
+
+	.start-voting-btn:hover .voting-arrow {
+		transform: translateX(6px);
+	}
+
+	.discussion-phase {
+		width: 100%;
+	}
+
+	.phase-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 2rem;
+		background: transparent;
+		border: none;
+		border-radius: 0;
+	}
+
+	.phase-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 80px;
+		height: 80px;
+		background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.1));
+		border: 2px solid rgba(212, 175, 55, 0.4);
+		border-radius: 50%;
+		color: #d4af37;
+		box-shadow:
+			0 4px 12px rgba(212, 175, 55, 0.2),
+			inset 0 2px 0 rgba(255, 255, 255, 0.1);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse-glow {
+		0%,
+		100% {
+			box-shadow:
+				0 4px 12px rgba(212, 175, 55, 0.2),
+				inset 0 2px 0 rgba(255, 255, 255, 0.1);
+			transform: scale(1);
+		}
+		50% {
+			box-shadow:
+				0 4px 20px rgba(212, 175, 55, 0.4),
+				inset 0 2px 0 rgba(255, 255, 255, 0.15),
+				0 0 30px rgba(212, 175, 55, 0.2);
+			transform: scale(1.05);
+		}
+	}
+
+	@keyframes hourglass-rotate {
+		0%,
+		100% {
+			transform: rotate(0deg);
+		}
+		50% {
+			transform: rotate(180deg);
+		}
+	}
+
+	.waiting-text {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		text-align: center;
+		margin: 0;
+		letter-spacing: 0.02em;
+		opacity: 0.9;
+	}
+
+	@keyframes dot-bounce {
+		0%,
+		80%,
+		100% {
+			transform: scale(1);
+			opacity: 0.6;
+		}
+		40% {
+			transform: scale(1.3);
+			opacity: 1;
+		}
 	}
 
 	.waiting-area {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		padding: 3rem 2rem;
+		padding: 0;
+		margin: 1.5rem 0;
+		width: 100%;
+	}
+
+	.waiting-card {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		padding: 1.5rem 2rem;
+		background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.15));
+		border: 2px solid rgba(255, 215, 0, 0.4);
+		border-radius: calc(var(--radius));
+		backdrop-filter: blur(20px);
+		box-shadow: 0 8px 32px rgba(255, 215, 0, 0.2);
+		animation: pulse-border 2s ease-in-out infinite;
+		width: 100%;
+	}
+
+	@keyframes pulse-border {
+		0%,
+		100% {
+			border-color: rgba(255, 215, 0, 0.4);
+			box-shadow: 0 8px 32px rgba(255, 215, 0, 0.2);
+		}
+		50% {
+			border-color: rgba(255, 215, 0, 0.6);
+			box-shadow:
+				0 8px 32px rgba(255, 215, 0, 0.3),
+				0 0 30px rgba(255, 215, 0, 0.2);
+		}
+	}
+
+	.waiting-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #ffd700;
+		flex-shrink: 0;
+	}
+
+	.waiting-spinner {
+		animation: rotate 2s linear infinite;
+		fill: none;
+	}
+
+	@keyframes rotate {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.waiting-text {
-		color: hsl(var(--muted-foreground));
-		font-size: 1.125rem;
+		color: hsl(var(--foreground));
+		font-size: 1.25rem;
+		font-weight: 600;
 		text-align: center;
 		margin: 0;
+		letter-spacing: 0.02em;
+	}
+
+	.highlight-player {
+		color: #ffd700;
+		font-weight: 700;
+		text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+	}
+
+	@media (max-width: 768px) {
+		.game-container {
+			padding: 0.5rem 0.5rem;
+		}
+
+		.waiting-area {
+			margin: 1rem 0;
+		}
+
+		.waiting-card {
+			padding: 1rem 1.5rem;
+			gap: 0.75rem;
+		}
+
+		.waiting-icon svg {
+			width: 20px;
+			height: 20px;
+		}
+
+		.waiting-text {
+			font-size: 1rem;
+		}
 	}
 
 	.loading-result {
@@ -1311,5 +1676,13 @@
 		gap: 1rem;
 		padding: 2rem;
 		text-align: center;
+	}
+
+	.loading-result p {
+		color: hsl(var(--foreground));
+		font-size: 1.125rem;
+		font-weight: 600;
+		margin: 0;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 </style>

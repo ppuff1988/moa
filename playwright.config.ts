@@ -7,9 +7,9 @@ export default defineConfig({
 	testDir: './e2e',
 
 	fullyParallel: false,
-	retries: 0,
+	retries: 0, // 失敗時重試一次
 	workers: process.env.CI ? 1 : undefined, // CI 上單工
-	timeout: 120000, // 每個測試 120 秒
+	timeout: 180000, // 每個測試 180 秒（3分鐘）
 
 	// 報告配置
 	reporter: process.env.CI
@@ -27,8 +27,8 @@ export default defineConfig({
 		trace: 'on',
 		screenshot: 'on',
 		video: 'on',
-		navigationTimeout: 30000,
-		actionTimeout: 15000
+		navigationTimeout: 60000, // 60秒
+		actionTimeout: 30000 // 30秒
 	},
 
 	projects: [

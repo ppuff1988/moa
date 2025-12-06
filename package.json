@@ -1,7 +1,7 @@
 {
 	"name": "moa",
 	"private": true,
-	"version": "1.0.1",
+	"version": "1.0.30",
 	"type": "module",
 	"scripts": {
 		"dev": "cross-env NODE_ENV=development node scripts/dev-server.js",
@@ -28,7 +28,13 @@
 		"db:migrate:create": "drizzle-kit generate",
 		"db:reset": "docker cp migrations/init_database.sql moa_postgres:/tmp/init_database.sql && docker exec -i moa_postgres psql -U moa_user -d moa_db -f /tmp/init_database.sql && docker cp migrations/init_test_users.sql moa_postgres:/tmp/init_test_users.sql && docker exec -i moa_postgres psql -U moa_user -d moa_db -f /tmp/init_test_users.sql && npm run db:migrate",
 		"db:studio": "drizzle-kit studio",
-		"test:smtp": "node scripts/test-smtp.js"
+		"test:smtp": "node scripts/test-smtp.js",
+		"worker:email": "cross-env NODE_ENV=development tsx scripts/email-worker.ts",
+		"worker:email:prod": "cross-env NODE_ENV=production tsx scripts/email-worker.ts",
+		"queue:status": "tsx scripts/manage-email-queue.ts status",
+		"queue:retry": "tsx scripts/manage-email-queue.ts retry",
+		"queue:clear": "tsx scripts/manage-email-queue.ts clear",
+		"queue:test": "tsx scripts/manage-email-queue.ts test"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^1.4.0",
@@ -78,6 +84,7 @@
 		"lucia": "^3.2.2",
 		"nodemailer": "^7.0.10",
 		"pg": "^8.16.3",
+		"pg-boss": "^11.1.2",
 		"postgres": "^3.4.5",
 		"socket.io": "^4.8.1",
 		"socket.io-client": "^4.8.1"

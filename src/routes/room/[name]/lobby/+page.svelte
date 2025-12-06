@@ -6,7 +6,6 @@
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import RoomHeader from '$lib/components/room/RoomHeader.svelte';
 	import PlayersGrid from '$lib/components/player/PlayersGrid.svelte';
-	import FooterDecoration from '$lib/components/ui/FooterDecoration.svelte';
 	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
 	import { currentGameStatus } from '$lib/stores/notifications';
 
@@ -37,7 +36,7 @@
 	onMount(async () => {
 		await roomLobby.initialize();
 
-		// 初始化完成後，檢查遊戲狀態，如果已經開始或完成就導向 game
+		// 初始化完成後，檢查遊戲狀態，如果已經進入選角、遊戲中或完成就導向 game
 		const status = $gameStatus;
 		if (status && (status === 'playing' || status === 'finished')) {
 			goto(`/room/${encodeURIComponent(roomName)}/game`, {
@@ -82,7 +81,9 @@
 			onKickPlayer={roomLobby.kickPlayer}
 		/>
 
-		<FooterDecoration text={footerText} />
+		<div class="footer-wrapper">
+			<p class="footer-text">{footerText}</p>
+		</div>
 	</div>
 
 	<NotificationManager />
@@ -97,7 +98,40 @@
 		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
+		align-items: stretch;
+		width: 100%;
+	}
+
+	.footer-wrapper {
+		display: flex;
+		justify-content: center;
+		width: 100%;
+	}
+
+	.footer-text {
+		margin-top: 2rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 1.1rem;
+		font-style: italic;
+		opacity: 0.8;
+		display: flex;
 		align-items: center;
+		gap: 1rem;
+		width: 100%;
+		max-width: 600px;
+	}
+
+	.footer-text::before,
+	.footer-text::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(
+			to right,
+			transparent,
+			hsl(var(--muted-foreground) / 0.3),
+			transparent
+		);
 	}
 
 	@media (max-width: 768px) {

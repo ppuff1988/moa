@@ -3,7 +3,7 @@
  * 包含所有測試檔案共用的工具函數，避免重複程式碼
  */
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type BrowserContext } from '@playwright/test';
 
 /**
  * 測試用戶類型
@@ -47,6 +47,16 @@ export const TEST_USERS = {
 		username: 'testuser6@test.com',
 		password: 'Test123456!',
 		nickname: '測試玩家6'
+	},
+	user7: {
+		username: 'testuser7@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家7'
+	},
+	user8: {
+		username: 'testuser8@test.com',
+		password: 'Test123456!',
+		nickname: '測試玩家8'
 	}
 };
 
@@ -62,7 +72,36 @@ export function createTestUser(prefix: string, timestamp: number): TestUser {
 }
 
 /**
- * 註冊新用戶
+ * 批量創建測試用戶（直接寫入資料庫）
+ * 適用於需要大量測試帳號的場景，比手動註冊快很多
+ */
+export async function createTestUsersInDatabase(page: Page, users: TestUser[]): Promise<void> {
+	console.log(`📝 正在批量創建 ${users.length} 個測試帳號...`);
+
+	const response = await page.request.post('http://localhost:5173/api/test/create-users', {
+		data: {
+			users: users.map((u) => ({
+				email: u.username,
+				password: u.password,
+				nickname: u.nickname
+			}))
+		}
+	});
+
+	if (response.ok()) {
+		const result = await response.json();
+		console.log(
+			`✅ 批量創建完成: 新建 ${result.created.length} 個，已存在 ${result.existing.length} 個`
+		);
+	} else {
+		const error = await response.text();
+		console.error('❌ 批量創建失敗:', error);
+		throw new Error(`批量創建用戶失敗: ${error}`);
+	}
+}
+
+/**
+ * 註冊新用戶（註冊後會顯示驗證郵件訊息，不會自動登入）
  */
 export async function registerUser(
 	page: Page,
@@ -76,8 +115,14 @@ export async function registerUser(
 	await page.fill('input#email', username);
 	await page.fill('input#password', password);
 	await page.fill('input#confirmPassword', password);
+
+	// 勾選同意條款
+	await page.check('input[type="checkbox"]');
+
 	await page.click('button[type="submit"]');
-	await page.waitForURL('/', { timeout: 15000 });
+
+	// 等待成功訊息出現（註冊成功但需要驗證郵件）
+	await page.waitForTimeout(1000);
 }
 
 /**
@@ -90,6 +135,40 @@ export async function loginUser(page: Page, username: string, password: string) 
 	await page.fill('input#password', password);
 	await page.click('button[type="submit"]');
 	await page.waitForURL('/');
+}
+
+/**
+ * 註冊並自動驗證用戶（測試專用）
+ */
+export async function registerAndVerifyUser(
+	page: Page,
+	username: string,
+	password: string,
+	nickname: string
+) {
+	// 註冊用戶
+	await page.goto('/auth/register');
+	await page.waitForLoadState('networkidle');
+	await page.fill('input#nickname', nickname);
+	await page.fill('input#email', username);
+	await page.fill('input#password', password);
+	await page.fill('input#confirmPassword', password);
+	await page.check('input[type="checkbox"]');
+	await page.click('button[type="submit"]');
+
+	// 等待註冊成功訊息
+	await page.waitForTimeout(1000);
+
+	// 使用測試 API 驗證用戶
+	const response = await page.request.post('http://localhost:5173/api/test/verify-user', {
+		data: { email: username }
+	});
+
+	if (!response.ok()) {
+		console.warn('自動驗證失敗:', await response.text());
+	} else {
+		console.log('✅ 用戶已驗證:', username);
+	}
 }
 
 /**
@@ -110,6 +189,9 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 		await page.fill('input#password', user.password);
 		await page.fill('input#confirmPassword', user.password);
 
+		// 勾選同意條款
+		await page.check('input[type="checkbox"]');
+
 		// 點擊提交並等待 API 回應
 		try {
 			const [registerResponse] = await Promise.all([
@@ -119,19 +201,20 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 				page.click('button[type="submit"]')
 			]);
 
-			// 如果註冊成功，等待導航到首頁
-			if (registerResponse.status() === 200) {
-				await page.waitForURL('/', { timeout: 10000 });
-				// 確保首頁元素已載入
-				await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
-				return;
+			// 註冊成功後，自動驗證 Email
+			if (registerResponse.status() === 201) {
+				console.log('註冊成功，正在驗證 Email...');
+				await page.request.post('http://localhost:5173/api/test/verify-user', {
+					data: { email: user.username }
+				});
+				console.log('✅ Email 已驗證');
 			} else {
 				// 註冊失敗（用戶已存在），繼續嘗試登入
 				console.log('註冊失敗（用戶可能已存在），嘗試登入...');
 			}
-		} catch {
+		} catch (error) {
 			// 註冊可能失敗（用戶已存在），繼續嘗試登入
-			console.log('註冊失敗，嘗試登入...');
+			console.log('註冊過程出錯:', error);
 		}
 	} catch (e) {
 		// 註冊失敗或已存在，繼續嘗試登入
@@ -215,7 +298,7 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 	await page.waitForLoadState('domcontentloaded');
 
 	// 等待一下讓頁面完全載入
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(1000);
 
 	// 檢查是否在登入頁
 	const currentUrl = page.url();
@@ -227,13 +310,54 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 		try {
 			await page.fill('input#email', user.username);
 			await page.fill('input#password', user.password);
-			await page.click('button[type="submit"]');
-			await page.waitForURL('/', { timeout: 10000 });
 
-			// 簡短等待以確保 token 設置完成
+			// 點擊提交並等待響應和導航
+			const [response] = await Promise.all([
+				page.waitForResponse((resp) => resp.url().includes('/api/auth/login'), { timeout: 10000 }),
+				page.click('button[type="submit"]')
+			]);
+
+			// 如果是 403 且需要驗證，則驗證後重試
+			if (response.status() === 403) {
+				const responseData = await response.json();
+				if (responseData.requiresVerification) {
+					console.log('用戶未驗證，正在驗證...');
+					await page.request.post('http://localhost:5173/api/test/verify-user', {
+						data: { email: user.username }
+					});
+
+					// 重新登入
+					await page.goto('/auth/login');
+					await page.waitForLoadState('domcontentloaded');
+					await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
+					await page.fill('input#email', user.username);
+					await page.fill('input#password', user.password);
+
+					await Promise.all([
+						page.waitForURL('/', { timeout: 15000 }),
+						page.click('button[type="submit"]')
+					]);
+				} else {
+					throw new Error(`登入失敗: ${responseData.message || '未知錯誤'}`);
+				}
+			} else if (response.status() === 200) {
+				// 等待頁面跳轉到首頁
+				await page.waitForURL('/', { timeout: 15000 });
+			} else if (response.status() === 401) {
+				// 用戶不存在或密碼錯誤，嘗試註冊
+				throw new Error('USER_NOT_FOUND');
+			} else {
+				const responseData = await response.json();
+				throw new Error(`登入失敗 (${response.status()}): ${responseData.message || '未知錯誤'}`);
+			}
+
+			// 等待首頁載入完成
+			await page.waitForLoadState('networkidle', { timeout: 10000 });
 			await page.waitForTimeout(500);
-		} catch {
+		} catch (loginError) {
 			// 登入失敗，可能是用戶不存在，嘗試註冊
+			console.log('登入失敗，嘗試註冊新用戶:', loginError);
+
 			try {
 				await page.goto('/auth/register');
 				await page.waitForLoadState('domcontentloaded');
@@ -242,27 +366,94 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 				await page.fill('input#email', user.username);
 				await page.fill('input#password', user.password);
 				await page.fill('input#confirmPassword', user.password);
-				await page.click('button[type="submit"]');
-				await page.waitForURL('/', { timeout: 10000 });
-				await page.waitForTimeout(500);
-			} catch {
-				// 註冊失敗（可能是用戶已存在），再次嘗試登入
+
+				// 勾選同意條款
+				await page.check('input[type="checkbox"]');
+
+				await Promise.all([
+					page.waitForResponse((resp) => resp.url().includes('/api/auth/register'), {
+						timeout: 10000
+					}),
+					page.click('button[type="submit"]')
+				]);
+
+				// 等待註冊完成
+				await page.waitForTimeout(2000); // 增加等待時間
+
+				// 自動驗證
+				console.log('註冊成功，正在驗證用戶...');
+				const verifyResponse = await page.request.post(
+					'http://localhost:5173/api/test/verify-user',
+					{
+						data: { email: user.username }
+					}
+				);
+
+				if (!verifyResponse.ok()) {
+					console.error('驗證失敗:', await verifyResponse.json().catch(() => ({})));
+				}
+				console.log('用戶驗證成功');
+
+				// 等待驗證完成
+				await page.waitForTimeout(1000);
+
+				// 登入
 				await page.goto('/auth/login');
 				await page.waitForLoadState('domcontentloaded');
-				await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
+
+				// 等待並確保輸入框可見且可互動
+				await page.waitForSelector('input#email', { state: 'visible', timeout: 10000 });
+				await page.waitForTimeout(500); // 給予 onMount 檢查的時間
+
 				await page.fill('input#email', user.username);
 				await page.fill('input#password', user.password);
-				await page.click('button[type="submit"]');
-				await page.waitForURL('/', { timeout: 10000 });
-				await page.waitForTimeout(500);
+
+				// 點擊提交並等待導航
+				const submitButton = page.locator('button[type="submit"]');
+				await submitButton.click();
+
+				// 等待導航到首頁
+				try {
+					await page.waitForURL('/', { timeout: 20000, waitUntil: 'domcontentloaded' });
+				} catch (navError) {
+					console.error('導航到首頁失敗:', navError);
+					console.log('當前 URL:', page.url());
+					await page.screenshot({ path: `test-results/navigation-failed-${Date.now()}.png` });
+					throw navError;
+				}
+
+				// 等待首頁載入完成
+				await page.waitForLoadState('networkidle', { timeout: 15000 });
+				await page.waitForTimeout(1000);
+			} catch (registerError) {
+				console.error('註冊和登入都失敗:', registerError);
+				// 拍張截圖以便調試
+				await page.screenshot({ path: `test-results/ensure-logged-in-failed-${Date.now()}.png` });
+				throw registerError;
 			}
 		}
 	}
 
-	// 確認在首頁並等待關鍵元素
-	await page.waitForSelector('button:has-text("創建房間"), button:has-text("回到房間")', {
+	// 確認在首頁並等待關鍵元素（ActionButton 的文字在 button 標籤內）
+	// 先確保 URL 是首頁
+	if (!page.url().includes('localhost:5173/') || page.url().includes('/auth/')) {
+		console.log('當前不在首頁，正在導航...');
+		await page.goto('/');
+		await page.waitForLoadState('networkidle', { timeout: 10000 });
+		await page.waitForTimeout(1000);
+	}
+
+	// 等待首頁的載入狀態結束
+	const loadingSpinner = page.locator('text=載入中');
+	const isLoadingVisible = await loadingSpinner.isVisible({ timeout: 1000 }).catch(() => false);
+	if (isLoadingVisible) {
+		await loadingSpinner.waitFor({ state: 'hidden', timeout: 10000 });
+	}
+
+	// 等待按鈕出現
+	await page.waitForSelector('button.action-btn, button:has-text("離開房間")', {
 		state: 'visible',
-		timeout: 10000
+		timeout: 15000
 	});
 
 	// 檢查用戶是否在遊戲中（如果有「離開房間」按鈕）
@@ -272,23 +463,25 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 		.catch(() => false);
 
 	if (hasLeaveButton) {
+		console.log('用戶在房間中，正在離開...');
 		// 用戶在遊戲中，先離開房間
 		await page.click('button:has-text("離開房間")');
 
 		// 等待確認對話框出現並確認
 		const confirmButton = page.locator('button:has-text("確認離開"), button:has-text("確定")');
-		const isConfirmVisible = await confirmButton.isVisible({ timeout: 1000 }).catch(() => false);
+		const isConfirmVisible = await confirmButton.isVisible({ timeout: 2000 }).catch(() => false);
 
 		if (isConfirmVisible) {
 			await confirmButton.click();
-			await page.waitForTimeout(500);
+			await page.waitForTimeout(1000);
 		}
 
 		// 等待回到首頁並確保顯示創建房間按鈕
-		await page.waitForSelector('button:has-text("創建房間")', {
+		await page.waitForSelector('button.action-btn', {
 			state: 'visible',
-			timeout: 5000
+			timeout: 10000
 		});
+		console.log('已成功離開房間');
 	}
 }
 
@@ -332,22 +525,25 @@ export async function expectHomePage(page: Page) {
  */
 export async function createRoom(page: Page, roomPassword: string) {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle', { timeout: 15000 });
 
-	// 等待創建房間按鈕出現
+	// 等待創建房間按鈕出現並可點擊
 	await page.waitForSelector('button:has-text("創建房間")', {
 		state: 'visible',
-		timeout: 10000
+		timeout: 15000
 	});
 
+	await page.waitForTimeout(500); // 確保頁面穩定
 	await page.click('button:has-text("創建房間")');
 
 	// 等待房間密碼輸入框出現
-	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 5000 });
+	await page.waitForSelector('#roomPassword', { state: 'visible', timeout: 10000 });
 	await page.fill('#roomPassword', roomPassword);
 	await page.click('button[type="submit"]');
 
 	// 等待跳轉到房間頁面
-	await page.waitForURL(/\/room\/.+/, { timeout: 10000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
 }
 
 /**
@@ -355,14 +551,19 @@ export async function createRoom(page: Page, roomPassword: string) {
  */
 export async function joinRoom(page: Page, roomCode: string, roomPassword: string = '') {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle', { timeout: 15000 });
+
+	await page.waitForTimeout(500);
 	await page.click('button:has-text("加入房間")');
-	await page.waitForSelector('#roomName', { timeout: 3000 });
+
+	await page.waitForSelector('#roomName', { timeout: 10000 });
 	await page.fill('#roomName', roomCode);
 	if (roomPassword) {
 		await page.fill('#roomPassword', roomPassword);
 	}
 	await page.click('button[type="submit"]');
-	await page.waitForURL(/\/room\/.+/, { timeout: 8000 });
+	await page.waitForURL(/\/room\/.+/, { timeout: 15000 });
+	await page.waitForLoadState('networkidle', { timeout: 10000 });
 }
 
 /**
@@ -460,4 +661,242 @@ export async function expectErrorMessage(page: Page, message: string) {
 
 	// 檢查錯誤訊息包含預期文本
 	await expect(errorLocator).toContainText(message);
+}
+
+/**
+ * 開始選角階段（房主操作）
+ */
+export async function startRoleSelection(page: Page) {
+	// 等待選擇角色按鈕出現
+	await page.waitForSelector('button:has-text("選擇角色")', {
+		state: 'visible',
+		timeout: 10000
+	});
+
+	// 點擊選擇角色
+	await page.click('button:has-text("選擇角色")');
+
+	// 等待選角介面出現（角色選擇下拉選單）
+	await page.waitForSelector(
+		'select.selection-dropdown, select:has(option:has-text("請選擇角色"))',
+		{
+			timeout: 10000
+		}
+	);
+
+	// 額外等待確保所有玩家的選角介面都已載入
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 選擇角色並鎖定
+ */
+export async function selectAndLockRole(page: Page, roleName: string, color: string) {
+	// 等待角色選擇下拉選單
+	const roleSelect = page.locator('select.selection-dropdown').first();
+	await roleSelect.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 選擇角色
+	await roleSelect.selectOption({ label: roleName });
+	console.log(`選擇角色: ${roleName}`);
+
+	// 等待一下確保選擇已註冊
+	await page.waitForTimeout(500);
+
+	// 選擇顏色（使用下拉選單）
+	const colorSelect = page.locator('select.color-dropdown, select.selection-dropdown').nth(1);
+	if (await colorSelect.isVisible()) {
+		// 嘗試根據顏色名稱選擇
+		const colorOptions = await colorSelect.locator('option').allTextContents();
+		const colorMapping: { [key: string]: string } = {
+			red: '紅色',
+			blue: '藍色',
+			green: '綠色',
+			yellow: '黃色',
+			purple: '紫色',
+			orange: '橙色',
+			pink: '粉色',
+			cyan: '青色'
+		};
+
+		const chineseColor = colorMapping[color.toLowerCase()] || color;
+		if (colorOptions.some((opt) => opt.includes(chineseColor))) {
+			await colorSelect.selectOption({ label: chineseColor });
+		} else {
+			// 如果找不到對應的顏色，選擇第一個可用的
+			const firstColor = colorOptions.find(
+				(c) => c && c !== '請選擇顏色' && c !== '自訂顏色' && c.trim() !== ''
+			);
+			if (firstColor) {
+				await colorSelect.selectOption({ label: firstColor });
+			}
+		}
+		console.log(`選擇顏色: ${chineseColor}`);
+	}
+
+	// 等待一下確保選擇已註冊
+	await page.waitForTimeout(500);
+
+	// 點擊鎖定按鈕
+	const lockButton = page.locator('button.confirm-btn:has-text("鎖定")');
+	if (await lockButton.isVisible()) {
+		await lockButton.click();
+		console.log('已點擊鎖定按鈕');
+	}
+
+	// 等待鎖定狀態更新
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 解鎖角色
+ */
+export async function unlockRole(page: Page) {
+	await page.click('button:has-text("解除鎖定"), button:has-text("取消鎖定")');
+	await page.waitForTimeout(500);
+}
+
+/**
+ * 檢查玩家是否已鎖定
+ */
+export async function isPlayerLocked(page: Page, playerNickname: string): Promise<boolean> {
+	// 找到該玩家的 PlayerCard
+	const playerCard = page
+		.locator('[data-testid="player-card"], .player-card')
+		.filter({ hasText: playerNickname })
+		.first();
+
+	// 檢查該玩家卡片中的鎖定狀態圖示
+	const lockStatus = playerCard.locator('.lock-status.locked');
+	const isLocked = await lockStatus.isVisible({ timeout: 1000 }).catch(() => false);
+
+	if (isLocked) {
+		console.log(`✓ 玩家 ${playerNickname} 已鎖定`);
+	} else {
+		console.log(`✗ 玩家 ${playerNickname} 未鎖定`);
+	}
+
+	return isLocked;
+}
+
+/**
+ * 獲取房間內玩家數量
+ */
+export async function getPlayerCount(page: Page): Promise<number> {
+	return await page.locator('[data-testid="player-card"], .player-card').count();
+}
+
+/**
+ * 點擊首頁圖示
+ */
+export async function clickHomeIcon(page: Page) {
+	// 找到首頁圖示或連結（返回首頁按鈕）
+	const homeIcon = page
+		.locator('a.back-home-btn, a[href="/"], [title="返回首頁"], .home-link')
+		.first();
+	await homeIcon.click();
+
+	// 等待導航到首頁
+	await page.waitForURL('/', { timeout: 10000 });
+
+	// 等待首頁載入完成
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 在首頁點擊離開房間按鈕並確認
+ */
+export async function confirmLeaveGame(page: Page) {
+	// 等待「離開房間」按鈕出現
+	const leaveButton = page.locator('button:has-text("離開房間"), .action-btn:has-text("離開房間")');
+	await leaveButton.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 點擊離開房間按鈕
+	await leaveButton.click();
+
+	// 等待確認對話框出現
+	const confirmDialog = page.locator('.modal, [role="dialog"]').filter({ hasText: '確認離開' });
+	await confirmDialog.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 點擊確認按鈕
+	const confirmButton = confirmDialog
+		.locator('button:has-text("確認離開"), button:has-text("確認"), button:has-text("確定")')
+		.first();
+	await confirmButton.click();
+
+	// 等待處理完成
+	await page.waitForTimeout(1000);
+}
+
+/**
+ * 等待遊戲強制結束的 modal 出現
+ */
+export async function waitForGameForceEndedModal(page: Page) {
+	// 等待強制結束的通知或 modal
+	await page.waitForFunction(
+		() => {
+			return window.confirm || document.querySelector('.modal, [role="dialog"]');
+		},
+		{ timeout: 10000 }
+	);
+
+	// 處理 alert/confirm
+	page.on('dialog', async (dialog) => {
+		console.log('Dialog message:', dialog.message());
+		await dialog.accept();
+	});
+}
+
+/**
+ * 獲取可選角色列表
+ */
+export async function getAvailableRoles(page: Page): Promise<string[]> {
+	// 等待角色選擇下拉選單出現
+	const roleSelect = page.locator('select.selection-dropdown').first();
+	await roleSelect.waitFor({ state: 'visible', timeout: 5000 });
+
+	// 獲取所有角色選項
+	const roleOptions = await roleSelect.locator('option').allTextContents();
+
+	// 過濾掉空選項和「請選擇角色」
+	const roles = roleOptions
+		.filter((role) => role && role !== '請選擇角色' && role.trim() !== '')
+		.map((role) => role.trim());
+
+	return roles;
+}
+
+/**
+ * 創建指定數量玩家的房間
+ */
+export async function createRoomWithPlayers(
+	browser: { newContext: () => Promise<BrowserContext> },
+	playerCount: number,
+	roomPassword: string = 'test123'
+): Promise<{ contexts: Array<BrowserContext>; pages: Array<Page>; roomCode: string }> {
+	const contexts: Array<BrowserContext> = [];
+	const pages: Array<Page> = [];
+
+	// 創建所有玩家的上下文和頁面
+	for (let i = 0; i < playerCount; i++) {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		contexts.push(context);
+		pages.push(page);
+	}
+
+	// 第一個玩家創建房間
+	const testUsers = Object.values(TEST_USERS);
+	await ensureLoggedIn(pages[0], testUsers[0]);
+	await createRoom(pages[0], roomPassword);
+	const roomCode = getRoomCodeFromUrl(pages[0].url());
+
+	// 其他玩家加入房間
+	for (let i = 1; i < playerCount; i++) {
+		await ensureLoggedIn(pages[i], testUsers[i]);
+		await joinRoom(pages[i], roomCode, roomPassword);
+		await pages[i].waitForTimeout(500);
+	}
+
+	return { contexts, pages, roomCode };
 }

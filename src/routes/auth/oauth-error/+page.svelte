@@ -20,27 +20,16 @@
 
 		return () => clearInterval(interval);
 	});
-
-	function handleRetry() {
-		goto('/auth/login');
-	}
 </script>
 
 <div class="status-container">
 	<div class="status-card">
 		<div class="error-seal">
 			<svg viewBox="0 0 100 100" class="seal-bg">
-				<circle cx="50" cy="50" r="45" fill="hsl(var(--primary))" />
-				<circle
-					cx="50"
-					cy="50"
-					r="35"
-					fill="none"
-					stroke="hsl(var(--primary-foreground))"
-					stroke-width="2"
-				/>
+				<circle cx="50" cy="50" r="45" fill="#4b5563" />
+				<circle cx="50" cy="50" r="35" fill="none" stroke="#f3f4f6" stroke-width="2" />
 			</svg>
-			<div class="seal-text">偽</div>
+			<div class="seal-text">贗</div>
 		</div>
 
 		<h2>OAuth 驗證失敗</h2>
@@ -61,10 +50,10 @@
 		</div>
 
 		<div class="actions">
-			<button on:click={handleRetry} class="retry-btn">
+			<a href="/auth/login" class="retry-btn">
 				<span class="btn-icon">↻</span>
 				重新登入
-			</button>
+			</a>
 			<p class="countdown">
 				{countdown} 秒後自動跳轉
 			</p>
@@ -101,7 +90,7 @@
 	.seal-bg {
 		width: 100%;
 		height: 100%;
-		filter: drop-shadow(0 4px 12px hsl(var(--primary) / 0.3));
+		filter: drop-shadow(0 4px 12px rgba(75, 85, 99, 0.3));
 	}
 
 	.seal-text {
@@ -111,7 +100,7 @@
 		transform: translate(-50%, -50%);
 		font-size: 3rem;
 		font-weight: 700;
-		color: hsl(var(--primary-foreground));
+		color: #f3f4f6;
 		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 	}
 
@@ -210,6 +199,7 @@
 		font-weight: 500;
 		font-size: 1rem;
 		cursor: pointer;
+		text-decoration: none;
 		transition: var(--transition-elegant);
 		box-shadow: var(--shadow-antique);
 	}

@@ -1,19 +1,23 @@
 <script lang="ts">
-	export let text: string;
+	export let text: string = '傳承千年智慧，品鑑古董真偽';
 </script>
 
 <div class="footer-decoration">
 	<div class="footer-line"></div>
-	<span class="footer-text">{text}</span>
+	<p class="footer-text">{text}</p>
 	<div class="footer-line"></div>
 </div>
 
 <style>
 	.footer-decoration {
+		margin-top: 2rem;
+		color: hsl(var(--muted-foreground));
+		font-size: 1.1rem;
+		font-style: italic;
+		opacity: 0.8;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		gap: 2rem;
+		gap: 1rem;
 		width: 100%;
 		max-width: 600px;
 	}
@@ -21,26 +25,29 @@
 	.footer-line {
 		flex: 1;
 		height: 1px;
-		background: linear-gradient(to right, transparent, hsl(var(--secondary)), transparent);
+		background: linear-gradient(
+			to right,
+			transparent,
+			hsl(var(--muted-foreground) / 0.3),
+			transparent
+		);
 	}
 
 	.footer-text {
-		color: hsl(var(--secondary));
-		font-style: italic;
+		color: hsl(var(--muted-foreground));
 		font-size: 1.1rem;
+		font-style: italic;
+		margin: 0;
 		white-space: nowrap;
-		font-weight: 500;
 	}
 
 	@media (max-width: 768px) {
 		.footer-decoration {
-			flex-direction: column;
-			gap: 1rem;
+			font-size: 1rem;
 		}
 
-		.footer-line {
-			width: 120px;
-			height: 1px;
+		.footer-text {
+			font-size: 1rem;
 		}
 	}
 </style>

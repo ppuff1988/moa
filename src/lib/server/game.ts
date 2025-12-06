@@ -155,6 +155,7 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 		id: player.id,
 		userId: userId,
 		nickname: userInfo.nickname,
+		avatar: userInfo.avatar,
 		isHost: isHost,
 		isReady: false,
 		color: null,
@@ -181,7 +182,8 @@ export async function getGameState(gameId: string) {
 			canAction: gamePlayers.canAction,
 			joinedAt: gamePlayers.joinedAt,
 			lastActiveAt: gamePlayers.lastActiveAt,
-			nickname: user.nickname
+			nickname: user.nickname,
+			avatar: user.avatar
 		})
 		.from(gamePlayers)
 		.leftJoin(user, eq(gamePlayers.userId, user.id))
@@ -822,5 +824,28 @@ export async function getCurrentRoundStatus(gameId: string) {
 		phase: currentRound.phase,
 		startedAt: currentRound.startedAt,
 		completedAt: currentRound.completedAt
+	};
+}
+
+// 強制結束遊戲（當玩家人數不足時）
+export async function forceEndGame(gameId: string, reason: string) {
+	// 1. 刪除所有玩家記錄（讓所有玩家自動離開房間）
+	await db.delete(gamePlayers).where(eq(gamePlayers.gameId, gameId));
+
+	// 2. 更新遊戲狀態為強制結束
+	await db
+		.update(games)
+		.set({
+			status: 'terminated',
+			playerCount: 0,
+			finishedAt: new Date(),
+			updatedAt: new Date()
+		})
+		.where(eq(games.id, gameId));
+
+	return {
+		success: true,
+		reason,
+		finishedAt: new Date()
 	};
 }

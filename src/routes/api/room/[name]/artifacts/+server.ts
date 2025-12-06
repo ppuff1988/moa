@@ -51,7 +51,8 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			isGenuine: artifact.isGenuine,
 			isBlocked: artifact.isBlocked || false,
 			votes: artifact.votes || 0,
-			voteRank: artifact.voteRank
+			voteRank: artifact.voteRank,
+			round: currentRound.round
 		})),
 		currentRound: currentRound.round
 	});

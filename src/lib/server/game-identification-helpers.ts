@@ -26,16 +26,40 @@ export interface IdentificationResults {
 		required: number;
 		targetName: string;
 		actualName: string;
+		voteDetails?: Array<{
+			voterName: string;
+			voterRole: string;
+			votedFor: string;
+			votedForRole: string;
+			voterColorCode: string | null;
+			votedColorCode: string | null;
+		}>;
 	} | null;
 	xuYuan: {
 		success: boolean;
 		targetName: string;
 		actualName: string;
+		voteDetails?: Array<{
+			voterName: string;
+			voterRole: string;
+			votedFor: string;
+			votedForRole: string;
+			voterColorCode: string | null;
+			votedColorCode: string | null;
+		}>;
 	} | null;
 	fangZhen: {
 		success: boolean;
 		targetName: string;
 		actualName: string;
+		voteDetails?: Array<{
+			voterName: string;
+			voterRole: string;
+			votedFor: string;
+			votedForRole: string;
+			voterColorCode: string | null;
+			votedColorCode: string | null;
+		}>;
 	} | null;
 }
 
@@ -112,12 +136,27 @@ export async function calculateIdentificationResults(
 		? playersWithRoles.find((p) => p.playerId === mostVotedPlayerId)
 		: null;
 
+	// 收集每個許愿陣營玩家的投票詳情
+	const voteDetails = laoChaoFengVotes.map((vote) => {
+		const voter = playersWithRoles.find((p) => p.playerId === vote.playerId);
+		const votedPlayer = playersWithRoles.find((p) => p.playerId === vote.votedLaoChaoFeng);
+		return {
+			voterName: voter?.nickname || '未知',
+			voterRole: voter?.roleName || '未知',
+			votedFor: votedPlayer?.nickname || '未知',
+			votedForRole: votedPlayer?.roleName || '未知',
+			voterColorCode: voter?.colorCode || null,
+			votedColorCode: votedPlayer?.colorCode || null
+		};
+	});
+
 	results.laoChaoFeng = {
 		success: laoChaoFengSuccess,
 		votes: maxVotes,
 		required: requiredVotes,
 		targetName: targetPlayer?.nickname || '無',
-		actualName: laoChaoFengPlayer?.nickname || '未知'
+		actualName: laoChaoFengPlayer?.nickname || '未知',
+		voteDetails
 	};
 
 	// 2. 老朝奉投票許愿
@@ -127,10 +166,25 @@ export async function calculateIdentificationResults(
 		? playersWithRoles.find((p) => p.playerId === xuYuanVote.votedXuYuan)
 		: null;
 
+	// 收集老朝奉的投票詳情
+	const xuYuanVoteDetails = xuYuanVote
+		? [
+				{
+					voterName: laoChaoFengPlayer?.nickname || '老朝奉',
+					voterRole: laoChaoFengPlayer?.roleName || '老朝奉',
+					votedFor: xuYuanTarget?.nickname || '未知',
+					votedForRole: xuYuanTarget?.roleName || '未知',
+					voterColorCode: laoChaoFengPlayer?.colorCode || null,
+					votedColorCode: xuYuanTarget?.colorCode || null
+				}
+			]
+		: [];
+
 	results.xuYuan = {
 		success: xuYuanSuccess || false,
 		targetName: xuYuanTarget?.nickname || '無',
-		actualName: xuYuanPlayer?.nickname || '未知'
+		actualName: xuYuanPlayer?.nickname || '未知',
+		voteDetails: xuYuanVoteDetails
 	};
 
 	// 3. 藥不然投票方震
@@ -140,10 +194,28 @@ export async function calculateIdentificationResults(
 		? playersWithRoles.find((p) => p.playerId === fangZhenVote.votedFangZhen)
 		: null;
 
+	// 找出藥不然玩家
+	const yaoburanPlayer = playersWithRoles.find((p) => p.roleName === '藥不然');
+
+	// 收集藥不然的投票詳情
+	const fangZhenVoteDetails = fangZhenVote
+		? [
+				{
+					voterName: yaoburanPlayer?.nickname || '藥不然',
+					voterRole: yaoburanPlayer?.roleName || '藥不然',
+					votedFor: fangZhenTarget?.nickname || '未知',
+					votedForRole: fangZhenTarget?.roleName || '未知',
+					voterColorCode: yaoburanPlayer?.colorCode || null,
+					votedColorCode: fangZhenTarget?.colorCode || null
+				}
+			]
+		: [];
+
 	results.fangZhen = {
 		success: fangZhenSuccess || false,
 		targetName: fangZhenTarget?.nickname || '無',
-		actualName: fangZhenPlayer?.nickname || '未知'
+		actualName: fangZhenPlayer?.nickname || '未知',
+		voteDetails: fangZhenVoteDetails
 	};
 
 	return results;

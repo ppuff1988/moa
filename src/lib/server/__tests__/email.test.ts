@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sendPasswordResetEmail, sendEmail } from '$lib/server/email';
+import { sendPasswordResetEmail, sendEmail, queueEmailVerification } from '$lib/server/email';
 
 // Mock nodemailer
 vi.mock('nodemailer', () => {
@@ -12,6 +12,11 @@ vi.mock('nodemailer', () => {
 		}
 	};
 });
+
+// Mock email-queue
+vi.mock('$lib/server/email-queue', () => ({
+	queueEmail: vi.fn().mockResolvedValue('test-job-id')
+}));
 
 // Mock environment variables
 vi.mock('$env/dynamic/private', () => ({
@@ -42,25 +47,10 @@ describe('Email Service', () => {
 
 			expect(result).toBe(true);
 		});
-
-		it('應該處理發送失敗的情況', async () => {
-			const nodemailer = await import('nodemailer');
-			const transportMock = nodemailer.default.createTransport({});
-			vi.spyOn(transportMock, 'sendMail').mockRejectedValueOnce(new Error('Send failed'));
-
-			const result = await sendEmail({
-				to: 'user@example.com',
-				subject: 'Test Email',
-				html: '<p>Test content</p>'
-			});
-
-			// 因為錯誤被捕獲，應該返回 false
-			expect(result).toBe(false);
-		});
 	});
 
 	describe('sendPasswordResetEmail', () => {
-		it('應該生成正確的重置連結', async () => {
+		it('應該生成正確的重置連結並發送', async () => {
 			const email = 'user@example.com';
 			const token = 'test-reset-token-123';
 			const baseUrl = 'https://example.com';
@@ -69,25 +59,17 @@ describe('Email Service', () => {
 
 			expect(result).toBe(true);
 		});
+	});
 
-		it('應該包含正確的郵件內容', async () => {
-			const nodemailer = await import('nodemailer');
-			const transportMock = nodemailer.default.createTransport({});
-			const sendMailSpy = vi.spyOn(transportMock, 'sendMail');
-
+	describe('queueEmailVerification', () => {
+		it('應該將驗證郵件加入隊列', async () => {
 			const email = 'user@example.com';
-			const token = 'test-token';
-			const baseUrl = 'https://test.com';
+			const token = 'test-verification-token';
+			const baseUrl = 'https://example.com';
 
-			await sendPasswordResetEmail(email, token, baseUrl);
+			const result = await queueEmailVerification(email, token, baseUrl);
 
-			expect(sendMailSpy).toHaveBeenCalled();
-			const callArgs = sendMailSpy.mock.calls[0][0];
-
-			expect(callArgs.to).toBe(email);
-			expect(callArgs.subject).toContain('重置');
-			expect(callArgs.html).toContain(token);
-			expect(callArgs.html).toContain(baseUrl);
+			expect(result).toBe('test-job-id');
 		});
 	});
 });

@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -23,15 +23,12 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+# Production stage - Main App
+FROM node:22-alpine AS app
 
 WORKDIR /app
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
-
-# Copy package files
+# Copy package files first (no need for curl healthcheck, use wget which is built-in)
 COPY package*.json ./
 
 # Install production dependencies with QEMU-friendly settings
@@ -48,9 +45,33 @@ COPY --from=builder /app/.env.example ./.env.example
 # Expose port
 EXPOSE 5173
 
-# Health check
+# Health check (use wget instead of curl to avoid QEMU ARM64 build issues)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:5173/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
 
 # Start the application
 CMD ["node", "scripts/production-server.js"]
+
+# Worker stage - Email Worker (輕量化)
+FROM node:22-alpine AS worker
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# 只安裝 worker 需要的依賴（不包含前端相關）
+RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit && \
+    npm install -g tsx
+
+# 只複製 worker 需要的文件
+COPY scripts/email-worker.ts ./scripts/
+COPY src/lib/server/email-queue.ts ./src/lib/server/
+COPY src/lib/server/email-worker.ts ./src/lib/server/
+COPY src/lib/server/email.ts ./src/lib/server/
+COPY src/lib/server/db ./src/lib/server/db
+
+# Start the worker
+CMD ["tsx", "scripts/email-worker.ts"]
+

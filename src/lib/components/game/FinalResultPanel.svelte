@@ -17,11 +17,19 @@
 
 	interface IdentificationResult {
 		success: boolean;
-		targetId: number;
+		targetId?: number;
 		targetName?: string;
 		actualName?: string;
 		votes?: number;
 		required?: number;
+		voteDetails?: Array<{
+			voterName: string;
+			voterRole: string;
+			votedFor: string;
+			votedForRole: string;
+			voterColorCode: string | null;
+			votedColorCode: string | null;
+		}>;
 	}
 
 	interface IdentificationResults {
@@ -35,6 +43,17 @@
 	export let allArtifacts: Artifact[] = [];
 	export let players: Player[] = [];
 	export let identificationResults: IdentificationResults | null = null;
+
+	// 控制投票詳情的展開狀態
+	let expandedVoteDetails: { [key: string]: boolean } = {
+		laoChaoFeng: false,
+		xuYuan: false,
+		fangZhen: false
+	};
+
+	function toggleVoteDetails(key: string) {
+		expandedVoteDetails[key] = !expandedVoteDetails[key];
+	}
 
 	// 按回合分組獸首
 	$: artifactsByRound = [1, 2, 3].map((round) => {
@@ -76,7 +95,7 @@
 
 	<!-- 獸首結算 -->
 	<div class="section">
-		<h3 class="section-title">📜 獸首鑑定結果</h3>
+		<h3 class="section-title">🔍 獸首鑑定結果</h3>
 		<div class="rounds-summary">
 			{#each [1, 2, 3] as round, index (round)}
 				<div class="round-card">
@@ -126,6 +145,35 @@
 							{#if identificationResults.laoChaoFeng.success}
 								<p class="score-change">許愿陣營 +1 分</p>
 							{/if}
+
+							<!-- 投票詳情展開/收起 -->
+							{#if identificationResults.laoChaoFeng.voteDetails && identificationResults.laoChaoFeng.voteDetails.length > 0}
+								<button
+									class="vote-details-toggle"
+									on:click={() => toggleVoteDetails('laoChaoFeng')}
+								>
+									<span class="toggle-icon">{expandedVoteDetails.laoChaoFeng ? '▼' : '▶'}</span>
+									投票詳情 ({identificationResults.laoChaoFeng.voteDetails.length} 人)
+								</button>
+
+								{#if expandedVoteDetails.laoChaoFeng}
+									<div class="vote-details-list">
+										{#each identificationResults.laoChaoFeng.voteDetails as vote, i (i)}
+											<div class="voter-item">
+												<div class="voter-info">
+													<span class="voter-name">{vote.voterName}</span>
+													<span class="voter-role">{vote.voterRole}</span>
+												</div>
+												<span class="vote-arrow">→</span>
+												<div class="voted-info">
+													<span class="voted-name">{vote.votedFor}</span>
+													<span class="voted-role">{vote.votedForRole}</span>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							{/if}
 						</div>
 					</div>
 				{/if}
@@ -173,35 +221,37 @@
 
 	<!-- 玩家角色揭曉 -->
 	<div class="section">
-		<h3 class="section-title">👥 玩家角色</h3>
-		<div class="camps-container">
+		<h3 class="section-title">🎭 玩家角色</h3>
+		<div class="camps-wrapper">
 			<!-- 許愿陣營 -->
-			<div class="camp-column xu-yuan-camp">
-				<div class="camp-header">
-					<h4 class="camp-title">✨ 許愿陣營</h4>
-					<span class="camp-count">{xuYuanPlayers.length} 人</span>
+			<div class="camp-section">
+				<div class="camp-title-bar xu-yuan-title">
+					<span class="camp-icon">😇</span>
+					<span class="camp-name">許愿陣營</span>
+					<span class="camp-badge">{xuYuanPlayers.length}</span>
 				</div>
-				<div class="camp-players">
+				<div class="players-grid">
 					{#each xuYuanPlayers as player (player.id)}
-						<div class="player-card" style="border-color: {player.colorCode}">
-							<div class="player-name" style="color: {player.colorCode}">{player.nickname}</div>
-							<div class="player-role">{player.roleName}</div>
+						<div class="player-item xu-yuan-item">
+							<div class="role-text">{player.roleName || '未知角色'}</div>
+							<div class="player-text">{player.nickname}</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 
 			<!-- 老朝奉陣營 -->
-			<div class="camp-column lao-chao-feng-camp">
-				<div class="camp-header">
-					<h4 class="camp-title">🔥 老朝奉陣營</h4>
-					<span class="camp-count">{laoChaoFengPlayers.length} 人</span>
+			<div class="camp-section">
+				<div class="camp-title-bar lao-chao-feng-title">
+					<span class="camp-icon">😈</span>
+					<span class="camp-name">老朝奉陣營</span>
+					<span class="camp-badge">{laoChaoFengPlayers.length}</span>
 				</div>
-				<div class="camp-players">
+				<div class="players-grid">
 					{#each laoChaoFengPlayers as player (player.id)}
-						<div class="player-card" style="border-color: {player.colorCode}">
-							<div class="player-name" style="color: {player.colorCode}">{player.nickname}</div>
-							<div class="player-role">{player.roleName}</div>
+						<div class="player-item lao-chao-feng-item">
+							<div class="role-text">{player.roleName || '未知角色'}</div>
+							<div class="player-text">{player.nickname}</div>
 						</div>
 					{/each}
 				</div>
@@ -234,11 +284,11 @@
 	}
 
 	.winner-title.xu-yuan {
-		color: #22c55e;
+		color: #ef4444;
 	}
 
 	.winner-title.lao-chao-feng {
-		color: #ef4444;
+		color: #9ca3af;
 	}
 
 	.final-score {
@@ -405,100 +455,215 @@
 		font-weight: 600 !important;
 	}
 
-	/* 陣營容器 - 兩欄布局 */
-	.camps-container {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		gap: 1.5rem;
-	}
-
-	.camp-column {
-		background: rgba(255, 255, 255, 0.03);
-		border-radius: 1rem;
-		padding: 1.25rem;
-		border: 2px solid;
-	}
-
-	.camp-column.xu-yuan-camp {
-		border-color: rgba(34, 197, 94, 0.3);
-		background: rgba(34, 197, 94, 0.05);
-	}
-
-	.camp-column.lao-chao-feng-camp {
-		border-color: rgba(239, 68, 68, 0.3);
-		background: rgba(239, 68, 68, 0.05);
-	}
-
-	.camp-header {
+	/* 投票詳情按鈕 */
+	.vote-details-toggle {
+		width: 100%;
+		margin-top: 0.75rem;
+		padding: 0.75rem;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 0.5rem;
+		color: hsl(var(--foreground));
+		cursor: pointer;
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.75rem;
-		border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		transition: all 0.2s;
 	}
 
-	.camp-title {
-		font-size: 1.25rem;
+	.vote-details-toggle:hover {
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.toggle-icon {
+		color: hsl(var(--foreground));
+		font-size: 0.75rem;
+		transition: transform 0.2s;
+	}
+
+	/* 投票詳情列表 */
+	.vote-details-list {
+		margin-top: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.voter-item {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem 1.25rem;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 0.5rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		transition: all 0.2s ease;
+	}
+
+	.voter-item:hover {
+		background: rgba(255, 255, 255, 0.08);
+		border-color: rgba(255, 255, 255, 0.15);
+		transform: translateX(4px);
+	}
+
+	.voter-info,
+	.voted-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.voter-name,
+	.voted-name {
 		font-weight: 700;
-		margin: 0;
+		font-size: 1rem;
+		line-height: 1.4;
 		color: hsl(var(--foreground));
 	}
 
-	.xu-yuan-camp .camp-title {
-		color: #22c55e;
-	}
-
-	.lao-chao-feng-camp .camp-title {
-		color: #ef4444;
-	}
-
-	.camp-count {
-		background: rgba(255, 255, 255, 0.1);
-		padding: 0.25rem 0.75rem;
-		border-radius: 1rem;
-		font-size: 0.875rem;
-		font-weight: 600;
+	.voter-role,
+	.voted-role {
+		font-size: 0.8125rem;
 		color: hsl(var(--muted-foreground));
+		line-height: 1.4;
 	}
 
-	.camp-players {
+	.vote-arrow {
+		color: hsl(var(--muted-foreground));
+		font-size: 1.125rem;
+		opacity: 0.6;
+		flex-shrink: 0;
+	}
+
+	/* 玩家角色區塊 */
+	.camps-wrapper {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 2rem;
+	}
+
+	.camp-section {
 		display: flex;
 		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.camp-title-bar {
+		display: flex;
+		align-items: center;
 		gap: 0.75rem;
+		padding: 0.875rem 1.25rem;
+		border-radius: 0.625rem;
+		font-weight: 700;
+		font-size: 1.125rem;
 	}
 
-	.player-card {
-		background: rgba(255, 255, 255, 0.05);
-		border: 2px solid;
-		border-radius: 0.75rem;
-		padding: 1rem;
-		text-align: center;
-		transition:
-			transform 0.2s,
-			box-shadow 0.2s;
+	.camp-title-bar.xu-yuan-title {
+		background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+		color: white;
+		box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
 	}
 
-	.player-card:hover {
-		transform: translateY(-2px);
+	.camp-title-bar.lao-chao-feng-title {
+		background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+		color: white;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 	}
 
-	.player-name {
-		font-size: 1.125rem;
+	.camp-icon {
+		font-size: 1.375rem;
+	}
+
+	.camp-name {
+		flex: 1;
+		letter-spacing: 0.025em;
+	}
+
+	.camp-badge {
+		background: rgba(255, 255, 255, 0.2);
+		padding: 0.25rem 0.625rem;
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		min-width: 2rem;
+		text-align: center;
+	}
+
+	.players-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 0.875rem;
+	}
+
+	.player-item {
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 0.5rem;
+		padding: 0.875rem;
+		text-align: center;
+		transition: all 0.2s ease;
+		border: 1px solid transparent;
+	}
+
+	.player-item:hover {
+		transform: translateY(-2px);
+	}
+
+	.player-item.xu-yuan-item {
+		background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);
+		border-color: rgba(239, 68, 68, 0.2);
+	}
+
+	.player-item.xu-yuan-item:hover {
+		background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.08) 100%);
+		border-color: rgba(239, 68, 68, 0.35);
+		box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+	}
+
+	.player-item.lao-chao-feng-item {
+		background: linear-gradient(135deg, rgba(75, 85, 99, 0.15) 0%, rgba(75, 85, 99, 0.08) 100%);
+		border-color: rgba(75, 85, 99, 0.25);
+	}
+
+	.player-item.lao-chao-feng-item:hover {
+		background: linear-gradient(135deg, rgba(75, 85, 99, 0.2) 0%, rgba(75, 85, 99, 0.12) 100%);
+		border-color: rgba(75, 85, 99, 0.4);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+	}
+
+	.role-text {
+		display: block;
+		font-size: 1rem;
 		font-weight: 700;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.375rem;
+		letter-spacing: 0.025em;
+		line-height: 1.4;
 	}
 
-	.player-role {
-		color: hsl(var(--muted-foreground));
-		font-size: 0.9rem;
+	.xu-yuan-item .role-text {
+		color: #f87171;
 	}
 
-	/* 響應式設計 */
-	@media (max-width: 768px) {
-		.camps-container {
-			grid-template-columns: 1fr;
-		}
+	.lao-chao-feng-item .role-text {
+		color: #e5e7eb;
+	}
+
+	.player-text {
+		display: block;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		opacity: 0.75;
+		line-height: 1.4;
+	}
+
+	.xu-yuan-item .player-text {
+		color: #fecaca;
+	}
+
+	.lao-chao-feng-item .player-text {
+		color: #d1d5db;
 	}
 </style>
