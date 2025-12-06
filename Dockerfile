@@ -28,11 +28,7 @@ FROM node:22-alpine AS app
 
 WORKDIR /app
 
-# Install curl for healthcheck
-# Use --break-glass to skip triggers that may fail in QEMU emulation
-RUN apk add --no-cache --break-glass curl || apk add --no-cache curl
-
-# Copy package files
+# Copy package files first (no need for curl healthcheck, use wget which is built-in)
 COPY package*.json ./
 
 # Install production dependencies with QEMU-friendly settings
@@ -49,9 +45,9 @@ COPY --from=builder /app/.env.example ./.env.example
 # Expose port
 EXPOSE 5173
 
-# Health check
+# Health check (use wget instead of curl to avoid QEMU ARM64 build issues)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:5173/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
 
 # Start the application
 CMD ["node", "scripts/production-server.js"]
