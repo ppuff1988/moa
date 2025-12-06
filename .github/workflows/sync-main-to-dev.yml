@@ -57,16 +57,18 @@ jobs:
               // 檢測分支分叉：兩邊都有獨有的 commits
               if (comparison.behind_by > 0 && comparison.ahead_by > 0) {
                 console.log('');
-                console.log('⚠️ 警告：分支已分叉！');
-                console.log(`   Main 獨有: ${comparison.ahead_by} commits`);
-                console.log(`   Dev 獨有: ${comparison.behind_by} commits`);
+                console.log('📍 分支狀態：Main 和 Dev 各有獨立開發');
+                console.log(`   Main 獨有: ${comparison.ahead_by} commits（版本發布、Hotfix）`);
+                console.log(`   Dev 獨有: ${comparison.behind_by} commits（新功能開發）`);
                 console.log('');
-                console.log('🔧 這通常是由於 cherry-pick 導致的重複 commits。');
-                console.log('💡 建議操作：手動檢查並重置 dev 分支到 main');
+                console.log('✅ 這是正常的開發流程：');
+                console.log('   • Dev 分支：持續開發新功能');
+                console.log('   • Main 分支：穩定版本與緊急修復');
                 console.log('');
-                console.log('⏭️ 跳過自動建立 PR，避免潛在的合併衝突');
-                core.setOutput('result', 'diverged');
-                return;
+                console.log('🔄 將建立合併 PR，整合 main 的變更到 dev');
+                console.log('   （Dev 的功能開發將保留，Main 的修復將合併進來）');
+                console.log('');
+                // 繼續執行，不要 return
               }
               
               if (comparison.ahead_by === 0) {
