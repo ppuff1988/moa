@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Navigation from '$lib/components/ui/Navigation.svelte';
 
 	onMount(() => {
 		// 滾動到頂部
@@ -10,6 +11,8 @@
 <svelte:head>
 	<title>使用者條款 - MOA</title>
 </svelte:head>
+
+<Navigation />
 
 <div class="terms-container">
 	<div class="terms-content">
@@ -123,7 +126,7 @@
 		position: relative;
 		z-index: 1;
 		min-height: 100vh;
-		padding: 2rem 1rem 4rem 1rem;
+		padding: 6rem 1rem 4rem 1rem;
 	}
 
 	.terms-content {

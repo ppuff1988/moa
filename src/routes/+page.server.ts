@@ -1,13 +1,15 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { games, gamePlayers } from '$lib/server/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	// 如果沒有登入，重定向到登入頁
+	// 未登入用戶可以看到首頁（SEO 友好）
 	if (!locals.user) {
-		throw redirect(302, '/auth/login');
+		return {
+			user: null,
+			currentGame: null
+		};
 	}
 
 	// 查詢用戶當前是否在遊戲中
