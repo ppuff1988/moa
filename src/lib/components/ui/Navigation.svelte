@@ -12,9 +12,9 @@
 
 <!-- 手機版選單遮罩 -->
 {#if mobileMenuOpen}
-	<!-- svelte-ignore a11y-click-events-have-key-events -->
-	<!-- svelte-ignore a11y-no-static-element-interactions -->
-	<div class="mobile-overlay" on:click={closeMobileMenu}></div>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="mobile-overlay" onclick={closeMobileMenu}></div>
 {/if}
 
 <!-- 導航選單 -->
@@ -26,7 +26,7 @@
 		<button
 			class="hamburger"
 			class:active={mobileMenuOpen}
-			on:click={toggleMobileMenu}
+			onclick={toggleMobileMenu}
 			aria-label="選單"
 		>
 			<span></span>
@@ -36,16 +36,16 @@
 
 		<!-- 導航選單 -->
 		<div class="nav-links" class:mobile-open={mobileMenuOpen}>
-			<a href="/" class="nav-link" on:click={closeMobileMenu}>首頁</a>
+			<a href="/" class="nav-link" onclick={closeMobileMenu}>首頁</a>
 			<a
 				href="https://www.youtube.com/watch?v=a1scG0iv0cM"
 				target="_blank"
 				rel="noopener noreferrer"
 				class="nav-link"
-				on:click={closeMobileMenu}>教學影片</a
+				onclick={closeMobileMenu}>教學影片</a
 			>
-			<a href="/terms" class="nav-link" on:click={closeMobileMenu}>使用者條款</a>
-			<a href="/auth/login" class="nav-btn nav-btn-primary" on:click={closeMobileMenu}>登入/註冊</a>
+			<a href="/terms" class="nav-link" onclick={closeMobileMenu}>使用者條款</a>
+			<a href="/auth/login" class="nav-btn nav-btn-primary" onclick={closeMobileMenu}>登入/註冊</a>
 		</div>
 	</nav>
 </header>
