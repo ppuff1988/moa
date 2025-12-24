@@ -99,6 +99,10 @@
 	}
 
 	async function logout() {
+		// 先清除本地的使用者狀態
+		user = null;
+		currentGame = null;
+
 		const { logout } = await import('$lib/utils/jwt');
 		await logout();
 	}
