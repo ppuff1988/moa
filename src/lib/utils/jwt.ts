@@ -62,7 +62,9 @@ export async function logout(): Promise<void> {
 		// 清除所有 localStorage
 		if (typeof window !== 'undefined') {
 			localStorage.clear();
+			// 使用 location.replace 而不是 location.href，這樣可以防止使用者按返回鈕回到登入狀態
+			// 同時添加時間戳確保強制重新載入
+			window.location.replace('/auth/login?t=' + Date.now());
 		}
-		window.location.href = '/auth/login';
 	}
 }

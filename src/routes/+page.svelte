@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
 	import RoomForm from '$lib/components/room/RoomForm.svelte';
 	import UserArea from '$lib/components/ui/UserArea.svelte';
@@ -141,6 +142,30 @@
 	function closeMobileMenu() {
 		mobileMenuOpen = false;
 	}
+
+	// 防止瀏覽器快取造成的登出後返回問題
+	onMount(() => {
+		// 監聽 pageshow 事件，檢測頁面是否從快取恢復
+		const handlePageShow = async (event: PageTransitionEvent) => {
+			// 如果頁面是從快取恢復的
+			if (event.persisted) {
+				// 檢查 JWT token 是否存在
+				const { getJWTToken } = await import('$lib/utils/jwt');
+				const token = getJWTToken();
+
+				// 如果頁面顯示為已登入但 token 不存在，重新載入頁面
+				if (user && !token) {
+					window.location.reload();
+				}
+			}
+		};
+
+		window.addEventListener('pageshow', handlePageShow);
+
+		return () => {
+			window.removeEventListener('pageshow', handlePageShow);
+		};
+	});
 </script>
 
 <svelte:head>
