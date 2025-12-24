@@ -53,7 +53,8 @@ export async function logout(): Promise<void> {
 	try {
 		await fetch('/api/auth/logout', {
 			method: 'POST',
-			headers: getAuthHeaders()
+			headers: getAuthHeaders(),
+			credentials: 'include' // 確保送出 cookie
 		});
 	} catch (error) {
 		console.error('登出錯誤:', error);
