@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
 	import RoomForm from '$lib/components/room/RoomForm.svelte';
-	import UserArea from '$lib/components/ui/UserArea.svelte';
-	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import ActionButton from '$lib/components/ui/ActionButton.svelte';
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
+	import MainTitle from '$lib/components/ui/MainTitle.svelte';
+	import UserArea from '$lib/components/ui/UserArea.svelte';
+	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
+	import { onMount } from 'svelte';
 
 	interface User {
 		id: number;
@@ -173,14 +173,14 @@
 </script>
 
 <svelte:head>
-	<title>古董局中局 - 傳承千年智慧，品鑑古董真偽 | MOA 線上桌遊</title>
+	<title>古董局中局非官方APP - 免費線上桌遊輔助工具 | 無需下載即可遊玩</title>
 	<meta
 		name="description"
-		content="古董局中局線上桌遊 - 6-8人多人策略推理遊戲，無需下載App，打開瀏覽器即可開始。在神秘的古董世界中運用智慧與判斷力，與朋友一起鬥智鬥勇！"
+		content="古董局中局非官方APP - 6-8人多人策略推理遊戲，無需下載App，打開瀏覽器即可開始。在神秘的古董世界中運用智慧與判斷力，與朋友一起鬥智鬥勇！"
 	/>
 	<meta
 		name="keywords"
-		content="古董局中局,桌遊,線上桌遊,多人遊戲,策略遊戲,推理遊戲,MOA,免費桌遊,網頁遊戲"
+		content="古董局中局,古董局中局非官方APP,桌遊,線上桌遊,多人遊戲,策略遊戲,推理遊戲,免費桌遊,網頁遊戲,古董鑑定遊戲,推理桌遊"
 	/>
 </svelte:head>
 
@@ -445,7 +445,7 @@
 					>GitHub</a
 				>
 			</div>
-			<div class="footer-copyright">© 2025 MOA - 古董局中局. All rights reserved.</div>
+			<div class="footer-copyright">© 2025 古董局中局非官方APP. All rights reserved.</div>
 		</div>
 	</footer>
 {/if}

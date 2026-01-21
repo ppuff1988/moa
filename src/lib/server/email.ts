@@ -2,8 +2,8 @@
  * Email 郵件服務
  * 使用 nodemailer 發送郵件
  */
-import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import nodemailer from 'nodemailer';
 
 // 兼容 SvelteKit 和獨立 Node.js 環境
 let env: Record<string, string | undefined>;
@@ -185,7 +185,7 @@ function getEmailVerificationTemplate(verificationLink: string): {
 		<div class="content">
 			<p>您好，</p>
 			<p>感謝您註冊古董局中局帳號！請點擊下方按鈕來驗證您的 Email 地址：</p>
-			
+
 			<div class="button-container">
 				<a href="${verificationLink}" class="action-button">驗證 Email</a>
 			</div>
@@ -205,7 +205,7 @@ function getEmailVerificationTemplate(verificationLink: string): {
 			</p>
 		</div>
 		<div class="footer">
-			<p><strong>古董局中局 - MOA</strong></p>
+			<p><strong>古董局中局非官方APP</strong></p>
 			<p>此為系統自動發送的郵件，請勿直接回覆。</p>
 		</div>
 	</div>
@@ -229,7 +229,7 @@ ${verificationLink}
 
 如有任何問題，歡迎聯繫我們的客服團隊。
 
-古董局中局 - MOA
+古董局中局非官方APP
 此為系統自動發送的郵件，請勿直接回覆。
 	`;
 
@@ -257,7 +257,7 @@ function getPasswordResetTemplate(resetLink: string): { html: string; text: stri
 		<div class="content">
 			<p>您好，</p>
 			<p>我們收到了您的密碼重置請求。請點擊下方按鈕來重置您的密碼：</p>
-			
+
 			<div class="button-container">
 				<a href="${resetLink}" class="action-button">重置密碼</a>
 			</div>
@@ -276,7 +276,7 @@ function getPasswordResetTemplate(resetLink: string): { html: string; text: stri
 			</p>
 		</div>
 		<div class="footer">
-			<p><strong>古董局中局 - MOA</strong></p>
+			<p><strong>古董局中局非官方APP</strong></p>
 			<p>此為系統自動發送的郵件，請勿直接回覆。</p>
 		</div>
 	</div>
@@ -300,7 +300,7 @@ ${resetLink}
 
 如有任何問題，歡迎聯繫我們的客服團隊。
 
-古董局中局 - MOA
+古董局中局非官方APP
 此為系統自動發送的郵件，請勿直接回覆。
 	`;
 

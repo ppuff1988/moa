@@ -57,6 +57,7 @@
 - 💬 遊戲內聊天
 - 🐳 支援 Docker 部署
 - 🔑 一鍵 Google 登入
+- 📱 **PWA 支援** - 可安裝到桌面，支援離線使用
 
 ## 🚀 快速開始
 
@@ -259,7 +260,7 @@ Push to main
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
 - 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）
 - 📱 [Telegram Bot 設定](docs/TELEGRAM-BOT-SETUP.md) - 設定部署通知機器人
-- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範
+- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範- 📲 **[PWA 功能說明](docs/PWA.md)** - Progressive Web App 安裝與使用指南
 
 ### 📧 關於郵件隊列系統
 
