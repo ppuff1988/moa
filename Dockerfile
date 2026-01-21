@@ -47,7 +47,7 @@ EXPOSE 5173
 
 # Health check (use wget instead of curl to avoid QEMU ARM64 build issues)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
+	CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
 
 # Start the application
 CMD ["node", "scripts/production-server.js"]
@@ -63,7 +63,7 @@ COPY tsconfig.json ./
 
 # 只安裝 worker 需要的依賴（不包含前端相關）
 RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit && \
-    npm install -g tsx
+	npm install -g tsx
 
 # 只複製 worker 需要的文件
 COPY scripts/email-worker.ts ./scripts/

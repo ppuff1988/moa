@@ -4,28 +4,28 @@ FROM node:24-alpine
 
 # 安裝開發必需的系統套件
 RUN apk add --no-cache \
-    git \
-    openssh-client \
-    bash \
-    curl \
-    wget \
-    vim \
-    nano \
-    zsh \
-    postgresql-client \
-    shadow \
-    sudo \
-    # Playwright 執行所需的依賴
-    chromium \
-    firefox \
-    && npm install -g npm@latest
+	git \
+	openssh-client \
+	bash \
+	curl \
+	wget \
+	vim \
+	nano \
+	zsh \
+	postgresql-client \
+	shadow \
+	sudo \
+	# Playwright 執行所需的依賴
+	chromium \
+	firefox \
+	&& npm install -g npm@latest
 
 # 建立 sudo group 如果不存在
 RUN getent group sudo || addgroup -S sudo
 
 # 設定 node 使用者可以使用 sudo
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/node \
-    && chmod 0440 /etc/sudoers.d/node
+	&& chmod 0440 /etc/sudoers.d/node
 
 # 切換到 node 使用者
 USER node
