@@ -42,7 +42,7 @@ cp .env.devcontainer.example .env
 
 ```bash
 # 檢查 Node.js 版本
-node --version  # 應顯示 v22.x.x
+node --version  # 應顯示 v24.x.x
 
 # 檢查套件是否安裝
 npm list --depth=0

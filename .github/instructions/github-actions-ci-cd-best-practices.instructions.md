@@ -273,7 +273,7 @@ jobs:
       fail-fast: false # Run all tests even if one fails
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: [16.x, 18.x, 20.x]
+        node-version: [20.x, 22.x, 24.x]
         browser: [chromium, firefox]
     steps:
       - uses: actions/checkout@v4

@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 RUN npm run build
 
 # Production stage - Main App
-FROM node:22-alpine AS app
+FROM node:24-alpine AS app
 
 WORKDIR /app
 
@@ -53,7 +53,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD ["node", "scripts/production-server.js"]
 
 # Worker stage - Email Worker (輕量化)
-FROM node:22-alpine AS worker
+FROM node:24-alpine AS worker
 
 WORKDIR /app
 

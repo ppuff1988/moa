@@ -54,51 +54,51 @@ make check-env
 
 ### 開發相關
 
-| 指令 | 說明 |
-|------|------|
-| `npm run dev` | 啟動開發伺服器（包含 Socket.IO） |
-| `npm run dev:vite` | 僅啟動 Vite 開發伺服器 |
-| `npm run build` | 建置應用程式 |
-| `npm run preview` | 預覽建置結果 |
-| `npm start` | 啟動生產環境伺服器 |
+| 指令               | 說明                             |
+| ------------------ | -------------------------------- |
+| `npm run dev`      | 啟動開發伺服器（包含 Socket.IO） |
+| `npm run dev:vite` | 僅啟動 Vite 開發伺服器           |
+| `npm run build`    | 建置應用程式                     |
+| `npm run preview`  | 預覽建置結果                     |
+| `npm start`        | 啟動生產環境伺服器               |
 
 ### 測試相關
 
-| 指令 | 說明 |
-|------|------|
-| `npm test` | 執行所有測試（API + E2E） |
-| `npm run test:unit` | 執行單元測試 |
-| `npm run test:api` | 執行 API 測試 |
-| `npm run test:api:watch` | 監聽模式執行 API 測試 |
-| `npm run test:api:coverage` | 產生測試覆蓋率報告 |
-| `npm run test:e2e` | 執行 E2E 測試 |
+| 指令                        | 說明                      |
+| --------------------------- | ------------------------- |
+| `npm test`                  | 執行所有測試（API + E2E） |
+| `npm run test:unit`         | 執行單元測試              |
+| `npm run test:api`          | 執行 API 測試             |
+| `npm run test:api:watch`    | 監聽模式執行 API 測試     |
+| `npm run test:api:coverage` | 產生測試覆蓋率報告        |
+| `npm run test:e2e`          | 執行 E2E 測試             |
 
 ### 程式碼品質
 
-| 指令 | 說明 |
-|------|------|
-| `npm run lint` | 執行程式碼檢查（Prettier + ESLint） |
-| `npm run format` | 格式化程式碼 |
-| `npm run check` | TypeScript 類型檢查 |
-| `npm run check:watch` | 監聽模式類型檢查 |
+| 指令                  | 說明                                |
+| --------------------- | ----------------------------------- |
+| `npm run lint`        | 執行程式碼檢查（Prettier + ESLint） |
+| `npm run format`      | 格式化程式碼                        |
+| `npm run check`       | TypeScript 類型檢查                 |
+| `npm run check:watch` | 監聽模式類型檢查                    |
 
 ### 資料庫相關
 
-| 指令 | 說明 |
-|------|------|
-| `npm run db:start` | 啟動資料庫（Docker Compose） |
-| `npm run db:migrate` | 執行資料庫遷移 |
-| `npm run db:reset` | 重置資料庫 |
-| `npm run db:studio` | 開啟 Drizzle Studio |
+| 指令                 | 說明                         |
+| -------------------- | ---------------------------- |
+| `npm run db:start`   | 啟動資料庫（Docker Compose） |
+| `npm run db:migrate` | 執行資料庫遷移               |
+| `npm run db:reset`   | 重置資料庫                   |
+| `npm run db:studio`  | 開啟 Drizzle Studio          |
 
 ### 郵件隊列
 
-| 指令 | 說明 |
-|------|------|
+| 指令                   | 說明                        |
+| ---------------------- | --------------------------- |
 | `npm run worker:email` | 啟動郵件 Worker（開發模式） |
-| `npm run queue:status` | 查看郵件佇列狀態 |
-| `npm run queue:retry` | 重試失敗的郵件 |
-| `npm run queue:clear` | 清空郵件佇列 |
+| `npm run queue:status` | 查看郵件佇列狀態            |
+| `npm run queue:retry`  | 重試失敗的郵件              |
+| `npm run queue:clear`  | 清空郵件佇列                |
 
 ## 🔧 Makefile 指令
 
@@ -287,7 +287,7 @@ git push --no-verify
    ```bash
    # 使用 Dev Container（推薦）
    # 在 VS Code 中開啟專案，按 F1 → "Dev Containers: Reopen in Container"
-   
+
    # 或手動設定
    make setup-dev
    ```

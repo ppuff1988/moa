@@ -1,6 +1,6 @@
 # 開發容器專用 Dockerfile
-# 基於 Node.js 22 Alpine 映像，包含開發所需的所有工具
-FROM node:22-alpine
+# 基於 Node.js 24 Alpine 映像，包含開發所需的所有工具
+FROM node:24-alpine
 
 # 安裝開發必需的系統套件
 RUN apk add --no-cache \

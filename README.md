@@ -3,7 +3,7 @@
 [![CI](https://github.com/ppuff1988/moa/actions/workflows/ci.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/ci.yml)
 [![CD](https://github.com/ppuff1988/moa/actions/workflows/cd.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-5-orange)](https://kit.svelte.dev/)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue)](https://www.docker.com/)
@@ -100,7 +100,7 @@
 
 **必要條件**：
 
-- Node.js 20+
+- Node.js 24+
 - PostgreSQL 14+
 - npm 或 pnpm
 

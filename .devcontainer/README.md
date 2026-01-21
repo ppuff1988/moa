@@ -39,7 +39,7 @@
 
 - **功能**：主要開發環境
 - **連接埠**：5173 (應用程式)
-- **工具**：Node.js 22、npm、Git、PostgreSQL 用戶端、Zsh
+- **工具**：Node.js 24、npm、Git、PostgreSQL 用戶端、Zsh
 
 ### 2. 資料庫容器 (`db`)
 

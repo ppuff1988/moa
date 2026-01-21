@@ -78,7 +78,7 @@ ENTRYPOINT ["/server"]
 # ============================================
 # Stage 1: Dependencies
 # ============================================
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 WORKDIR /app
 
@@ -91,7 +91,7 @@ RUN corepack enable pnpm && pnpm install --frozen-lockfile
 # ============================================
 # Stage 2: Builder
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -108,7 +108,7 @@ RUN pnpm prune --prod
 # ============================================
 # Stage 3: Production
 # ============================================
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
@@ -145,7 +145,7 @@ CMD ["node", "build"]
 
 ```dockerfile
 # ✅ 正確：將變動頻率低的指令放前面
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -164,7 +164,7 @@ RUN pnpm build
 
 ```dockerfile
 # ❌ 錯誤：COPY . . 太早，導致每次都重新安裝套件
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY . .
@@ -249,11 +249,11 @@ FROM ubuntu:22.04  # 較大，攻擊面廣
 ```dockerfile
 # ✅ 正確：使用具體版本
 FROM golang:1.23.0-alpine3.19
-FROM node:20.11.0-alpine3.19
+FROM node:24.0.0-alpine3.19
 
 # ⚠️ 避免：使用 latest 或模糊版本
 FROM golang:latest
-FROM node:20
+FROM node:24
 ```
 
 ### 3.4 掃描漏洞

@@ -55,7 +55,7 @@
 
 **包含服務**：
 
-- 🚀 `app`：主要開發容器（Node.js 22 + 開發工具）
+- 🚀 `app`：主要開發容器（Node.js 24 + 開發工具）
 - 🗄️ `db`：PostgreSQL 16 資料庫
 - 📧 `email-worker`：郵件佇列處理器（選擇性啟動）
 
@@ -70,7 +70,7 @@
 
 **已安裝工具**：
 
-- Node.js 22、npm、Git
+- Node.js 24、npm、Git
 - Bash、Zsh、oh-my-zsh
 - PostgreSQL client
 - Vim、Nano 編輯器
