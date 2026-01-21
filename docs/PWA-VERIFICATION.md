@@ -3,6 +3,7 @@
 ## ✅ 建置驗證
 
 ### 檔案生成確認
+
 - ✅ `manifest.json` - Web App Manifest (1.3KB)
 - ✅ `manifest.webmanifest` - 自動生成的 manifest (682B)
 - ✅ `pwa-icon-192.png` - 192x192 標準圖示 (99KB)
@@ -11,6 +12,7 @@
 - ✅ `pwa-icon-maskable-512.png` - 512x512 可遮罩圖示 (607KB)
 
 ### 配置檔案
+
 - ✅ `vite.config.ts` - PWA 插件已配置
 - ✅ `src/app.html` - PWA meta 標籤已添加
 - ✅ `src/lib/components/PWAPrompt.svelte` - 更新提示組件已創建
@@ -18,6 +20,7 @@
 - ✅ `src/pwa.d.ts` - TypeScript 類型定義已創建
 
 ### NPM 腳本
+
 - ✅ `npm run pwa:icons` - 圖示生成腳本
 - ✅ `npm run build` - 建置成功，PWA 功能已集成
 - ✅ `npm run check` - 無 TypeScript 錯誤
@@ -25,6 +28,7 @@
 ## 🧪 功能測試清單
 
 ### 開發環境測試
+
 ```bash
 npm run dev
 ```
@@ -45,6 +49,7 @@ npm run dev
    - [ ] 確認基本頁面仍可載入（使用快取）
 
 ### 生產環境測試
+
 ```bash
 npm run build
 npm run preview
@@ -69,18 +74,21 @@ npm run preview
 ### 跨平台測試
 
 #### Chrome/Edge (桌面)
+
 - [ ] 地址欄顯示安裝圖示 ➕
 - [ ] 可以成功安裝
 - [ ] 安裝後出現在應用程式列表
 - [ ] 可以從開始選單/應用程式資料夾啟動
 
 #### Safari (iOS)
+
 - [ ] 分享選單中有「加入主畫面」選項
 - [ ] 可以成功安裝到主畫面
 - [ ] 圖示顯示正確
 - [ ] 全螢幕模式運行
 
 #### Chrome (Android)
+
 - [ ] 自動顯示安裝橫幅（或選單中有安裝選項）
 - [ ] 可以成功安裝
 - [ ] 圖示顯示正確
@@ -99,6 +107,7 @@ npm run preview
 ```
 
 **目標評分**：
+
 - [ ] PWA 分數 ≥ 90
 - [ ] 可安裝性 ✅
 - [ ] 離線支援 ✅
@@ -107,6 +116,7 @@ npm run preview
 ## 📊 預期 PWA 審核項目
 
 ### 必須通過
+
 - ✅ 提供有效的 Web App Manifest
 - ✅ 包含圖示（至少 192x192 和 512x512）
 - ✅ 使用 HTTPS（生產環境）
@@ -116,6 +126,7 @@ npm run preview
 - ✅ 可以安裝到主畫面
 
 ### 最佳實踐
+
 - ✅ 提供可遮罩圖示（maskable icons）
 - ✅ 設定主題顏色
 - ✅ 設定背景顏色
@@ -125,26 +136,30 @@ npm run preview
 ## 🐛 常見問題排查
 
 ### Service Worker 未註冊
+
 ```javascript
 // 在瀏覽器控制台檢查
-navigator.serviceWorker.getRegistrations().then(console.log)
+navigator.serviceWorker.getRegistrations().then(console.log);
 ```
 
 ### 快取問題
+
 ```javascript
 // 列出所有快取
-caches.keys().then(console.log)
+caches.keys().then(console.log);
 
 // 清除特定快取
-caches.delete('cache-name')
+caches.delete('cache-name');
 ```
 
 ### Manifest 未載入
+
 - 檢查 Network 標籤確認 manifest.json 是否成功載入
 - 檢查 manifest.json 語法是否正確
 - 確認 Content-Type 為 application/manifest+json
 
 ### 更新未觸發
+
 - 確認 Service Worker 已更新
 - 檢查控制台是否有錯誤
 - 嘗試手動取消註冊並重新載入
@@ -152,6 +167,7 @@ caches.delete('cache-name')
 ## 📝 手動測試步驟
 
 ### 1. 首次訪問
+
 ```
 1. 清除所有網站資料
 2. 訪問應用程式
@@ -163,6 +179,7 @@ caches.delete('cache-name')
 ```
 
 ### 2. 離線測試
+
 ```
 1. 正常載入應用程式
 2. 在 DevTools Network 標籤啟用 Offline
@@ -172,6 +189,7 @@ caches.delete('cache-name')
 ```
 
 ### 3. 安裝測試
+
 ```
 1. 點擊瀏覽器的安裝提示
 2. 確認安裝成功
@@ -181,6 +199,7 @@ caches.delete('cache-name')
 ```
 
 ### 4. 更新測試
+
 ```
 1. 安裝應用程式
 2. 修改程式碼並重新建置
