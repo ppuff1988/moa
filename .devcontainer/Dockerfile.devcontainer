@@ -1,0 +1,51 @@
+# 開發容器專用 Dockerfile
+# 基於 Node.js 22 Alpine 映像，包含開發所需的所有工具
+FROM node:22-alpine
+
+# 安裝開發必需的系統套件
+RUN apk add --no-cache \
+    git \
+    openssh-client \
+    bash \
+    curl \
+    wget \
+    vim \
+    nano \
+    zsh \
+    postgresql-client \
+    shadow \
+    sudo \
+    # Playwright 執行所需的依賴
+    chromium \
+    firefox \
+    && npm install -g npm@latest
+
+# 建立 sudo group 如果不存在
+RUN getent group sudo || addgroup -S sudo
+
+# 設定 node 使用者可以使用 sudo
+RUN echo "node ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/node \
+    && chmod 0440 /etc/sudoers.d/node
+
+# 切換到 node 使用者
+USER node
+
+# 設定工作目錄
+WORKDIR /workspace
+
+# 設定 Playwright 瀏覽器路徑
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+# 安裝 oh-my-zsh 讓終端機更好用 (選擇性)
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+
+# 設定 zsh 為預設 shell (如果使用者喜歡)
+ENV SHELL=/bin/zsh
+
+# 設定環境變數
+ENV NODE_ENV=development
+ENV PATH="/workspace/node_modules/.bin:${PATH}"
+
+# 預設指令
+CMD ["/bin/zsh"]

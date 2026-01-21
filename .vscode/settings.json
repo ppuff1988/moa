@@ -1,0 +1,163 @@
+{
+	// ==================================================
+	// TypeScript 設定
+	// ==================================================
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"typescript.enablePromptUseWorkspaceTsdk": true,
+	"typescript.preferences.importModuleSpecifier": "relative",
+	"typescript.updateImportsOnFileMove.enabled": "always",
+
+	// ==================================================
+	// 編輯器設定
+	// ==================================================
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit",
+		"source.organizeImports": "explicit"
+	},
+	"editor.tabSize": 2,
+	"editor.insertSpaces": false,
+	"editor.detectIndentation": false,
+	"editor.bracketPairColorization.enabled": true,
+	"editor.guides.bracketPairs": true,
+	"editor.inlineSuggest.enabled": true,
+
+	// ==================================================
+	// 檔案設定
+	// ==================================================
+	"files.eol": "\n",
+	"files.trimTrailingWhitespace": true,
+	"files.insertFinalNewline": true,
+	"files.associations": {
+		"*.sql": "sql",
+		"Dockerfile*": "dockerfile",
+		"docker-compose*.yml": "dockercompose",
+		"docker-compose*.yaml": "dockercompose",
+		"*.env*": "properties"
+	},
+
+	// 排除檔案監控
+	"files.watcherExclude": {
+		"**/.git/objects/**": true,
+		"**/.git/subtree-cache/**": true,
+		"**/node_modules/**": true,
+		"**/tmp/**": true,
+		"**/logs/**": true,
+		"**/coverage/**": true,
+		"**/.svelte-kit/**": true,
+		"**/build/**": true,
+		"**/dist/**": true,
+		"**/playwright-report/**": true,
+		"**/test-results/**": true
+	},
+
+	// 排除搜尋範圍
+	"search.exclude": {
+		"**/node_modules": true,
+		"**/tmp": true,
+		"**/logs": true,
+		"**/coverage": true,
+		"**/.svelte-kit": true,
+		"**/build": true,
+		"**/dist": true,
+		"**/playwright-report": true,
+		"**/test-results": true,
+		"**/package-lock.json": true,
+		"**/pnpm-lock.yaml": true
+	},
+
+	// 隱藏檔案
+	"files.exclude": {
+		"**/.git": true,
+		"**/.svn": true,
+		"**/.hg": true,
+		"**/CVS": true,
+		"**/.DS_Store": true,
+		"**/.svelte-kit": true
+	},
+
+	// ==================================================
+	// Svelte 設定
+	// ==================================================
+	"[svelte]": {
+		"editor.defaultFormatter": "svelte.svelte-vscode"
+	},
+	"svelte.enable-ts-plugin": true,
+
+	// ==================================================
+	// ESLint 設定
+	// ==================================================
+	"eslint.validate": ["javascript", "typescript", "svelte"],
+	"eslint.workingDirectories": [
+		{
+			"mode": "auto"
+		}
+	],
+
+	// ==================================================
+	// Prettier 設定
+	// ==================================================
+	"[typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[javascript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[jsonc]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[markdown]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+		"editor.wordWrap": "on",
+		"files.trimTrailingWhitespace": false
+	},
+	"[yaml]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+
+	// ==================================================
+	// Git 設定
+	// ==================================================
+	"git.enableSmartCommit": true,
+	"git.confirmSync": false,
+	"git.autofetch": true,
+
+	// ==================================================
+	// Terminal 設定
+	// ==================================================
+	"terminal.integrated.defaultProfile.linux": "bash",
+	"terminal.integrated.defaultProfile.osx": "zsh",
+	"terminal.integrated.defaultProfile.windows": "PowerShell",
+
+	// ==================================================
+	// Testing 設定
+	// ==================================================
+	"vitest.enable": true,
+	"vitest.commandLine": "npm run test:unit",
+
+	// ==================================================
+	// SQLTools 設定
+	// ==================================================
+	"sqltools.connections": [
+		{
+			"name": "MOA PostgreSQL",
+			"driver": "PostgreSQL",
+			"server": "localhost",
+			"port": 5432,
+			"database": "moa_db",
+			"username": "moa_user",
+			"password": "moa_pass"
+		}
+	],
+
+	// ==================================================
+	// 效能優化
+	// ==================================================
+	"typescript.tsserver.maxTsServerMemory": 4096,
+	"javascript.updateImportsOnFileMove.enabled": "always",
+	"explorer.confirmDelete": false,
+	"explorer.confirmDragAndDrop": false
+}

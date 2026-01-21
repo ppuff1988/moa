@@ -66,6 +66,68 @@
 
 📖 **[遊戲規則說明](docs/RULE.md)**
 
+### 💻 開發環境設定
+
+#### 方法一：使用 Dev Container（推薦）
+
+使用 VS Code Dev Container 可獲得開箱即用的完整開發環境，無需手動配置任何工具！
+
+**優點**：
+
+- ✅ 自動安裝所有相依套件
+- ✅ 自動配置資料庫（PostgreSQL 16）
+- ✅ 預先安裝所有 VS Code 擴充套件
+- ✅ 一致的開發環境（跨 Windows/Mac/Linux）
+- ✅ 隔離的開發環境，不污染主機系統
+
+**快速開始**：
+
+1. 安裝 [Docker Desktop](https://www.docker.com/products/docker-desktop)
+2. 安裝 [VS Code Dev Containers 擴充套件](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+3. 在 VS Code 中開啟專案
+4. 按 `F1`，選擇 `Dev Containers: Reopen in Container`
+5. 等待容器建構完成（首次約 5-10 分鐘）
+
+📖 **詳細指南**：
+
+- [Dev Container 快速啟動](.devcontainer/QUICKSTART.md)
+- [完整使用文件](.devcontainer/README.md)
+- [設定檔案說明](.devcontainer/CONFIGURATION.md)
+
+#### 方法二：本地開發環境
+
+如果你偏好傳統的本地開發環境設定：
+
+**必要條件**：
+
+- Node.js 20+
+- PostgreSQL 14+
+- npm 或 pnpm
+
+**設定步驟**：
+
+```bash
+# 1. Clone 專案
+git clone https://github.com/ppuff1988/moa.git
+cd moa
+
+# 2. 安裝相依套件
+npm install
+
+# 3. 設定環境變數
+cp .env.example .env
+# 編輯 .env 填入必要設定
+
+# 4. 啟動資料庫（使用 Docker）
+npm run db:start
+
+# 5. 執行資料庫遷移
+npm run db:migrate
+
+# 6. 啟動開發伺服器
+npm run dev
+```
+
 ## 🐳 簡易部署
 
 ### 使用 Docker Compose（推薦）

@@ -1,0 +1,106 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.devcontainer
+    container_name: moa_devcontainer_app
+    volumes:
+      # Mount 專案資料夾
+      - ..:/workspace:cached
+      # 使用 named volume 提升 node_modules 效能
+      - moa-node-modules:/workspace/node_modules
+      # Mount .env 檔案
+      - ../.env:/workspace/.env:ro
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://moa_user:moa_pass@db:5432/moa_db
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_key}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      PORT: 5173
+      SOCKET_PORT: 5173
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      PUBLIC_GTM_ID: ${PUBLIC_GTM_ID:-}
+    # 讓容器保持執行
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moa_network
+    # 使用 init 系統來適當處理訊號
+    init: true
+
+  db:
+    image: postgres:16-alpine
+    container_name: moa_devcontainer_postgres
+    restart: unless-stopped
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moa_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moa_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-moa_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - moa_devcontainer_pgdata:/var/lib/postgresql/data
+      - ../migrations:/migrations:ro
+      - ../migrations/init_database.sql:/docker-entrypoint-initdb.d/01-init_database.sql:ro
+      - ../migrations/init_test_users.sql:/docker-entrypoint-initdb.d/02-init_test_users.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-moa_user} -d ${POSTGRES_DB:-moa_db}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - moa_network
+
+  # 選擇性的 email worker 服務 (可以從 devcontainer 內手動啟動)
+  email-worker:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.devcontainer
+    container_name: moa_devcontainer_email_worker
+    profiles:
+      - worker # 只在明確啟動時執行
+    volumes:
+      - ..:/workspace:cached
+      - moa-node-modules:/workspace/node_modules
+      - ../.env:/workspace/.env:ro
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://moa_user:moa_pass@db:5432/moa_db
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+    command: npm run worker:email
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moa_network
+    restart: unless-stopped
+
+volumes:
+  moa-node-modules:
+    name: moa_devcontainer_node_modules
+  moa_devcontainer_pgdata:
+    name: moa_devcontainer_pgdata
+
+networks:
+  moa_network:
+    name: moa_devcontainer_network
+    driver: bridge
