@@ -7,7 +7,7 @@
 	// 容器建立後要執行的指令
 	"postCreateCommand": "sudo chown -R node:node /workspace/node_modules && npm install && npm run db:migrate && bash install-hooks.sh",
 
-	// 容器啟動後要執行的指令  
+	// 容器啟動後要執行的指令
 	"postStartCommand": "git config --global --add safe.directory /workspace && git config --global core.autocrlf input",
 
 	// 初始化指令
@@ -20,34 +20,34 @@
 			"extensions": [
 				// Svelte
 				"svelte.svelte-vscode",
-				
+
 				// TypeScript & JavaScript
 				"dbaeumer.vscode-eslint",
 				"esbenp.prettier-vscode",
-				
+
 				// Database
 				"mtxr.sqltools",
 				"mtxr.sqltools-driver-pg",
-				
+
 				// Testing
 				"vitest.explorer",
 				"ms-playwright.playwright",
-				
+
 				// Docker
 				"ms-azuretools.vscode-docker",
-				
+
 				// Git
 				"eamodio.gitlens",
-				
+
 				// Utility
 				"christian-kohler.path-intellisense",
 				"usernamehw.errorlens",
 				"wayou.vscode-todo-highlight",
 				"gruntfuggly.todo-tree",
 
-        		"github.copilot-chat"
+				"github.copilot-chat"
 			],
-			
+
 			// 編輯器設定
 			"settings": {
 				"editor.formatOnSave": true,
@@ -57,26 +57,22 @@
 				"editor.tabSize": 2,
 				"editor.insertSpaces": false,
 				"editor.detectIndentation": false,
-				
+
 				// Svelte 設定
 				"[svelte]": {
 					"editor.defaultFormatter": "svelte.svelte-vscode"
 				},
-				
+
 				// TypeScript 設定
 				"typescript.tsdk": "node_modules/typescript/lib",
 				"typescript.enablePromptUseWorkspaceTsdk": true,
-				
+
 				// ESLint 設定
-				"eslint.validate": [
-					"javascript",
-					"typescript",
-					"svelte"
-				],
-				
+				"eslint.validate": ["javascript", "typescript", "svelte"],
+
 				// Prettier 設定
 				"prettier.configPath": ".prettierrc",
-				
+
 				// 檔案排除設定
 				"files.exclude": {
 					"**/.git": true,
@@ -88,7 +84,7 @@
 					"**/build": true,
 					"**/.svelte-kit": true
 				},
-				
+
 				// 搜尋排除設定
 				"search.exclude": {
 					"**/node_modules": true,
@@ -96,14 +92,14 @@
 					"**/.svelte-kit": true,
 					"**/package-lock.json": true
 				},
-				
+
 				// Terminal 設定
 				"terminal.integrated.defaultProfile.linux": "bash",
-				
+
 				// Git 設定
 				"git.enableSmartCommit": true,
 				"git.confirmSync": false,
-				
+
 				// SQLTools 設定
 				"sqltools.connections": [
 					{
@@ -122,10 +118,10 @@
 
 	// 轉發的連接埠
 	"forwardPorts": [
-		5173,  // 應用程式
-		5432   // PostgreSQL
+		5173, // 應用程式
+		5432 // PostgreSQL
 	],
-	
+
 	// 連接埠標籤
 	"portsAttributes": {
 		"5173": {

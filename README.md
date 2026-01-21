@@ -252,7 +252,9 @@ Push to main
 ## 📚 完整文件
 
 - 📖 [遊戲規則說明](docs/RULE.md) - 遊戲玩法與規則
-- 🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
+- �️ [開發工具與腳本指南](docs/DEVELOPMENT-TOOLS.md) - NPM Scripts、Makefile、Shell 腳本使用說明
+- 🔄 [工作流程說明](docs/WORKFLOWS.md) - Git 工作流程與開發規範
+- �🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
 - 🚀 [生產環境部署](docs/PRODUCTION-DEPLOYMENT.md) - 部署到生產環境
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
 - 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）
