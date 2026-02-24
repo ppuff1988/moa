@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { getJWTToken } from '$lib/utils/jwt';
 	import PasswordInput from '$lib/components/ui/PasswordInput.svelte';
+	import { onMount } from 'svelte';
 
 	export let mode: 'login' | 'register' = 'login';
 	export let apiEndpoint: string;
@@ -22,33 +21,21 @@
 	$: footerText = mode === 'login' ? '還沒有帳號？點此註冊' : '已有帳號？點此登入';
 	$: footerLink = mode === 'login' ? '/auth/register' : '/auth/login';
 
-	// 檢查用戶是否已經登入，如果已登入則重定向到首頁
+	// 檢查用戶是否已經登入（統一透過 session cookie，不依賴 localStorage JWT）
 	onMount(async () => {
-		const token = getJWTToken();
+		try {
+			// 使用 credentials: 'include' 確保送出 Lucia session cookie
+			const response = await fetch('/api/user/profile', {
+				credentials: 'include'
+			});
 
-		if (token) {
-			// 驗證 token 是否有效
-			try {
-				const response = await fetch('/api/user/profile', {
-					headers: {
-						Authorization: `Bearer ${token}`
-					}
-				});
-
-				if (response.ok) {
-					// Token 有效，用戶已登入，重定向到首頁
-					window.location.href = '/';
-				} else {
-					// Token 無效，清除它
-					localStorage.removeItem('jwt_token');
-					document.cookie = 'jwt=; path=/; max-age=0';
-				}
-			} catch (error) {
-				// 驗證失敗，清除 token
-				console.error('Token 驗證失敗:', error);
-				localStorage.removeItem('jwt_token');
-				document.cookie = 'jwt=; path=/; max-age=0';
+			if (response.ok) {
+				// Session 有效，用戶已登入，重定向到首頁
+				window.location.href = successRedirectUrl;
 			}
+			// 若 401/403 則代表未登入，正常顯示登入表單
+		} catch {
+			// 網路錯誤，忽略並顯示登入表單
 		}
 	});
 
@@ -86,6 +73,7 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
+				credentials: 'include', // 確保 session cookie (auth_session) 被正確設定
 				body: JSON.stringify(body)
 			});
 
@@ -104,19 +92,19 @@
 					return;
 				}
 
-				// 儲存 JWT token 到 localStorage
+				// 將 JWT 儲存到 cookie（供客戶端元件 API 呼叫使用）
 				if (result.token) {
-					localStorage.setItem('jwt_token', result.token);
 					document.cookie = `jwt=${result.token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
 				}
 
+				// 跳轉首頁，Lucia session cookie 供 SSR 識別登入狀態
 				window.location.href = successRedirectUrl;
 			} else {
-				console.error('API 錯誤回應:', result); // 調試用
+				console.error('API 錯誤回應:', result);
 				error = result.message || `${mode === 'login' ? '登入' : '註冊'}失敗，請檢查輸入資料`;
 			}
 		} catch (err) {
-			console.error('請求錯誤:', err); // 調試用
+			console.error('請求錯誤:', err);
 			error = '網路錯誤，請稍後再試';
 		} finally {
 			isLoading = false;

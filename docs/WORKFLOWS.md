@@ -89,12 +89,13 @@ release/* (發布分支，可選)
 
 ## 🪝 Git Hooks
 
-本專案使用 Husky 管理 Git hooks，在提交與推送時自動執行品質檢查。
+本專案使用原生 Git hooks 管理，在提交與推送時自動執行品質檢查。
 
-- Pre-commit: Prettier 格式化、ESLint 檢查（僅針對 staged 檔）
-- Pre-push: TypeScript 類型檢查、完整 Lint、單元測試、API 測試
-- 繞過 Hooks（僅緊急）: `--no-verify`
-- 若 hooks 未生效: `npm run prepare`
+- **安裝 Hooks**: 執行 `npm install` 或手動執行 `bash install-hooks.sh`（Windows 使用 `install-hooks.ps1`）
+- **Pre-commit**: Prettier 格式化、ESLint 檢查（僅針對 staged 檔）
+- **Pre-push**: TypeScript 類型檢查、完整 Lint、單元測試、API 測試
+- **繞過 Hooks**（僅緊急）: 使用 `--no-verify` 參數
+- **Hooks 位置**: `.githooks/` 目錄（會在安裝時複製到 `.git/hooks/`）
 
 ## 🤖 自動化流程
 

@@ -1,0 +1,227 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "🚀 啟動開發伺服器",
+			"type": "shell",
+			"command": "npm run dev",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"isBackground": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "🧪 執行 API 測試",
+			"type": "shell",
+			"command": "npm run test:api",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "🧪 執行單元測試",
+			"type": "shell",
+			"command": "npm run test:unit",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "test"
+		},
+		{
+			"label": "🧪 執行 E2E 測試",
+			"type": "shell",
+			"command": "npm run test:e2e",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "test"
+		},
+		{
+			"label": "🧪 執行所有測試",
+			"type": "shell",
+			"command": "npm test",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "test"
+		},
+		{
+			"label": "📊 測試覆蓋率報告",
+			"type": "shell",
+			"command": "npm run test:api:coverage",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "test"
+		},
+		{
+			"label": "🔍 程式碼檢查 (Lint)",
+			"type": "shell",
+			"command": "npm run lint",
+			"problemMatcher": ["$eslint-stylish"],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "✨ 格式化程式碼",
+			"type": "shell",
+			"command": "npm run format",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "silent",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🔨 建構應用程式",
+			"type": "shell",
+			"command": "npm run build",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "build"
+		},
+		{
+			"label": "📦 安裝相依套件",
+			"type": "shell",
+			"command": "npm install",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🗄️ 資料庫遷移",
+			"type": "shell",
+			"command": "npm run db:migrate",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🗄️ 重設資料庫",
+			"type": "shell",
+			"command": "npm run db:reset",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🗄️ 開啟 Drizzle Studio",
+			"type": "shell",
+			"command": "npm run db:studio",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"isBackground": true,
+			"group": "none"
+		},
+		{
+			"label": "📧 啟動 Email Worker",
+			"type": "shell",
+			"command": "npm run worker:email",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"isBackground": true,
+			"group": "none"
+		},
+		{
+			"label": "📬 檢視郵件佇列狀態",
+			"type": "shell",
+			"command": "npm run queue:status",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🔄 重試失敗的郵件",
+			"type": "shell",
+			"command": "npm run queue:retry",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "🧹 清空郵件佇列",
+			"type": "shell",
+			"command": "npm run queue:clear",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		},
+		{
+			"label": "✅ 環境檢查",
+			"type": "shell",
+			"command": "bash .devcontainer/check-environment.sh",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"focus": true
+			},
+			"group": "none"
+		},
+		{
+			"label": "🐳 重新啟動資料庫",
+			"type": "shell",
+			"command": "docker compose -f .devcontainer/docker-compose.devcontainer.yml restart db",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"group": "none"
+		}
+	]
+}

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { getJWTToken } from '$lib/utils/jwt';
 	import type { Player } from '$lib/types/game';
+	import { onMount } from 'svelte';
 
 	export let player: Player;
 	export let isCurrentUser: boolean = false;
@@ -120,21 +119,14 @@
 	}
 
 	async function handleConfirmSelection() {
-		const token = getJWTToken();
-		if (!token) {
-			errorMessage = '請先登入';
-			setTimeout(() => (errorMessage = ''), 3000);
-			return;
-		}
-
 		if (isLocked) {
 			// 解鎖角色和顏色
 			try {
 				const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/unlock-role`, {
 					method: 'POST',
+					credentials: 'include',
 					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${token}`
+						'Content-Type': 'application/json'
 					}
 				});
 
@@ -171,9 +163,9 @@
 			try {
 				const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/lock-role`, {
 					method: 'POST',
+					credentials: 'include',
 					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${token}`
+						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({
 						roleId: selectedRoleId,

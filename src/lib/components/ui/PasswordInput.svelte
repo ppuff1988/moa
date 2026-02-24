@@ -1,5 +1,6 @@
 <script lang="ts">
 	export let id: string;
+	export let name: string = id; // form action 所需，預設與 id 相同
 	export let value: string;
 	export let placeholder: string = '請輸入密碼';
 	export let disabled: boolean = false;
@@ -18,6 +19,7 @@
 		<div class="password-input-wrapper">
 			<input
 				{id}
+				{name}
 				type={showPassword ? 'text' : 'password'}
 				bind:value
 				{required}
@@ -73,6 +75,7 @@
 	<div class="password-input-wrapper">
 		<input
 			{id}
+			{name}
 			type={showPassword ? 'text' : 'password'}
 			bind:value
 			{required}

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { getJWTToken } from '$lib/utils/jwt';
-
 	export let roomName: string;
 	export let isOpen: boolean = false;
 
@@ -41,19 +39,12 @@
 	let error: string | null = null;
 
 	async function fetchActionHistory() {
-		const token = getJWTToken();
-		if (!token) {
-			error = '請先登入';
-			isLoading = false;
-			return;
-		}
-
 		isLoading = true;
 		error = null;
 
 		try {
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/action-history`, {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (response.ok) {

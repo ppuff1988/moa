@@ -3,7 +3,7 @@
 [![CI](https://github.com/ppuff1988/moa/actions/workflows/ci.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/ci.yml)
 [![CD](https://github.com/ppuff1988/moa/actions/workflows/cd.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-5-orange)](https://kit.svelte.dev/)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue)](https://www.docker.com/)
@@ -57,6 +57,7 @@
 - 💬 遊戲內聊天
 - 🐳 支援 Docker 部署
 - 🔑 一鍵 Google 登入
+- 📱 **PWA 支援** - 可安裝到桌面，支援離線使用
 
 ## 🚀 快速開始
 
@@ -65,6 +66,68 @@
 想了解遊戲規則與玩法？請參考：
 
 📖 **[遊戲規則說明](docs/RULE.md)**
+
+### 💻 開發環境設定
+
+#### 方法一：使用 Dev Container（推薦）
+
+使用 VS Code Dev Container 可獲得開箱即用的完整開發環境，無需手動配置任何工具！
+
+**優點**：
+
+- ✅ 自動安裝所有相依套件
+- ✅ 自動配置資料庫（PostgreSQL 16）
+- ✅ 預先安裝所有 VS Code 擴充套件
+- ✅ 一致的開發環境（跨 Windows/Mac/Linux）
+- ✅ 隔離的開發環境，不污染主機系統
+
+**快速開始**：
+
+1. 安裝 [Docker Desktop](https://www.docker.com/products/docker-desktop)
+2. 安裝 [VS Code Dev Containers 擴充套件](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+3. 在 VS Code 中開啟專案
+4. 按 `F1`，選擇 `Dev Containers: Reopen in Container`
+5. 等待容器建構完成（首次約 5-10 分鐘）
+
+📖 **詳細指南**：
+
+- [Dev Container 快速啟動](.devcontainer/QUICKSTART.md)
+- [完整使用文件](.devcontainer/README.md)
+- [設定檔案說明](.devcontainer/CONFIGURATION.md)
+
+#### 方法二：本地開發環境
+
+如果你偏好傳統的本地開發環境設定：
+
+**必要條件**：
+
+- Node.js 24+
+- PostgreSQL 14+
+- npm 或 pnpm
+
+**設定步驟**：
+
+```bash
+# 1. Clone 專案
+git clone https://github.com/ppuff1988/moa.git
+cd moa
+
+# 2. 安裝相依套件
+npm install
+
+# 3. 設定環境變數
+cp .env.example .env
+# 編輯 .env 填入必要設定
+
+# 4. 啟動資料庫（使用 Docker）
+npm run db:start
+
+# 5. 執行資料庫遷移
+npm run db:migrate
+
+# 6. 啟動開發伺服器
+npm run dev
+```
 
 ## 🐳 簡易部署
 
@@ -190,12 +253,14 @@ Push to main
 ## 📚 完整文件
 
 - 📖 [遊戲規則說明](docs/RULE.md) - 遊戲玩法與規則
-- 🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
+- �️ [開發工具與腳本指南](docs/DEVELOPMENT-TOOLS.md) - NPM Scripts、Makefile、Shell 腳本使用說明
+- 🔄 [工作流程說明](docs/WORKFLOWS.md) - Git 工作流程與開發規範
+- �🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
 - 🚀 [生產環境部署](docs/PRODUCTION-DEPLOYMENT.md) - 部署到生產環境
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
 - 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）
 - 📱 [Telegram Bot 設定](docs/TELEGRAM-BOT-SETUP.md) - 設定部署通知機器人
-- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範
+- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範- 📲 **[PWA 功能說明](docs/PWA.md)** - Progressive Web App 安裝與使用指南
 
 ### 📧 關於郵件隊列系統
 

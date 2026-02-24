@@ -1,11 +1,10 @@
-import { redirect, json } from '@sveltejs/kit';
-import { google, lucia } from '$lib/server/lucia';
 import { db } from '$lib/server/db';
-import { user, oauthAccount } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
-import type { RequestHandler } from './$types';
+import { oauthAccount, user } from '$lib/server/db/schema';
+import { google, lucia } from '$lib/server/lucia';
+import { json, redirect } from '@sveltejs/kit';
 import { OAuth2RequestError } from 'arctic';
-import { generateAndSetJWTCookie } from '$lib/server/auth';
+import { and, eq } from 'drizzle-orm';
+import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const code = url.searchParams.get('code');
@@ -215,21 +214,10 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 			});
 		}
 
-		// 創建 cookie adapter 來符合 generateAndSetJWTCookie 的型別要求
-		const cookieAdapter = {
-			set: (name: string, value: string, options: Record<string, unknown>) => {
-				// 將 options 轉換為 SvelteKit cookies.set 需要的格式，確保包含 path
-				const cookieOptions = {
-					...options,
-					path: (options.path as string) || '/'
-				};
-				cookies.set(name, value, cookieOptions);
-			}
-		};
-
 		// 如果請求返回 JWT，直接生成並返回 JSON（用於 API 客戶端）
 		if (returnJwt && loggedInUser) {
-			const token = generateAndSetJWTCookie(loggedInUser, cookieAdapter);
+			const { generateUserJWT } = await import('$lib/server/auth');
+			const token = generateUserJWT(loggedInUser);
 
 			return json({
 				success: true,
@@ -245,13 +233,9 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 			});
 		}
 
-		// 生成 JWT token 用於前端
+		// 瀏覽器正常登入流程：Lucia session 已建立，直接重定向到首頁
 		if (loggedInUser) {
-			const token = generateAndSetJWTCookie(loggedInUser, cookieAdapter);
-
-			// 重定向到 OAuth success 頁面，並通過 URL 參數傳遞 token
-			// 這樣可以確保前端能收到 token
-			throw redirect(302, `/auth/oauth-success?token=${encodeURIComponent(token)}`);
+			throw redirect(302, '/');
 		}
 
 		// 如果沒有用戶信息，重定向到錯誤頁面

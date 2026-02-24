@@ -53,9 +53,9 @@
 			const response = await fetch(apiEndpoint, {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${localStorage.getItem('jwt_token')}`
+					'Content-Type': 'application/json'
 				},
+				credentials: 'include',
 				body: JSON.stringify(body)
 			});
 

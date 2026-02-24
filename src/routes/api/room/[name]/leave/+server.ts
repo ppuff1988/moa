@@ -1,11 +1,11 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { games, gamePlayers, user } from '$lib/server/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
-import { getSocketIO } from '$lib/server/socket';
+import { gamePlayers, games, user } from '$lib/server/db/schema';
 import { getGameState } from '$lib/server/game';
+import { getSocketIO } from '$lib/server/socket';
+import { json } from '@sveltejs/kit';
+import { and, eq, sql } from 'drizzle-orm';
+import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const verifyResult = await verifyPlayerInRoom(request, params.name!);
@@ -51,7 +51,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 					players: gameState.players
 				});
 
-				// 發送 player-left 事件（但前端在 selecting 狀態下不會顯示通知）
 				io.to(game.roomName).emit('player-left', {
 					userId: currentUser.id,
 					nickname: currentUser.nickname
@@ -147,7 +146,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 						players: gameState.players
 					});
 
-					// 通知玩家離開
+					// 通知玩家離開和房主轉移
 					io.to(game.roomName).emit('player-left', {
 						userId: currentUser.id,
 						nickname: currentUser.nickname,
@@ -237,7 +236,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				});
 			}
 
-			// 通知其他玩家有人離開
+			// 在 playing 狀態下通知玩家離開（包含剩餘人數）
 			if (io) {
 				io.to(game.roomName).emit('player-left', {
 					userId: currentUser.id,

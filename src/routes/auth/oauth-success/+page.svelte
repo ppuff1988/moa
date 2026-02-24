@@ -6,57 +6,20 @@
 
 	onMount(async () => {
 		try {
-			console.log('🔄 OAuth Success 頁面載入');
+			// 驗證 Lucia session cookie 是否有效（由 Google OAuth callback 設定）
+			const response = await fetch('/api/user/profile', {
+				credentials: 'include'
+			});
 
-			// 從 URL 參數中取得 token
-			const urlParams = new URLSearchParams(window.location.search);
-			const token = urlParams.get('token');
-
-			console.log('   Token 來源: URL 參數');
-			console.log('   Token 存在:', token ? '✓' : '❌');
-
-			if (token) {
-				// 直接使用 URL 參數中的 token
-				localStorage.setItem('jwt_token', token);
-
-				// 同步到 cookie（供前端使用，非 httpOnly）
-				document.cookie = `jwt=${token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
-
+			if (response.ok) {
 				status = 'success';
-				console.log('✅ Token 已儲存到 localStorage 和 cookie');
-
 				// 1 秒後重定向到首頁
 				setTimeout(() => {
 					window.location.href = '/';
 				}, 1000);
 			} else {
-				// 如果 URL 沒有 token，嘗試使用舊方法（調用 API）
-				console.log('   嘗試調用 exchange-jwt API...');
-				const response = await fetch('/api/auth/exchange-jwt', {
-					method: 'POST',
-					credentials: 'include'
-				});
-
-				if (response.ok) {
-					const result = await response.json();
-
-					if (result.success && result.data?.token) {
-						localStorage.setItem('jwt_token', result.data.token);
-						document.cookie = `jwt=${result.data.token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
-
-						status = 'success';
-
-						setTimeout(() => {
-							window.location.href = '/';
-						}, 1000);
-					} else {
-						status = 'error';
-						errorMessage = result.message || '無法取得認證 token';
-					}
-				} else {
-					status = 'error';
-					errorMessage = '認證失敗，請重新登入';
-				}
+				status = 'error';
+				errorMessage = '登入驗證失敗，請重新嘗試';
 			}
 		} catch (error) {
 			console.error('OAuth success error:', error);

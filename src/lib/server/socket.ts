@@ -1,11 +1,11 @@
+import { and, eq } from 'drizzle-orm';
 import type { Server as HTTPServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
 import type { Socket } from 'socket.io';
+import { Server as SocketIOServer } from 'socket.io';
 import { verifyJWT } from './auth';
-import { getGameState, updatePlayerOnlineStatus } from './game';
 import { db } from './db';
 import { gamePlayers, games } from './db/schema';
-import { eq, and } from 'drizzle-orm';
+import { getGameState, updatePlayerOnlineStatus } from './game';
 
 let io: SocketIOServer | null = null;
 
@@ -40,22 +40,52 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 
 	console.log('[initSocketIO] Socket.IO 實例已初始化並掛載到 global');
 
-	// 身份驗證中間件
+	// 身份驗證中間件：支援 JWT auth token 及 cookie 鏈式驗證
 	io.use(async (socket, next) => {
 		try {
+			// 1. 優先使用 handshake auth 中的 JWT token
 			const token = socket.handshake.auth.token;
-			if (!token) {
-				return next(new Error('驗證失敗，請重新登入'));
+			if (token) {
+				const payload = verifyJWT(token);
+				if (payload) {
+					socket.data.userId = payload.userId;
+					return next();
+				}
 			}
 
-			const payload = await verifyJWT(token);
-			if (!payload) {
-				return next(new Error('無效的驗證令牌'));
+			// 2. Fallback：從 handshake cookie 中讀取 jwt cookie
+			const cookieHeader = socket.handshake.headers.cookie || '';
+			const jwtCookie = cookieHeader
+				.split(';')
+				.map((c) => c.trim())
+				.find((c) => c.startsWith('jwt='));
+			if (jwtCookie) {
+				const jwtToken = jwtCookie.substring(4);
+				const payload = verifyJWT(jwtToken);
+				if (payload) {
+					socket.data.userId = payload.userId;
+					return next();
+				}
 			}
 
-			socket.data.userId = payload.userId;
-			next();
-		} catch {
+			// 3. Fallback：從 handshake cookie 中讀取 auth_session (Lucia)
+			const { lucia: luciaInstance } = await import('./lucia');
+			const sessionCookie = cookieHeader
+				.split(';')
+				.map((c) => c.trim())
+				.find((c) => c.startsWith(`${luciaInstance.sessionCookieName}=`));
+			if (sessionCookie) {
+				const sessionId = sessionCookie.substring(luciaInstance.sessionCookieName.length + 1);
+				const { session, user: luciaUser } = await luciaInstance.validateSession(sessionId);
+				if (session && luciaUser) {
+					socket.data.userId = Number(luciaUser.id);
+					return next();
+				}
+			}
+
+			return next(new Error('驗證失敗，請重新登入'));
+		} catch (error) {
+			console.error('Socket 身份驗證錯誤:', error);
 			next(new Error('驗證失敗，請重新登入'));
 		}
 	});
@@ -262,12 +292,11 @@ export function closeSocketIO(): void {
 	}
 }
 
-// 處理離開房間
+// 處理離開房間（僅處理在線狀態更新，不發送通知避免與 API 重複）
 async function handleLeaveRoom(socket: Socket) {
 	try {
 		const userId = socket.data.userId;
 		const roomName = socket.data.roomName;
-		const nickname = socket.data.nickname || `玩家${userId}`;
 
 		if (!roomName) return;
 
@@ -283,26 +312,12 @@ async function handleLeaveRoom(socket: Socket) {
 			if (roomUsers.get(roomName)?.size === 0) {
 				roomUsers.delete(roomName);
 			}
-
-			// 獲取更新的遊戲狀態
-			const gameState = await getGameState(game.id);
-
-			// 通知房間內其他玩家
-			socket.to(roomName).emit('room-update', {
-				game: gameState.game,
-				players: gameState.players
-			});
-
-			socket.to(roomName).emit('player-left', {
-				userId,
-				nickname
-			});
 		}
 
 		socket.leave(roomName);
 		socket.data.roomName = null;
-	} catch {
-		// 靜默處理錯誤
+	} catch (error) {
+		console.error('[handleLeaveRoom] 處理離開房間時發生錯誤:', error);
 	}
 }
 
@@ -317,9 +332,6 @@ export async function emitToRoom(roomName: string, event: string, data: unknown)
 	try {
 		// 獲取房間內的所有 socket 連接
 		const sockets = await socketIO.in(roomName).fetchSockets();
-		console.log(
-			`[emitToRoom] 發送事件 ${event} 到房間 ${roomName}，房間內有 ${sockets.length} 個連接`
-		);
 
 		if (sockets.length === 0) {
 			console.warn(`[emitToRoom] ⚠️  房間 ${roomName} 內沒有任何連接！`);
