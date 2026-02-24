@@ -23,7 +23,7 @@ jobs:
       startsWith(github.event.workflow_run.head_branch, 'hotfix/')
 
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v8
         with:
           script: |
             const associatedPRs = context.payload.workflow_run.pull_requests;
@@ -107,7 +107,7 @@ jobs:
     # 只在 auto-merge-hotfix 實際執行時才通知（不包括被跳過的情況）
     # Hotfix 是緊急修復，成功和失敗都要通知
     if: |
-      always() && 
+      always() &&
       needs.auto-merge-hotfix.result != 'skipped' &&
       github.event.workflow_run.event == 'pull_request' &&
       startsWith(github.event.workflow_run.head_branch, 'hotfix/')
