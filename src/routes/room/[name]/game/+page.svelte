@@ -167,6 +167,19 @@
 	async function fetchArtifacts() {
 		const artifacts = await gameService.fetchArtifacts();
 		if (artifacts.length > 0) {
+			// 對已鑑定的獸首，保留目前 store 中的 isGenuine 值，
+			// 避免伺服器回傳的原始值覆蓋交換後的鑑定結果
+			const currentHeads = $beastHeads;
+			if (currentHeads.length > 0) {
+				for (const artifact of artifacts) {
+					if ($identifiedArtifacts.includes(artifact.id)) {
+						const existing = currentHeads.find((b) => b.id === artifact.id);
+						if (existing) {
+							artifact.isGenuine = existing.isGenuine;
+						}
+					}
+				}
+			}
 			beastHeads.set(artifacts);
 		}
 	}
@@ -483,6 +496,19 @@
 					return [...heads];
 				});
 
+				// 記錄鑑定行動到 performedActions，確保頁面恢復時能保留正確的鑑定結果
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_artifact',
+						data: {
+							artifactName: `${beast.animal}首`,
+							artifactId: beastId,
+							result: data.result.isGenuine
+						}
+					}
+				]);
+
 				addNotification(
 					`你鑑定了${beast.animal}首，結果：${data.result.isGenuine ? '真品' : '贗品'}`,
 					data.result.isGenuine ? 'success' : 'info',
@@ -508,6 +534,20 @@
 			} else {
 				failedIdentifications.update((list) => [...list, beastId]);
 				usedSkills.update((s) => ({ ...s, checkArtifact: s.checkArtifact + 1 }));
+
+				// 記錄被封鎖的鑑定行動
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_artifact',
+						data: {
+							artifactName: `${beast.animal}首`,
+							artifactId: beastId,
+							blocked: true
+						}
+					}
+				]);
+
 				addNotification(`${beast.animal}首無法鑑定`, 'warning', 3000);
 
 				if ($skillActions && $usedSkills.checkArtifact >= $skillActions.checkArtifact) {
@@ -923,6 +963,10 @@
 						// 重新獲取其他數據
 						await fetchArtifacts();
 						await updatePlayersAndRound();
+
+						// 重新套用鑑定狀態，避免 fetchArtifacts 覆蓋交換後的鑑定結果
+						restoreIdentifiedState();
+
 						addNotification('連線已恢復', 'success', 2000);
 					});
 
@@ -1113,10 +1157,13 @@
 			await fetchArtifacts();
 			await updatePlayersAndRound();
 			await fetchMyRole();
+
+			// 重新套用鑑定狀態，避免 fetchArtifacts 覆蓋交換後的鑑定結果
+			restoreIdentifiedState();
 		}
 	}
 
-	// 在 onMount 中註冊可見性變化監聽器
+	// 在 onMount 中註冊可見性變化監聯器
 	$effect(() => {
 		if (typeof document !== 'undefined' && !isLoading) {
 			document.addEventListener('visibilitychange', handleVisibilityChange);
