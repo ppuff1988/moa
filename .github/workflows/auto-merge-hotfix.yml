@@ -23,82 +23,82 @@ jobs:
       startsWith(github.event.workflow_run.head_branch, 'hotfix/')
 
     steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            const associatedPRs = context.payload.workflow_run.pull_requests;
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const associatedPRs = context.payload.workflow_run.pull_requests;
 
-            if (!associatedPRs || associatedPRs.length === 0) {
-              console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
-              return;
+          if (!associatedPRs || associatedPRs.length === 0) {
+            console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
+            return;
+          }
+
+          for (const associatedPR of associatedPRs) {
+            // 獲取完整的 PR 資訊
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: associatedPR.number
+            });
+
+            // 只處理 hotfix 分支且目標是 main 的 PR
+            if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) {
+              console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (hotfix/* → main, 非 draft)`);
+              continue;
             }
 
-            for (const associatedPR of associatedPRs) {
-              // 獲取完整的 PR 資訊
-              const { data: pr } = await github.rest.pulls.get({
+            const sourceBranch = pr.head.ref;
+            const targetBranch = pr.base.ref;
+
+            console.log(`🚨 處理 HOTFIX PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
+
+            if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
+              // 合併到 main (加上 fix: 前綴以觸發 auto version bump)
+              await github.rest.pulls.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: associatedPR.number
+                pull_number: pr.number,
+                merge_method: 'squash',
+                commit_title: `fix: 🚨 [HOTFIX] ${pr.title}`,
+                commit_message: `緊急修復 - 原始 PR #${pr.number}\n\n${pr.body || ''}`
               });
 
-              // 只處理 hotfix 分支且目標是 main 的 PR
-              if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) {
-                console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (hotfix/* → main, 非 draft)`);
-                continue;
+              console.log(`🚨 HOTFIX PR #${pr.number} 已自動合併到 main (含 fix: 前綴)`);
+              console.log('ℹ️ 將觸發 Auto Version Bump → Sync Main to Dev 流程');
+
+              // 立即刪除 hotfix 分支
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${sourceBranch}`
+                });
+                console.log(`🗑️ 已刪除 hotfix 分支: ${sourceBranch}`);
+              } catch (delError) {
+                console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
               }
+            } else if (pr.mergeable_state === 'dirty') {
+              console.log(`❌ HOTFIX PR #${pr.number} 有衝突，需要手動處理`);
 
-              const sourceBranch = pr.head.ref;
-              const targetBranch = pr.base.ref;
+              // 加上 label 提醒
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['hotfix', 'merge-conflict', 'needs-attention']
+              });
 
-              console.log(`🚨 處理 HOTFIX PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
-
-              if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
-                // 合併到 main (加上 fix: 前綴以觸發 auto version bump)
-                await github.rest.pulls.merge({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: pr.number,
-                  merge_method: 'squash',
-                  commit_title: `fix: 🚨 [HOTFIX] ${pr.title}`,
-                  commit_message: `緊急修復 - 原始 PR #${pr.number}\n\n${pr.body || ''}`
-                });
-
-                console.log(`🚨 HOTFIX PR #${pr.number} 已自動合併到 main (含 fix: 前綴)`);
-                console.log('ℹ️ 將觸發 Auto Version Bump → Sync Main to Dev 流程');
-
-                // 立即刪除 hotfix 分支
-                try {
-                  await github.rest.git.deleteRef({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    ref: `heads/${sourceBranch}`
-                  });
-                  console.log(`🗑️ 已刪除 hotfix 分支: ${sourceBranch}`);
-                } catch (delError) {
-                  console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
-                }
-              } else if (pr.mergeable_state === 'dirty') {
-                console.log(`❌ HOTFIX PR #${pr.number} 有衝突，需要手動處理`);
-
-                // 加上 label 提醒
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  labels: ['hotfix', 'merge-conflict', 'needs-attention']
-                });
-
-                // 留言通知
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  body: '🚨 **HOTFIX 自動合併失敗**\n\n此 PR 存在合併衝突，請立即手動處理。'
-                });
-              } else {
-                console.log(`⏳ HOTFIX PR #${pr.number} 狀態: ${pr.mergeable_state}，等待就緒`);
-              }
+              // 留言通知
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '🚨 **HOTFIX 自動合併失敗**\n\n此 PR 存在合併衝突，請立即手動處理。'
+              });
+            } else {
+              console.log(`⏳ HOTFIX PR #${pr.number} 狀態: ${pr.mergeable_state}，等待就緒`);
             }
+          }
 
   notify:
     name: Hotfix 合併通知

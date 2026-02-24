@@ -36,9 +36,6 @@
 				// Docker
 				"ms-azuretools.vscode-docker",
 
-				// Git
-				"eamodio.gitlens",
-
 				// Utility
 				"christian-kohler.path-intellisense",
 				"usernamehw.errorlens",

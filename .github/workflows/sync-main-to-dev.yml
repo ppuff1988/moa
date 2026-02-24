@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: 建立 PR（main → dev）
         id: open_pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             console.log('🔍 開始檢查 main → dev 同步狀態...');
@@ -188,7 +188,7 @@ jobs:
     steps:
       - name: 彙整通知內容
         id: compose
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             // 讀取版本

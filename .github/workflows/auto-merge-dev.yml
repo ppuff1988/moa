@@ -35,121 +35,121 @@ jobs:
       )
 
     steps:
-      - uses: actions/github-script@v7
-        id: merge
-        with:
-          script: |
-            let hasConflicts = false;
-            let conflictPRNumbers = [];
-            const associatedPRs = context.payload.workflow_run.pull_requests;
+      uses: actions/github-script@v8
+      id: merge
+      with:
+        script: |
+          let hasConflicts = false;
+          let conflictPRNumbers = [];
+          const associatedPRs = context.payload.workflow_run.pull_requests;
 
-            if (!associatedPRs || associatedPRs.length === 0) {
-              console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
-              return;
+          if (!associatedPRs || associatedPRs.length === 0) {
+            console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
+            return;
+          }
+
+          for (const associatedPR of associatedPRs) {
+            // 獲取完整的 PR 資訊
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: associatedPR.number
+            });
+
+            // 檢查 PR 是否符合條件 (目標是 dev, 非 draft)
+            if (pr.base.ref !== 'dev' || pr.draft) {
+              console.log(`⏭️ 跳過 PR #${pr.number}: 目標不是 dev 或是一個 draft`);
+              continue;
             }
 
-            for (const associatedPR of associatedPRs) {
-              // 獲取完整的 PR 資訊
-              const { data: pr } = await github.rest.pulls.get({
+            const sourceBranch = pr.head.ref;
+            const targetBranch = pr.base.ref;
+
+            console.log(`🔍 檢查 PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
+
+            if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
+              // 可以直接 merge
+              await github.rest.pulls.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: associatedPR.number
+                pull_number: pr.number,
+                // 使用 squash 保持歷史簡潔，每個 PR 合併為一個 commit
+                merge_method: 'squash',
+                commit_title: pr.title,
+                commit_message: `${pr.body || ''}\n\nPR #${pr.number} - ${sourceBranch}`
               });
 
-              // 檢查 PR 是否符合條件 (目標是 dev, 非 draft)
-              if (pr.base.ref !== 'dev' || pr.draft) {
-                console.log(`⏭️ 跳過 PR #${pr.number}: 目標不是 dev 或是一個 draft`);
-                continue;
-              }
+              console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch} (squash merge)`);
 
-              const sourceBranch = pr.head.ref;
-              const targetBranch = pr.base.ref;
+              // 自動刪除源分支（排除保護分支）
+              const protectedBranches = ['main', 'dev', 'staging', 'production'];
+              const shouldDelete = !protectedBranches.includes(sourceBranch);
 
-              console.log(`🔍 檢查 PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
-
-              if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
-                // 可以直接 merge
-                await github.rest.pulls.merge({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: pr.number,
-                  // 使用 squash 保持歷史簡潔，每個 PR 合併為一個 commit
-                  merge_method: 'squash',
-                  commit_title: pr.title,
-                  commit_message: `${pr.body || ''}\n\nPR #${pr.number} - ${sourceBranch}`
-                });
-
-                console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch} (squash merge)`);
-
-                // 自動刪除源分支（排除保護分支）
-                const protectedBranches = ['main', 'dev', 'staging', 'production'];
-                const shouldDelete = !protectedBranches.includes(sourceBranch);
-
-                if (shouldDelete) {
-                  try {
-                    await github.rest.git.deleteRef({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      ref: `heads/${sourceBranch}`
-                    });
-                    console.log(`🗑️ 已刪除分支: ${sourceBranch}`);
-                  } catch (error) {
-                    console.log(`⚠️ 刪除分支失敗: ${error.message}`);
-                  }
-                } else {
-                  console.log(`🔒 保留分支 ${sourceBranch}（保護分支）`);
-                }
-              } else if (pr.mergeable_state === 'dirty') {
-                console.log(`❌ PR #${pr.number} 有衝突，建立補救 PR`);
-                hasConflicts = true;
-                conflictPRNumbers.push(pr.number);
-
-                // 建立唯一分支名稱
-                const newBranch = `pr-${pr.number}-conflict-${pr.head.sha.slice(0,7)}`;
-
+              if (shouldDelete) {
                 try {
-                  // 建立新分支
-                  await github.rest.git.createRef({
+                  await github.rest.git.deleteRef({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    ref: `refs/heads/${newBranch}`,
-                    sha: pr.head.sha
+                    ref: `heads/${sourceBranch}`
                   });
-
-                  // 建立新的 PR
-                  const newPr = await github.rest.pulls.create({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    title: `[CONFLICT] ${pr.title}`,
-                    head: newBranch,
-                    base: pr.base.ref,
-                    body: `❌ 自動合併失敗，請手動處理衝突\n\n原始 PR: #${pr.number}\n合併狀態: ${pr.mergeable_state}\n\n${pr.body || ''}`
-                  });
-
-                  // 加上 label 標記
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: newPr.data.number,
-                    labels: ['merge-conflict', 'needs-attention']
-                  });
-
-                  console.log(`📌 補救 PR 已建立: #${newPr.data.number}`);
+                  console.log(`🗑️ 已刪除分支: ${sourceBranch}`);
                 } catch (error) {
-                  console.log(`⚠️ 建立補救 PR 失敗: ${error.message}`);
+                  console.log(`⚠️ 刪除分支失敗: ${error.message}`);
                 }
               } else {
-                console.log(`⏳ PR #${pr.number} 狀態: ${pr.mergeable_state}，暫不處理`);
+                console.log(`🔒 保留分支 ${sourceBranch}（保護分支）`);
               }
-            }
+            } else if (pr.mergeable_state === 'dirty') {
+              console.log(`❌ PR #${pr.number} 有衝突，建立補救 PR`);
+              hasConflicts = true;
+              conflictPRNumbers.push(pr.number);
 
-            // 輸出結果供後續步驟使用
-            core.setOutput('has_conflicts', hasConflicts);
-            core.setOutput('conflict_pr_numbers', conflictPRNumbers.join(','));
+              // 建立唯一分支名稱
+              const newBranch = `pr-${pr.number}-conflict-${pr.head.sha.slice(0,7)}`;
 
-            if (hasConflicts) {
-              console.log(`\n⚠️ 總共 ${conflictPRNumbers.length} 個 PR 有衝突: ${conflictPRNumbers.join(', ')}`);
+              try {
+                // 建立新分支
+                await github.rest.git.createRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `refs/heads/${newBranch}`,
+                  sha: pr.head.sha
+                });
+
+                // 建立新的 PR
+                const newPr = await github.rest.pulls.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `[CONFLICT] ${pr.title}`,
+                  head: newBranch,
+                  base: pr.base.ref,
+                  body: `❌ 自動合併失敗，請手動處理衝突\n\n原始 PR: #${pr.number}\n合併狀態: ${pr.mergeable_state}\n\n${pr.body || ''}`
+                });
+
+                // 加上 label 標記
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: newPr.data.number,
+                  labels: ['merge-conflict', 'needs-attention']
+                });
+
+                console.log(`📌 補救 PR 已建立: #${newPr.data.number}`);
+              } catch (error) {
+                console.log(`⚠️ 建立補救 PR 失敗: ${error.message}`);
+              }
+            } else {
+              console.log(`⏳ PR #${pr.number} 狀態: ${pr.mergeable_state}，暫不處理`);
             }
+          }
+
+          // 輸出結果供後續步驟使用
+          core.setOutput('has_conflicts', hasConflicts);
+          core.setOutput('conflict_pr_numbers', conflictPRNumbers.join(','));
+
+          if (hasConflicts) {
+            console.log(`\n⚠️ 總共 ${conflictPRNumbers.length} 個 PR 有衝突: ${conflictPRNumbers.join(', ')}`);
+          }
 
   notify:
     name: 合併通知
