@@ -276,7 +276,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 
 		// 斷線處理
 		socket.on('disconnect', async () => {
-			await handleLeaveRoom(socket, true);
+			await handleLeaveRoom(socket);
 		});
 	});
 
@@ -293,11 +293,10 @@ export function closeSocketIO(): void {
 }
 
 // 處理離開房間（僅處理在線狀態更新，不發送通知避免與 API 重複）
-async function handleLeaveRoom(socket: Socket, isDisconnect = false) {
+async function handleLeaveRoom(socket: Socket) {
 	try {
 		const userId = socket.data.userId;
 		const roomName = socket.data.roomName;
-		const nickname = socket.data.nickname || `玩家${userId}`;
 
 		if (!roomName) return;
 
