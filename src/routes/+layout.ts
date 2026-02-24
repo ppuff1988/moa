@@ -1,8 +1,9 @@
 import { env } from '$env/dynamic/public';
 import type { LayoutLoad } from './$types';
 
-export const load: LayoutLoad = async () => {
+export const load: LayoutLoad = async ({ data }) => {
 	return {
+		...data,
 		gtmId: env.PUBLIC_GTM_ID || '',
 		title: '古董局中局非官方APP - 免費線上桌遊輔助工具',
 		description:

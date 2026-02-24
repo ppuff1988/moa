@@ -1,17 +1,23 @@
-import { json, type RequestHandler } from '@sveltejs/kit';
+import { verifyAuthToken } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
+import { json, type RequestHandler } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { verifyAuthToken } from '$lib/server/api-helpers';
 
 // GET - 獲取用戶資料
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = async ({ request, locals }) => {
 	try {
-		const authResult = await verifyAuthToken(request);
-		if ('error' in authResult) {
-			return authResult.error;
+		// 優先使用 Lucia session（由 hooks.server.ts 驗證並放入 locals）
+		let currentUser = locals.user ?? null;
+
+		// 若無 Lucia session，fallback 到 JWT 驗證
+		if (!currentUser) {
+			const authResult = await verifyAuthToken(request);
+			if ('error' in authResult) {
+				return authResult.error;
+			}
+			currentUser = authResult.user;
 		}
-		const { user: currentUser } = authResult;
 
 		return json({
 			id: currentUser.id,
@@ -26,13 +32,19 @@ export const GET: RequestHandler = async ({ request }) => {
 };
 
 // PUT - 更新用戶資料
-export const PUT: RequestHandler = async ({ request }) => {
+export const PUT: RequestHandler = async ({ request, locals }) => {
 	try {
-		const authResult = await verifyAuthToken(request);
-		if ('error' in authResult) {
-			return authResult.error;
+		// 優先使用 Lucia session（由 hooks.server.ts 驗證並放入 locals）
+		let currentUser = locals.user ?? null;
+
+		// 若無 Lucia session，fallback 到 JWT 驗證
+		if (!currentUser) {
+			const authResult = await verifyAuthToken(request);
+			if ('error' in authResult) {
+				return authResult.error;
+			}
+			currentUser = authResult.user;
 		}
-		const { user: currentUser } = authResult;
 
 		const body = await request.json();
 		const { nickname, avatar } = body;

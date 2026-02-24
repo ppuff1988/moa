@@ -1,8 +1,8 @@
-import { writable, derived, get } from 'svelte/store';
 import { goto } from '$app/navigation';
-import { initSocket, getSocket } from '$lib/utils/socket';
 import { addNotification } from '$lib/stores/notifications';
 import type { Player, User } from '$lib/types/game';
+import { getSocket, initSocket } from '$lib/utils/socket';
+import { derived, get, writable } from 'svelte/store';
 
 interface GameData {
 	id: number;
@@ -22,6 +22,7 @@ export function useRoomLobby(roomName: string) {
 	const allPlayersReady = writable<boolean>(false);
 
 	let socket: ReturnType<typeof getSocket> = null;
+	let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Derived store to check if all players are ready
 	const checkAllPlayersReady = derived(players, ($players) => {
@@ -32,6 +33,73 @@ export function useRoomLobby(roomName: string) {
 	checkAllPlayersReady.subscribe((value) => {
 		allPlayersReady.set(value);
 	});
+
+	// 獲取房間狀態（用於 polling）
+	async function fetchRoomState() {
+		try {
+			const roomResponse = await fetch(`/api/room/${encodeURIComponent(roomName)}`, {
+				credentials: 'include'
+			});
+
+			if (!roomResponse.ok) {
+				if (roomResponse.status === 401) {
+					addNotification('認證失敗，請重新登入', 'error');
+					await goto('/auth/login', { replaceState: true, invalidateAll: true });
+				} else if (roomResponse.status === 403) {
+					addNotification('您不在此房間中', 'error');
+					await goto('/', { replaceState: true, invalidateAll: true });
+				} else if (roomResponse.status === 404) {
+					addNotification('房間不存在', 'error');
+					await goto('/', { replaceState: true, invalidateAll: true });
+				}
+				return false;
+			}
+
+			const roomData = await roomResponse.json();
+
+			// 驗證數據結構
+			if (roomData && roomData.game) {
+				gameStatus.set(roomData.game.status);
+				const user = get(currentUser);
+				if (user) {
+					isHost.set(roomData.game.hostId === user.id);
+				}
+			}
+
+			if (roomData && roomData.players && Array.isArray(roomData.players)) {
+				players.set(roomData.players);
+			}
+
+			return true;
+		} catch (error) {
+			console.error('獲取房間資訊失敗:', error);
+			return false;
+		}
+	}
+
+	// 啟動 polling（作為 socket 的備份機制）
+	function startPolling() {
+		// 清除舊的 polling
+		if (pollingInterval) {
+			clearInterval(pollingInterval);
+		}
+
+		// 每 5 秒更新一次房間狀態（作為 socket 的備份）
+		pollingInterval = setInterval(async () => {
+			await fetchRoomState();
+		}, 5000);
+
+		console.log('[useRoomLobby] 已啟動 polling 機制（每 5 秒）');
+	}
+
+	// 停止 polling
+	function stopPolling() {
+		if (pollingInterval) {
+			clearInterval(pollingInterval);
+			pollingInterval = null;
+			console.log('[useRoomLobby] 已停止 polling 機制');
+		}
+	}
 
 	// Initialize room
 	async function initialize() {
@@ -76,45 +144,10 @@ export function useRoomLobby(roomName: string) {
 			// Wait a bit for socket join to complete, then fetch room state
 			// The socket event will populate most data, but we fetch to ensure consistency
 			setTimeout(async () => {
-				try {
-					const roomResponse = await fetch(`/api/room/${encodeURIComponent(roomName)}`, {
-						credentials: 'include'
-					});
-
-					if (!roomResponse.ok) {
-						console.error('獲取房間資訊失敗，狀態碼:', roomResponse.status);
-						if (roomResponse.status === 401) {
-							addNotification('認證失敗，請重新登入', 'error');
-							await goto('/auth/login', { replaceState: true, invalidateAll: true });
-						} else if (roomResponse.status === 403) {
-							addNotification('您不在此房間中', 'error');
-							await goto('/', { replaceState: true, invalidateAll: true });
-						} else if (roomResponse.status === 404) {
-							addNotification('房間不存在', 'error');
-							await goto('/', { replaceState: true, invalidateAll: true });
-						}
-						return;
-					}
-
-					const roomData = await roomResponse.json();
-
-					// 驗證數據結構
-					if (roomData && roomData.game) {
-						gameStatus.set(roomData.game.status);
-						isHost.set(roomData.game.hostId === userData.id);
-					} else {
-						console.warn('房間數据結構無效:', roomData);
-					}
-
-					if (roomData && roomData.players && Array.isArray(roomData.players)) {
-						players.set(roomData.players);
-					} else {
-						console.warn('玩家數據無效或不存在:', roomData?.players);
-						players.set([]);
-					}
-				} catch (error) {
-					console.error('獲取房間資訊失敗:', error);
-					// 不拋出錯誤，因為 socket 事件會處理
+				const success = await fetchRoomState();
+				if (success) {
+					// 啟動 polling 機制作為 socket 的備份
+					startPolling();
 				}
 			}, 500);
 		} catch (error) {
@@ -126,22 +159,21 @@ export function useRoomLobby(roomName: string) {
 		}
 	}
 
+	// 追蹤是否已設置監聽器（避免重複註冊）
+	let listenersSetup = false;
+
 	// Set up socket event listeners
 	function setupSocketListeners() {
 		if (!socket) return;
 
-		// 先移除所有舊的監聽器，避免重複註冊
-		socket.off('room-update');
-		socket.off('player-joined');
-		socket.off('player-left');
-		socket.off('player-kicked');
-		socket.off('game-started');
-		socket.off('selection-started');
-		socket.off('player-locked');
-		socket.off('player-unlocked');
-		socket.off('room-closed');
-		socket.off('game-force-ended');
-		socket.off('error');
+		// 如果已經設置過，先完全清理
+		if (listenersSetup) {
+			console.log('[useRoomLobby] 檢測到重複設置監聽器，先清理舊的');
+			cleanupSocketListeners();
+		}
+
+		listenersSetup = true;
+		console.log('[useRoomLobby] 設置 socket 監聽器');
 
 		// Room update event
 		socket.on('room-update', (data: { game: GameData; players: Player[] }) => {
@@ -162,12 +194,14 @@ export function useRoomLobby(roomName: string) {
 		socket.on(
 			'player-joined',
 			(data: { userId: number; nickname: string; avatar?: string | null }) => {
+				console.log('[useRoomLobby] 📥 收到 player-joined 事件:', data.nickname);
 				addNotification(`${data.nickname} 加入了房間`, 'info');
 			}
 		);
 
 		// Player left event
 		socket.on('player-left', (data: { userId: number; nickname: string }) => {
+			console.log('[useRoomLobby] 📥 收到 player-left 事件:', data.nickname);
 			// 在 selecting 狀態下不顯示通知（避免干擾選角）
 			const status = get(gameStatus);
 			if (status !== 'selecting') {
@@ -320,9 +354,8 @@ export function useRoomLobby(roomName: string) {
 
 			if (response.ok) {
 				addNotification('已離開房間', 'success');
-				if (socket) {
-					socket.emit('leave-room');
-				}
+				// 不需要手動 emit leave-room，讓 disconnect 自然觸發清理
+				// 這樣可以避免重複廣播 player-left 通知
 				await goto('/', { replaceState: true });
 			} else {
 				const errorData = await response.json();
@@ -403,9 +436,10 @@ export function useRoomLobby(roomName: string) {
 		}
 	}
 
-	// Cleanup
-	function cleanup() {
+	// 清理 socket 監聽器
+	function cleanupSocketListeners() {
 		if (socket) {
+			console.log('[useRoomLobby] 清理 socket 監聽器');
 			// Remove all event listeners
 			socket.off('room-update');
 			socket.off('player-joined');
@@ -418,7 +452,16 @@ export function useRoomLobby(roomName: string) {
 			socket.off('room-closed');
 			socket.off('game-force-ended');
 			socket.off('error');
+			listenersSetup = false;
 		}
+	}
+
+	// Cleanup
+	function cleanup() {
+		// 停止 polling
+		stopPolling();
+		// 清理監聽器
+		cleanupSocketListeners();
 	}
 
 	return {

@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { getJWTToken } from '$lib/utils/jwt';
 	import { addNotification } from '$lib/stores/notifications';
-	import { onMount, onDestroy } from 'svelte';
 	import { getSocket } from '$lib/utils/socket';
+	import { onDestroy, onMount } from 'svelte';
 
 	interface Player {
 		id: number | string;
@@ -48,16 +47,11 @@
 
 	// 獲取投票狀態
 	const fetchVotingStatus = async () => {
-		const token = getJWTToken();
-		if (!token) return;
-
 		try {
 			const response = await fetch(
 				`/api/room/${encodeURIComponent(roomName)}/identification-status`,
 				{
-					headers: {
-						Authorization: `Bearer ${token}`
-					}
+					credentials: 'include'
 				}
 			);
 
@@ -74,9 +68,6 @@
 	};
 
 	const submitIdentification = async () => {
-		const token = getJWTToken();
-		if (!token) return;
-
 		const votes: Record<string, number> = {};
 		if (selectedLaoChaoFeng) votes.laoChaoFeng = selectedLaoChaoFeng;
 		if (selectedXuYuan) votes.xuYuan = selectedXuYuan;
@@ -87,8 +78,8 @@
 				`/api/room/${encodeURIComponent(roomName)}/submit-identification`,
 				{
 					method: 'POST',
+					credentials: 'include',
 					headers: {
-						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({ votes })
@@ -112,9 +103,6 @@
 	};
 
 	const publishResults = async () => {
-		const token = getJWTToken();
-		if (!token) return;
-
 		isPublishing = true;
 
 		try {
@@ -122,8 +110,8 @@
 				`/api/room/${encodeURIComponent(roomName)}/publish-identification`,
 				{
 					method: 'POST',
+					credentials: 'include',
 					headers: {
-						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json'
 					}
 				}

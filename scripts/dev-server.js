@@ -1,5 +1,5 @@
-import dotenvFlow from 'dotenv-flow';
 import dotenvExpand from 'dotenv-expand';
+import dotenvFlow from 'dotenv-flow';
 import express from 'express';
 import { createServer } from 'http';
 import { createServer as createViteServer } from 'vite';
@@ -9,7 +9,7 @@ const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
 // 调试：检查環境變數量
-console.log('🔍 環境變數量调试:');
+console.log('🔍 環境變數:');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 console.log('POSTGRES_HOST:', process.env.POSTGRES_HOST);
@@ -42,9 +42,12 @@ try {
 }
 
 const port = process.env.PORT || 5173;
+const host = process.env.HOST || '0.0.0.0';
 
-server.listen(port, () => {
-	console.log(`🚀 開發服務器運行在: http://localhost:${port}`);
+server.listen(port, host, () => {
+	console.log(`🚀 開發服務器運行在:`);
+	console.log(`   本機訪問: http://localhost:${port}`);
+	console.log(`   網路訪問: http://${host}:${port}`);
 	console.log('✅ Socket.IO 已啟用 (polling + websocket)');
 	console.log(`💡 Socket.IO 端點: http://localhost:${port}/socket.io/`);
 	console.log('💡 你可以開始開發了！');

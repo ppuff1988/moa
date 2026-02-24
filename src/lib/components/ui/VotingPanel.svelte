@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification } from '$lib/stores/notifications';
 	import Portal from '$lib/components/ui/Portal.svelte';
+	import { addNotification } from '$lib/stores/notifications';
 
 	interface BeastHead {
 		id: number;
@@ -98,14 +97,11 @@
 
 	// 提交投票
 	async function submitVotes() {
-		const token = getJWTToken();
-		if (!token) return;
-
 		try {
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/submit-votes`, {
 				method: 'POST',
+				credentials: 'include',
 				headers: {
-					Authorization: `Bearer ${token}`,
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({ votes: voteInputs })

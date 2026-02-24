@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification } from '$lib/stores/notifications';
-	import { chineseNumeral } from '$lib/utils/round';
 	import SettlementButton from '$lib/components/game/SettlementButton.svelte';
 	import Portal from '$lib/components/ui/Portal.svelte';
+	import { addNotification } from '$lib/stores/notifications';
+	import { chineseNumeral } from '$lib/utils/round';
 
 	interface BeastHead {
 		id: number;
@@ -49,11 +48,6 @@
 
 	const startNextRound = async () => {
 		if (isStartingNextRound) return;
-		const token = getJWTToken();
-		if (!token) {
-			addNotification('未取得登入資訊', 'error');
-			return;
-		}
 
 		isStartingNextRound = true;
 
@@ -61,8 +55,8 @@
 			const nextRound = currentRound + 1;
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/start`, {
 				method: 'POST',
+				credentials: 'include',
 				headers: {
-					Authorization: `Bearer ${token}`,
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({ round: nextRound })

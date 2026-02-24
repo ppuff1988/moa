@@ -5,40 +5,32 @@
 	import MainTitle from '$lib/components/ui/MainTitle.svelte';
 	import UserArea from '$lib/components/ui/UserArea.svelte';
 	import { useLeaveRoom } from '$lib/composables/useLeaveRoom';
+	import { logout as logoutUser } from '$lib/utils/jwt';
 	import { onMount } from 'svelte';
+	import type { PageData } from './$types';
 
-	interface User {
-		id: number;
-		nickname: string;
-		email: string;
-		avatar?: string | null;
-	}
+	let { data }: { data: PageData } = $props();
 
-	interface CurrentGame {
-		id: string;
-		roomName: string;
-		status: string;
-		playerCount: number;
-	}
+	// 使用 writable $derived 模式：允許本地覆寫,同時自動同步伺服器資料
+	let userOverride = $state<typeof data.user>(null);
+	let currentGameOverride = $state<typeof data.currentGame>(null);
 
-	interface PageData {
-		user: User | null;
-		currentGame: CurrentGame | null;
-	}
+	let user = $derived(userOverride ?? data.user);
+	let currentGame = $derived(currentGameOverride ?? data.currentGame);
 
-	export let data: PageData;
+	$effect(() => {
+		console.log('🏠 首頁載入，User:', user ? `${user.email} (已登入)` : '未登入');
+		console.log('   Current game:', currentGame);
+	});
 
-	// 使用服務端載入的數據
-	let user: User | null = data.user;
-	let currentGame: CurrentGame | null = data.currentGame;
-	let showRoomForm = false;
-	let roomFormMode: 'create' | 'join' = 'create';
+	let showRoomForm = $state(false);
+	let roomFormMode: 'create' | 'join' = $state('create');
 
 	// FAQ 展開狀態
-	let expandedFaq: number | null = null;
+	let expandedFaq: number | null = $state(null);
 
 	// 手機版選單狀態
-	let mobileMenuOpen = false;
+	let mobileMenuOpen = $state(false);
 
 	const faqItems = [
 		{
@@ -99,17 +91,17 @@
 	}
 
 	async function logout() {
-		// 先清除本地的使用者狀態
-		user = null;
-		currentGame = null;
+		// 清除本地覆寫狀態
+		userOverride = null;
+		currentGameOverride = null;
 
-		const { logout } = await import('$lib/utils/jwt');
-		await logout();
+		// 使用統一的登出函數（會清除 session、JWT 並重定向）
+		await logoutUser();
 	}
 
 	function handleProfileUpdate(updatedUser: { nickname: string; avatar: string | null }) {
 		if (user) {
-			user = {
+			userOverride = {
 				...user,
 				nickname: updatedUser.nickname,
 				avatar: updatedUser.avatar
@@ -149,18 +141,11 @@
 
 	// 防止瀏覽器快取造成的登出後返回問題
 	onMount(() => {
-		// 監聽 pageshow 事件，檢測頁面是否從快取恢復
-		const handlePageShow = async (event: PageTransitionEvent) => {
-			// 如果頁面是從快取恢復的
+		// 監聯 pageshow 事件，檢測頁面是否從快取恢復
+		const handlePageShow = (event: PageTransitionEvent) => {
+			// 如果頁面是從快取恢復的，強制重新載入以確保 session 狀態正確
 			if (event.persisted) {
-				// 檢查 JWT token 是否存在
-				const { getJWTToken } = await import('$lib/utils/jwt');
-				const token = getJWTToken();
-
-				// 如果頁面顯示為已登入但 token 不存在，重新載入頁面
-				if (user && !token) {
-					window.location.reload();
-				}
+				window.location.reload();
 			}
 		};
 
@@ -201,7 +186,7 @@
 		isProcessing={$isLeavingRoom}
 		onConfirm={() =>
 			handleConfirmLeave(currentGame?.roomName || '', () => {
-				currentGame = null;
+				currentGameOverride = null;
 			})}
 		onCancel={closeLeaveConfirmModal}
 	/>
@@ -253,9 +238,9 @@
 {:else}
 	<!-- 手機版選單遮罩 -->
 	{#if mobileMenuOpen}
-		<!-- svelte-ignore a11y-click-events-have-key-events -->
-		<!-- svelte-ignore a11y-no-static-element-interactions -->
-		<div class="mobile-overlay" on:click={closeMobileMenu}></div>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="mobile-overlay" onclick={closeMobileMenu} role="presentation"></div>
 	{/if}
 
 	<!-- 未登入用戶：SEO 友好的首頁 -->
@@ -267,7 +252,7 @@
 			<button
 				class="hamburger"
 				class:active={mobileMenuOpen}
-				on:click={toggleMobileMenu}
+				onclick={toggleMobileMenu}
 				aria-label="選單"
 			>
 				<span></span>
@@ -277,17 +262,16 @@
 
 			<!-- 導航選單 -->
 			<div class="nav-links" class:mobile-open={mobileMenuOpen}>
-				<button class="nav-link" on:click={() => scrollToSection('features')}>遊戲特色</button>
-				<button class="nav-link" on:click={() => scrollToSection('faq')}>常見問題</button>
+				<button class="nav-link" onclick={() => scrollToSection('features')}>遊戲特色</button>
+				<button class="nav-link" onclick={() => scrollToSection('faq')}>常見問題</button>
 				<a
 					href="https://www.youtube.com/watch?v=a1scG0iv0cM"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="nav-link"
-					on:click={closeMobileMenu}>教學影片</a
+					onclick={closeMobileMenu}>教學影片</a
 				>
-				<a href="/auth/login" class="nav-btn nav-btn-primary" on:click={closeMobileMenu}
-					>登入/註冊</a
+				<a href="/auth/login" class="nav-btn nav-btn-primary" onclick={closeMobileMenu}>登入/註冊</a
 				>
 			</div>
 		</nav>
@@ -303,7 +287,7 @@
 				與朋友一起展開一場精彩的推理對決！
 			</p>
 			<div class="hero-buttons">
-				<a href="/auth/register" class="hero-btn hero-btn-primary">立即開始遊戲</a>
+				<a href="/auth/login" class="hero-btn hero-btn-primary">立即開始遊戲</a>
 				<a
 					href="https://www.youtube.com/watch?v=a1scG0iv0cM"
 					target="_blank"
@@ -402,7 +386,7 @@
 			<div class="faq-list">
 				{#each faqItems as item, index (item.question)}
 					<div class="faq-item" class:expanded={expandedFaq === index}>
-						<button class="faq-question" on:click={() => toggleFaq(index)}>
+						<button class="faq-question" onclick={() => toggleFaq(index)}>
 							<span>{item.question}</span>
 							<span class="faq-icon">{expandedFaq === index ? '−' : '+'}</span>
 						</button>

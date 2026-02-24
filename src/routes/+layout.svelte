@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import GTM from '$lib/components/GTM.svelte';
 	import PWAPrompt from '$lib/components/PWAPrompt.svelte';
 	import type { Snippet } from 'svelte';
@@ -46,12 +47,15 @@
 </svelte:head>
 
 <GTM gtmId={data?.gtmId || ''} />
-<PWAPrompt />
 
 <div class="layout">
 	<div class="background-blur"></div>
 	{@render children?.()}
 </div>
+
+{#if browser}
+	<PWAPrompt />
+{/if}
 
 <style>
 	:global(html) {

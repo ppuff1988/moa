@@ -1,11 +1,11 @@
-import { Lucia } from 'lucia';
-import { db } from './db';
-import { session, user } from './db/schema';
 import { dev } from '$app/environment';
-import { Google } from 'arctic';
 import { env } from '$env/dynamic/private';
+import { Google } from 'arctic';
 import { eq, lt } from 'drizzle-orm';
 import type { Adapter, DatabaseSession, DatabaseUser, UserId } from 'lucia';
+import { Lucia, TimeSpan } from 'lucia';
+import { db } from './db';
+import { session, user } from './db/schema';
 
 // 自訂適配器以支援 integer userId
 const adapter: Adapter = {
@@ -89,10 +89,14 @@ const adapter: Adapter = {
 
 // 初始化 Lucia
 export const lucia = new Lucia(adapter, {
+	sessionExpiresIn: new TimeSpan(30, 'd'), // Session 30 天後過期
 	sessionCookie: {
+		name: 'auth_session', // 明確指定 cookie 名稱
+		expires: true, // 設置過期時間（持久性 cookie）
 		attributes: {
-			// 在開發環境中設定為 false，生產環境設定為 true
-			secure: !dev
+			secure: !dev, // 開發環境 false，生產環境 true
+			sameSite: 'lax', // 防止 CSRF，允許跨站導航時攜帶
+			path: '/' // 全站可用
 		}
 	},
 	getUserAttributes: (attributes) => {

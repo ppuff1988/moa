@@ -227,6 +227,60 @@ describe('Authentication API', () => {
 			expect(data.message).toBe('登入成功');
 		});
 
+		it('登入成功後應設置 Lucia session cookie', async () => {
+			const response = await fetch(`${API_BASE}/api/auth/login`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					email: testEmail,
+					password: testPassword
+				})
+			});
+
+			expect(response.status).toBe(200);
+
+			// 確認 Set-Cookie header 存在
+			const setCookieHeader = response.headers.get('set-cookie');
+			expect(setCookieHeader).not.toBeNull();
+
+			// Lucia 預設 session cookie 名稱為 auth_session
+			expect(setCookieHeader).toMatch(/auth_session=/);
+		});
+
+		it('登入後的 session cookie 應可用於認證後續請求', async () => {
+			// 先登入取得 session cookie
+			const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					email: testEmail,
+					password: testPassword
+				})
+			});
+
+			expect(loginResponse.status).toBe(200);
+
+			const setCookieHeader = loginResponse.headers.get('set-cookie');
+			expect(setCookieHeader).not.toBeNull();
+
+			// 從 Set-Cookie 中提取 session cookie 值
+			const sessionCookieMatch = setCookieHeader!.match(/auth_session=([^;]+)/);
+			expect(sessionCookieMatch).not.toBeNull();
+			const sessionCookie = `auth_session=${sessionCookieMatch![1]}`;
+
+			// 使用 session cookie 訪問需要認證的端點
+			const profileResponse = await fetch(`${API_BASE}/api/user/profile`, {
+				headers: {
+					Cookie: sessionCookie
+				}
+			});
+
+			// 應該成功認證（返回 200 而非 401）
+			expect(profileResponse.status).toBe(200);
+			const profileData = await profileResponse.json();
+			expect(profileData.email).toBe(testEmail);
+		});
+
 		it('應該拒絕未驗證的用戶登入', async () => {
 			// 創建未驗證的用戶
 			const unverifiedEmail = `test-unverified-${Date.now()}@example.com`;

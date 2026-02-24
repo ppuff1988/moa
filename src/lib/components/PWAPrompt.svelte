@@ -20,6 +20,10 @@
 					onOfflineReady() {
 						offlineReady = true;
 						console.log('PWA 應用已準備好離線使用');
+						// 離線就緒只是資訊性通知，3 秒後自動關閉
+						setTimeout(() => {
+							offlineReady = false;
+						}, 3000);
 					},
 					onNeedRefresh() {
 						needRefresh = true;

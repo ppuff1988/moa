@@ -1,9 +1,11 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
 import { verifyAuthToken } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { games, gamePlayers } from '$lib/server/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { gamePlayers, games } from '$lib/server/db/schema';
+import { getGameState } from '$lib/server/game';
+import { getSocketIO } from '$lib/server/socket';
+import { json } from '@sveltejs/kit';
+import { and, eq, sql } from 'drizzle-orm';
+import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
 	const authResult = await verifyAuthToken(request);
@@ -88,8 +90,27 @@ export const POST: RequestHandler = async ({ request }) => {
 		})
 		.where(eq(games.id, game.id));
 
-	// Socket broadcasting will be handled when the player connects and emits 'join-room'
-	// This ensures the new player is in the socket room to receive updates
+	// 立即通過 Socket.IO 廣播房間更新，確保已在房間的玩家能即時看到新玩家加入
+	// 注意：只廣播 room-update（更新玩家列表），不廣播 player-joined（避免重複通知）
+	// player-joined 會在玩家 socket 連接時由 socket.ts 的 join-room 事件觸發
+	try {
+		const io = getSocketIO();
+		if (io) {
+			// 獲取最新的遊戲狀態
+			const gameState = await getGameState(game.id);
+
+			// 向房間內所有已連接的玩家廣播更新（靜默更新，不顯示通知）
+			io.to(game.roomName).emit('room-update', {
+				game: gameState.game,
+				players: gameState.players
+			});
+		} else {
+			console.warn('[join-room] Socket.IO 實例不存在，無法即時廣播房間更新');
+		}
+	} catch (error) {
+		console.error('[join-room] 廣播房間更新失敗:', error);
+		// 不影響加入房間的結果，繼續返回成功
+	}
 
 	return json({
 		message: '成功加入房間',

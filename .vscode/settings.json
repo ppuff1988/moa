@@ -159,5 +159,27 @@
 	"typescript.tsserver.maxTsServerMemory": 4096,
 	"javascript.updateImportsOnFileMove.enabled": "always",
 	"explorer.confirmDelete": false,
-	"explorer.confirmDragAndDrop": false
+	"explorer.confirmDragAndDrop": false,
+	"chat.tools.terminal.autoApprove": {
+		"/^cd /workspace && npx playwright install chromium$/": {
+			"approve": true,
+			"matchCommandLine": true
+		},
+		"/^cd /workspace && apk add ca-certificates apache2-utils curl$/": {
+			"approve": true,
+			"matchCommandLine": true
+		},
+		"/^ldd /workspace/\\.browsers/chromium_headless_shell-1193/chrome-linux/headless_shell 2>&1 \\| grep \"not found\"$/": {
+			"approve": true,
+			"matchCommandLine": true
+		},
+		"/^cd /workspace && npx playwright test e2e/navigation\\.test\\.ts:15 --headed 2>&1 \\| tail -100$/": {
+			"approve": true,
+			"matchCommandLine": true
+		},
+		"/^cd /workspace && npx playwright test e2e/navigation\\.test\\.ts:15 2>&1 \\| tail -50$/": {
+			"approve": true,
+			"matchCommandLine": true
+		}
+	}
 }

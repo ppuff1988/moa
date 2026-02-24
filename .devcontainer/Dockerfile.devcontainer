@@ -18,7 +18,13 @@ RUN apk add --no-cache \
 	# Playwright 執行所需的依賴
 	chromium \
 	firefox \
-	&& npm install -g npm@latest
+	# 中文字型支援
+	font-noto-cjk \
+	font-wqy-zenhei \
+	ttf-dejavu \
+	fontconfig \
+	&& npm install -g npm@latest \
+	&& fc-cache -f
 
 # 建立 sudo group 如果不存在
 RUN getent group sudo || addgroup -S sudo
@@ -27,6 +33,12 @@ RUN getent group sudo || addgroup -S sudo
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/node \
 	&& chmod 0440 /etc/sudoers.d/node
 
+# 建立 Playwright 瀏覽器目錄並建立符號連結到系統 Chromium
+RUN mkdir -p /workspace/.browsers/chromium_headless_shell-1193/chrome-linux && \
+	mkdir -p /workspace/.browsers/chromium-1193/chrome-linux && \
+	ln -s /usr/bin/chromium-browser /workspace/.browsers/chromium_headless_shell-1193/chrome-linux/headless_shell && \
+	ln -s /usr/bin/chromium-browser /workspace/.browsers/chromium-1193/chrome-linux/chrome
+
 # 切換到 node 使用者
 USER node
 
@@ -34,7 +46,7 @@ USER node
 WORKDIR /workspace
 
 # 設定 Playwright 瀏覽器路徑
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/workspace/.browsers
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # 安裝 oh-my-zsh 讓終端機更好用 (選擇性)

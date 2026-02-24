@@ -1,5 +1,4 @@
 import { writable } from 'svelte/store';
-import { getJWTToken } from '$lib/utils/jwt';
 
 export function useLeaveRoom() {
 	const showLeaveConfirmModal = writable(false);
@@ -29,18 +28,8 @@ export function useLeaveRoom() {
 		isLeavingRoom.set(true);
 
 		try {
-			const token = getJWTToken();
-			if (!token) {
-				alert('請先登入');
-				isLeavingRoom.set(false);
-				return false;
-			}
-
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/leave`, {
 				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${token}`
-				},
 				credentials: 'include'
 			});
 

@@ -1,32 +1,30 @@
 <script lang="ts">
-	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { onMount, onDestroy } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
+	import { page } from '$app/stores';
 	import { GameService } from '$lib/services/gameService';
 	import { createGameState } from '$lib/stores/gameState';
-	import { initSocket, disconnectSocket } from '$lib/utils/socket';
+	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
+	import { disconnectSocket, initSocket } from '$lib/utils/socket';
 	import type { Socket } from 'socket.io-client';
-
+	import { onDestroy, onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	// Components
-	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
-	import ActionSequence from '$lib/components/ui/ActionSequence.svelte';
-	import PlayerOrderDisplay from '$lib/components/player/PlayerOrderDisplay.svelte';
-	import ArtifactDisplay from '$lib/components/ui/ArtifactDisplay.svelte';
-	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
-	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
+	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
+	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
+	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
 	import GameHeader from '$lib/components/game/GameHeader.svelte';
+	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
 	import PhaseIndicator from '$lib/components/game/PhaseIndicator.svelte';
 	import SkillPhase from '$lib/components/game/SkillPhase.svelte';
-	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
-	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
-	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
-	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
+	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
+	import PlayerOrderDisplay from '$lib/components/player/PlayerOrderDisplay.svelte';
+	import ActionSequence from '$lib/components/ui/ActionSequence.svelte';
+	import ArtifactDisplay from '$lib/components/ui/ArtifactDisplay.svelte';
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
+	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
+	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 
-	import type { User, ActionedPlayer } from '$lib/types/game';
+	import type { ActionedPlayer, User } from '$lib/types/game';
 
 	// Game state
 	const gameState = createGameState();
@@ -263,12 +261,9 @@
 	}
 
 	async function fetchTeammateInfo() {
-		const token = getJWTToken();
-		if (!token) return;
-
 		try {
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/teammate-info`, {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (response.ok) {
@@ -834,17 +829,11 @@
 		// 立即初始化 gameService
 		gameService = new GameService(roomName);
 
-		// 檢查用戶是否已登入
-		const token = getJWTToken();
-		if (!token) {
-			// 未登入，重定向到登入頁
-			goto('/auth/login', { invalidateAll: true });
-			return;
-		}
+		// 檢查用戶是否已登入（使用 Lucia session cookie 驗證）
 
 		try {
 			const userResponse = await fetch('/api/user/profile', {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (userResponse.ok) {
@@ -855,7 +844,7 @@
 			}
 
 			const roomResponse = await fetch(`/api/room/${encodeURIComponent(roomName)}`, {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (roomResponse.ok) {

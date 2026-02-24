@@ -1,9 +1,9 @@
-import devtoolsJson from 'vite-plugin-devtools-json';
-import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import fs from 'fs';
+import devtoolsJson from 'vite-plugin-devtools-json';
+import { defineConfig } from 'vitest/config';
 
 // 檢查是否存在本地 SSL 憑證（用於 Safari OAuth 測試）
 const httpsEnabled = fs.existsSync('./localhost-key.pem') && fs.existsSync('./localhost.pem');
@@ -62,6 +62,8 @@ export default defineConfig({
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
 				cleanupOutdatedCaches: true,
 				clientsClaim: true,
+				// 開發模式下不緩存 HTML，避免干擾登入狀態
+				navigateFallbackDenylist: [/^\/(auth|api)\/.*/],
 				runtimeCaching: [
 					{
 						urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -112,10 +114,8 @@ export default defineConfig({
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}']
 			},
 			devOptions: {
-				enabled: true,
+				enabled: false, // 開發模式下禁用 Service Worker，避免緩存干擾登入狀態
 				suppressWarnings: true,
-				navigateFallback: '/',
-				navigateFallbackAllowlist: [/^\/$/],
 				type: 'module'
 			}
 		})
