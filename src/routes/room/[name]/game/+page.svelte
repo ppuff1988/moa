@@ -904,6 +904,39 @@
 					console.log(`[socket] 加入房間: ${roomName}`);
 					socket.emit('join-room', roomName);
 
+					// 監聽連線事件
+					socket.on('connect', () => {
+						console.log('[socket] Socket 已連線');
+						// 重新加入房間
+						socket!.emit('join-room', roomName);
+					});
+
+					// 監聽重新連線事件
+					socket.on('reconnect', async () => {
+						console.log('[socket] Socket 重新連線成功，同步數據...');
+						// 重新加入房間
+						socket!.emit('join-room', roomName);
+
+						// 先獲取回合狀態檢查遊戲是否結束
+						await fetchRoundStatus();
+
+						// 如果遊戲已結束但還沒有最終結果，主動獲取
+						if ($roundPhase === 'finished' && !$finalResult) {
+							console.log('[socket] 檢測到遊戲已結束，獲取最終結果');
+							const finalResultData = await gameService.fetchFinalResult();
+							if (finalResultData && finalResultData.success) {
+								finalResult.set(finalResultData);
+								isGameFinished.set(true);
+								addNotification(`遊戲已結束！${finalResultData.winner}獲勝！`, 'info', 3000);
+							}
+						}
+
+						// 重新獲取其他數據
+						await fetchArtifacts();
+						await updatePlayersAndRound();
+						addNotification('連線已恢復', 'success', 2000);
+					});
+
 					// 監聽房間加入成功事件
 					socket.on('room-update', () => {
 						console.log('[socket] 收到 room-update 事件，確認已成功加入房間');
@@ -911,6 +944,10 @@
 
 					socket.on('error', (error) => {
 						console.error('[socket] Socket 錯誤:', error);
+					});
+
+					socket.on('disconnect', (reason) => {
+						console.log('[socket] Socket 斷線:', reason);
 					});
 
 					// Listen for voting-completed event
@@ -1056,6 +1093,44 @@
 		if (socket) {
 			socket.emit('leave-room');
 			disconnectSocket();
+		}
+		// 移除可見性變化監聽器
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		}
+	});
+
+	// 處理頁面可見性變化（當應用程式切換到背景或前景時）
+	async function handleVisibilityChange() {
+		if (document.visibilityState === 'visible') {
+			// 檢查 socket 連線狀態
+			if (socket && !socket.connected) {
+				socket.connect();
+			}
+
+			// 重新獲取所有數據以確保同步
+			await fetchRoundStatus();
+
+			// 檢查遊戲是否已結束，如果是則獲取最終結果
+			if ($roundPhase === 'finished' && !$finalResult) {
+				const finalResultData = await gameService.fetchFinalResult();
+				if (finalResultData && finalResultData.success) {
+					finalResult.set(finalResultData);
+					isGameFinished.set(true);
+					addNotification(`遊戲已結束！${finalResultData.winner}獲勝！`, 'info', 3000);
+				}
+			}
+
+			await fetchArtifacts();
+			await updatePlayersAndRound();
+			await fetchMyRole();
+		}
+	}
+
+	// 在 onMount 中註冊可見性變化監聽器
+	$effect(() => {
+		if (typeof document !== 'undefined' && !isLoading) {
+			document.addEventListener('visibilitychange', handleVisibilityChange);
 		}
 	});
 </script>

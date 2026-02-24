@@ -163,6 +163,47 @@ test.describe('頁面導航', () => {
 			// 應該重定向到登入頁
 			await expectLoginPage(page);
 		});
+
+		test('登出後按上一頁不應該返回登入狀態', async ({ page }) => {
+			// 登入
+			await ensureLoggedIn(page, TEST_USERS.user1);
+
+			// 確認在首頁且已登入
+			await expectHomePage(page);
+
+			// 檢查是否顯示使用者資訊（表示已登入）
+			const userArea = page.locator(
+				'[data-testid="user-area"], .user-area, button:has-text("登出")'
+			);
+			await expect(userArea.first()).toBeVisible({ timeout: 5000 });
+
+			// 登出
+			await logoutUser(page);
+
+			// 確認在登入頁
+			await expectLoginPage(page);
+
+			// 按上一頁
+			await page.goBack();
+
+			// 等待頁面載入
+			await page.waitForLoadState('networkidle');
+
+			// 應該仍然在登入頁或被重新導向到登入頁
+			// 不應該看到使用者資訊（不應該處於登入狀態）
+			await page.waitForTimeout(1000);
+			const currentUrl = page.url();
+
+			// 檢查是否在登入頁
+			if (!currentUrl.includes('/auth/login')) {
+				// 如果不在登入頁，檢查是否沒有登入狀態
+				const isLoggedIn = await userArea
+					.first()
+					.isVisible()
+					.catch(() => false);
+				expect(isLoggedIn).toBeFalsy();
+			}
+		});
 	});
 
 	test.describe('瀏覽器導航', () => {
