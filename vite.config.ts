@@ -63,7 +63,7 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
-			globIgnores: ['**/app-icon-source.png', 'prerendered/**/*'],
+				globIgnores: ['**/app-icon-source.png', 'prerendered/**/*'],
 				cleanupOutdatedCaches: true,
 				clientsClaim: true,
 				// 開發模式下不緩存 HTML，避免干擾登入狀態
