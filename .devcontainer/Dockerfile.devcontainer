@@ -29,9 +29,13 @@ RUN apk add --no-cache \
 # 建立 sudo group 如果不存在
 RUN getent group sudo || addgroup -S sudo
 
-# 設定 node 使用者可以使用 sudo
+# 建立 docker group (GID 將由 devcontainer feature 管理)
+RUN getent group docker || addgroup -S docker
+
+# 設定 node 使用者可以使用 sudo，並加入 docker 組
 RUN echo "node ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/node \
-	&& chmod 0440 /etc/sudoers.d/node
+	&& chmod 0440 /etc/sudoers.d/node \
+	&& adduser node docker || true
 
 # 建立 Playwright 瀏覽器目錄並建立符號連結到系統 Chromium
 RUN mkdir -p /workspace/.browsers/chromium_headless_shell-1193/chrome-linux && \
