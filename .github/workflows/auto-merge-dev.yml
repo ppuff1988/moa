@@ -35,7 +35,7 @@ jobs:
       )
 
     steps:
-        uses: actions/github-script@v8.0.0
+        uses: actions/github-script@v8
         id: merge
         with:
           script: |
