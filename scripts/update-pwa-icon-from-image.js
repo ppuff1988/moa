@@ -12,20 +12,20 @@ const sizes = [
 
 async function processImage(inputPath, outputDir) {
 	console.log(`📥 處理圖片: ${inputPath}`);
-	
+
 	for (const { size, name, maskable } of sizes) {
 		const outputPath = join(outputDir, name);
-		
+
 		if (maskable) {
 			// Maskable icons need safe zone padding (20% on each side)
 			// 內容應該在中間 80% 的區域內
 			const safeZoneSize = Math.round(size * 0.8);
 			const padding = Math.round((size - safeZoneSize) / 2);
-			
+
 			await sharp(inputPath)
-				.resize(safeZoneSize, safeZoneSize, { 
-					fit: 'contain', 
-					background: { r: 0, g: 0, b: 0, alpha: 1 } 
+				.resize(safeZoneSize, safeZoneSize, {
+					fit: 'contain',
+					background: { r: 0, g: 0, b: 0, alpha: 1 }
 				})
 				.extend({
 					top: padding,
@@ -37,16 +37,16 @@ async function processImage(inputPath, outputDir) {
 				.toFile(outputPath);
 		} else {
 			await sharp(inputPath)
-				.resize(size, size, { 
-					fit: 'contain', 
-					background: { r: 0, g: 0, b: 0, alpha: 0 } 
+				.resize(size, size, {
+					fit: 'contain',
+					background: { r: 0, g: 0, b: 0, alpha: 0 }
 				})
 				.toFile(outputPath);
 		}
-		
+
 		console.log(`✅ Created ${name} (${size}x${size}${maskable ? ', maskable' : ''})`);
 	}
-	
+
 	console.log('\n🎉 所有 PWA 圖標已成功生成！');
 }
 
