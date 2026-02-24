@@ -1,7 +1,7 @@
-import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { games, gamePlayers } from '$lib/server/db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { gamePlayers, games } from '$lib/server/db/schema';
+import { and, eq, isNull } from 'drizzle-orm';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// 未登入用戶可以看到首頁（SEO 友好）

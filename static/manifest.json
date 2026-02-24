@@ -1,0 +1,65 @@
+{
+	"name": "古董局中局非官方APP",
+	"short_name": "古董局",
+	"description": "古董局中局非官方APP - 傳承千年智慧，品鑑古董真偽",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#000000",
+	"theme_color": "#000000",
+	"orientation": "portrait-primary",
+	"icons": [
+		{
+			"src": "/pwa-icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/pwa-icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/pwa-icon-maskable-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "maskable"
+		},
+		{
+			"src": "/pwa-icon-maskable-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	],
+	"screenshots": [
+		{
+			"src": "/screenshot-mobile.png",
+			"sizes": "390x844",
+			"type": "image/png",
+			"form_factor": "narrow"
+		},
+		{
+			"src": "/screenshot-desktop.png",
+			"sizes": "1920x1080",
+			"type": "image/png",
+			"form_factor": "wide"
+		}
+	],
+	"categories": ["games", "entertainment"],
+	"shortcuts": [
+		{
+			"name": "開始遊戲",
+			"short_name": "開始",
+			"description": "快速進入遊戲大廳",
+			"url": "/room",
+			"icons": [
+				{
+					"src": "/pwa-icon-192.png",
+					"sizes": "192x192"
+				}
+			]
+		}
+	]
+}

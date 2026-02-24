@@ -1,9 +1,10 @@
 import { json } from '@sveltejs/kit';
-import type { User, Game, GamePlayer, GameRound, Role } from './db/schema';
+import { and, desc, eq } from 'drizzle-orm';
 import { getUserFromJWT, verifyJWTWithError } from './auth';
 import { db } from './db';
-import { games, gamePlayers, gameRounds, roles } from './db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import type { Game, GamePlayer, GameRound, Role, User } from './db/schema';
+import { gamePlayers, gameRounds, games, roles, user as userTable } from './db/schema';
+import { lucia } from './lucia';
 
 // ==================== 類型定義 ====================
 
@@ -151,11 +152,36 @@ function validateGameStatus(
 
 /**
  * 統一的身份驗證函數
+ * 優先驗證 Lucia session cookie（auth_session），其次驗證 JWT Bearer token 或 jwt cookie
  */
 export async function verifyAuthToken(request: Request): Promise<AuthResult> {
+	// 優先：檢查 Lucia session cookie（auth_session）
+	try {
+		const cookieHeader = request.headers.get('cookie') || '';
+		const cookies = cookieHeader.split(';').map((c) => c.trim());
+		const sessionCookieName = lucia.sessionCookieName;
+		const sessionEntry = cookies.find((c) => c.startsWith(`${sessionCookieName}=`));
+		if (sessionEntry) {
+			const sessionId = sessionEntry.substring(sessionCookieName.length + 1);
+			const { session, user: luciaUser } = await lucia.validateSession(sessionId);
+			if (session && luciaUser) {
+				const userId = Number(luciaUser.id);
+				const [fullUser] = await db
+					.select()
+					.from(userTable)
+					.where(eq(userTable.id, userId))
+					.limit(1);
+				if (fullUser) return { user: fullUser };
+			}
+		}
+	} catch {
+		// Lucia 驗證失敗，繼續 JWT fallback
+	}
+
+	// Fallback：JWT Bearer token 或 jwt cookie
 	const token = extractToken(request);
 
-	if (!token) {
+	if (!token || token === 'null' || token === 'undefined') {
 		return { error: ErrorResponses.needAuth() };
 	}
 

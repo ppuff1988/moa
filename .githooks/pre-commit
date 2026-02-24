@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+
+# Pre-commit hook for code quality checks
+# 執行程式碼品質檢查
+
+node scripts/pre-commit-checks.js

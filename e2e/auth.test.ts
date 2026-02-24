@@ -3,16 +3,16 @@
  * 測試用戶註冊、登入、登出等認證相關功能
  */
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
 	TEST_USERS,
-	loginUser,
-	logoutUser,
+	cleanupTestData,
 	ensureLoggedIn,
-	expectLoginPage,
-	expectHomePage,
 	expectErrorMessage,
-	cleanupTestData
+	expectHomePage,
+	expectLoginPage,
+	loginUser,
+	logoutUser
 } from './helpers';
 
 test.describe('用戶認證', () => {
@@ -216,9 +216,15 @@ test.describe('用戶認證', () => {
 			// 應該在登入頁
 			await expectLoginPage(page);
 
-			// 嘗試訪問首頁應該重定向到登入頁
+			// 訪問首頁應該顯示未登入狀態（首頁是公開的）
 			await page.goto('/');
-			await expectLoginPage(page);
+
+			// 應該看到 Landing Page 的註冊/登入按鈕
+			await expect(page.locator('a[href="/auth/register"]').first()).toBeVisible();
+			await expect(page.locator('a[href="/auth/login"]').first()).toBeVisible();
+
+			// 不應該看到已登入用戶才有的元素
+			await expect(page.locator('text=創建房間')).not.toBeVisible();
 		});
 	});
 
@@ -237,9 +243,22 @@ test.describe('用戶認證', () => {
 			await expectHomePage(page);
 		});
 
-		test('未登入用戶訪問首頁應該重定向到登入頁', async ({ page }) => {
+		test('未登入用戶訪問首頁應該重定向到登入頁', async ({ page, context }) => {
+			// 確保清除所有會話
+			await context.clearCookies();
+			await page.evaluate(() => {
+				localStorage.clear();
+				sessionStorage.clear();
+			});
+
 			await page.goto('/');
-			await expectLoginPage(page);
+
+			// 應該看到 Landing Page 的註冊/登入按鈕
+			await expect(page.locator('a[href="/auth/register"]').first()).toBeVisible();
+			await expect(page.locator('a[href="/auth/login"]').first()).toBeVisible();
+
+			// 不應該看到已登入用戶才有的元素
+			await expect(page.locator('text=創建房間')).not.toBeVisible();
 		});
 
 		test('已登入用戶訪問登入頁應該重定向到首頁', async ({ page }) => {

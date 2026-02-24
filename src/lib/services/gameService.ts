@@ -1,8 +1,7 @@
 // Game API service for all game-related API calls
-import { getJWTToken } from '$lib/utils/jwt';
 import { goto } from '$app/navigation';
 import { addNotification } from '$lib/stores/notifications';
-import type { BeastHead, SkillActions, PerformedAction } from '$lib/types/game';
+import type { BeastHead, PerformedAction, SkillActions } from '$lib/types/game';
 
 export class GameService {
 	private roomName: string;
@@ -11,12 +10,12 @@ export class GameService {
 		this.roomName = roomName;
 	}
 
-	private getHeaders() {
-		const token = getJWTToken();
-		return {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		};
+	private getHeaders(): Record<string, string> {
+		return { 'Content-Type': 'application/json' };
+	}
+
+	private getReadHeaders(): Record<string, string> {
+		return {};
 	}
 
 	private async handleResponse(response: Response) {
@@ -44,7 +43,8 @@ export class GameService {
 
 	async fetchArtifacts(): Promise<BeastHead[]> {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/artifacts`, {
-			headers: { Authorization: `Bearer ${getJWTToken()}` }
+			credentials: 'include',
+			headers: this.getReadHeaders()
 		});
 
 		await this.handleResponse(response);
@@ -63,7 +63,8 @@ export class GameService {
 		canAction: boolean;
 	}> {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/my-role`, {
-			headers: { Authorization: `Bearer ${getJWTToken()}` }
+			credentials: 'include',
+			headers: this.getReadHeaders()
 		});
 
 		await this.handleResponse(response);
@@ -82,7 +83,8 @@ export class GameService {
 
 	async updatePlayersAndRound() {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/players`, {
-			headers: { Authorization: `Bearer ${getJWTToken()}` }
+			credentials: 'include',
+			headers: this.getReadHeaders()
 		});
 
 		await this.handleResponse(response);
@@ -95,7 +97,8 @@ export class GameService {
 
 	async fetchRoundStatus() {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/round-status`, {
-			headers: { Authorization: `Bearer ${getJWTToken()}` }
+			credentials: 'include',
+			headers: this.getReadHeaders()
 		});
 
 		await this.handleResponse(response);
@@ -111,6 +114,7 @@ export class GameService {
 			`/api/room/${encodeURIComponent(this.roomName)}/identify-artifact`,
 			{
 				method: 'POST',
+				credentials: 'include',
 				headers: this.getHeaders(),
 				body: JSON.stringify({ artifactName })
 			}
@@ -125,6 +129,7 @@ export class GameService {
 	async identifyPlayer(targetPlayerId: number) {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/identify-player`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders(),
 			body: JSON.stringify({ targetPlayerId })
 		});
@@ -138,6 +143,7 @@ export class GameService {
 	async blockArtifact(artifactId: number) {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/block-artifact`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders(),
 			body: JSON.stringify({ artifactId })
 		});
@@ -151,6 +157,7 @@ export class GameService {
 	async attackPlayer(targetPlayerId: number) {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/attack-player`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders(),
 			body: JSON.stringify({ targetPlayerId })
 		});
@@ -164,6 +171,7 @@ export class GameService {
 	async swapArtifacts() {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/swap-artifacts`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders()
 		});
 
@@ -176,6 +184,7 @@ export class GameService {
 	async assignNextPlayer(nextPlayerId: number) {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/next-player`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders(),
 			body: JSON.stringify({ nextPlayerId })
 		});
@@ -191,6 +200,7 @@ export class GameService {
 			`/api/room/${encodeURIComponent(this.roomName)}/start-discussion`,
 			{
 				method: 'POST',
+				credentials: 'include',
 				headers: this.getHeaders()
 			}
 		);
@@ -204,6 +214,7 @@ export class GameService {
 	async startVoting() {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/start-voting`, {
 			method: 'POST',
+			credentials: 'include',
 			headers: this.getHeaders()
 		});
 
@@ -215,7 +226,8 @@ export class GameService {
 
 	async fetchFinalResult() {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/final-result`, {
-			headers: { Authorization: `Bearer ${getJWTToken()}` }
+			credentials: 'include',
+			headers: this.getReadHeaders()
 		});
 
 		await this.handleResponse(response);

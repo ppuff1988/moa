@@ -40,13 +40,12 @@
 		errorMessage = '';
 
 		try {
-			const token = localStorage.getItem('jwt_token');
 			const response = await fetch('/api/user/profile', {
 				method: 'PUT',
 				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${token}`
+					'Content-Type': 'application/json'
 				},
+				credentials: 'include',
 				body: JSON.stringify({
 					nickname: localNickname.trim(),
 					avatar: localAvatar

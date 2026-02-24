@@ -3,7 +3,7 @@
  * 包含所有測試檔案共用的工具函數，避免重複程式碼
  */
 
-import { expect, type Page, type BrowserContext } from '@playwright/test';
+import { expect, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * 測試用戶類型
@@ -126,7 +126,7 @@ export async function registerUser(
 }
 
 /**
- * 登入用戶
+ * 登入用戶（使用原生表單提交）
  */
 export async function loginUser(page: Page, username: string, password: string) {
 	await page.goto('/auth/login');
@@ -134,7 +134,8 @@ export async function loginUser(page: Page, username: string, password: string) 
 	await page.fill('input#email', username);
 	await page.fill('input#password', password);
 	await page.click('button[type="submit"]');
-	await page.waitForURL('/');
+	await page.waitForURL('/', { timeout: 10000 });
+	await page.waitForLoadState('networkidle');
 }
 
 /**
@@ -246,17 +247,10 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 	await page.fill('input#email', user.username);
 	await page.fill('input#password', user.password);
 
-	// 點擊提交並等待導航
-	await Promise.all([
-		page.waitForResponse(
-			(resp) => resp.url().includes('/api/auth/login') && resp.status() === 200,
-			{ timeout: 10000 }
-		),
-		page.click('button[type="submit"]')
-	]);
-
-	// 等待導航完成
+	// 點擊提交並等待導航（原生表單提交，POST → 303 重定向到 /）
+	await page.click('button[type="submit"]');
 	await page.waitForURL('/', { timeout: 15000 });
+	await page.waitForLoadState('networkidle');
 
 	// 確保首頁元素已載入
 	await page.locator('button:has-text("創建房間")').waitFor({ timeout: 10000 });
@@ -266,221 +260,136 @@ export async function registerAndLogin(page: Page, user: TestUser) {
  * 登出用戶
  */
 export async function logoutUser(page: Page) {
-	// 點擊登出按鈕（可能在導航欄或用戶菜單中）
-	const logoutButton = page.locator('button:has-text("登出"), a:has-text("登出")');
-	if (await logoutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-		await logoutButton.click();
-		await page.waitForURL('/auth/login', { timeout: 5000 });
+	try {
+		// 調用登出 API 以無效化 session
+		await page.request.post('/api/auth/logout', {});
+	} catch (err) {
+		console.warn('登出 API 呼叫失敗，繼續清除本地狀態:', err);
 	}
 
-	// 手動清除 JWT token 和相關 cookies，確保完全登出
-	await page.evaluate(() => {
+	// 手動清除 JWT token、相關 cookies 及 Service Worker 快取
+	await page.evaluate(async () => {
 		localStorage.removeItem('jwt_token');
+		sessionStorage.clear();
 		// 清除所有 cookies
 		document.cookie.split(';').forEach((c) => {
 			document.cookie = c
 				.replace(/^ +/, '')
 				.replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
 		});
+		// 取消 Service Worker 註冊以避免快取干擾
+		if ('serviceWorker' in navigator) {
+			const registrations = await navigator.serviceWorker.getRegistrations();
+			for (const registration of registrations) {
+				await registration.unregister();
+			}
+		}
+		// 清除所有 Cache Storage
+		if ('caches' in window) {
+			const cacheNames = await caches.keys();
+			for (const cacheName of cacheNames) {
+				await caches.delete(cacheName);
+			}
+		}
 	});
 
+	// 使用 Playwright 的 API 清除上下文中的所有 cookies
+	await page.context().clearCookies();
+
 	// 確保在登入頁
-	await page.goto('/auth/login');
+	await page.goto('/auth/login', { waitUntil: 'domcontentloaded' });
 	await page.waitForLoadState('networkidle');
 }
 
 /**
- * 確保用戶已登入（如果未登入則註冊並登入）
+ * 確保用戶已登入（如果未登入則透過 API 登入，若用戶不存在則自動建立）
+ *
+ * 使用 API 登入而非表單提交，避免原生表單 303 重定向的時序問題。
+ * API 登入會在瀏覽器上下文中設定 auth_session cookie，
+ * 後續的 page.goto('/') 即可正常載入已登入的首頁。
  */
 export async function ensureLoggedIn(page: Page, user: TestUser) {
-	// 嘗試訪問首頁，如果重定向到登入頁則需要登入
-	await page.goto('/');
-	await page.waitForLoadState('domcontentloaded');
-
-	// 等待一下讓頁面完全載入
-	await page.waitForTimeout(1000);
-
-	// 檢查是否在登入頁
-	const currentUrl = page.url();
-	if (currentUrl.includes('/auth/login')) {
-		// 等待登入表單出現
-		await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
-
-		// 嘗試登入
-		try {
-			await page.fill('input#email', user.username);
-			await page.fill('input#password', user.password);
-
-			// 點擊提交並等待響應和導航
-			const [response] = await Promise.all([
-				page.waitForResponse((resp) => resp.url().includes('/api/auth/login'), { timeout: 10000 }),
-				page.click('button[type="submit"]')
-			]);
-
-			// 如果是 403 且需要驗證，則驗證後重試
-			if (response.status() === 403) {
-				const responseData = await response.json();
-				if (responseData.requiresVerification) {
-					console.log('用戶未驗證，正在驗證...');
-					await page.request.post('http://localhost:5173/api/test/verify-user', {
-						data: { email: user.username }
-					});
-
-					// 重新登入
-					await page.goto('/auth/login');
-					await page.waitForLoadState('domcontentloaded');
-					await page.waitForSelector('input#email', { state: 'visible', timeout: 5000 });
-					await page.fill('input#email', user.username);
-					await page.fill('input#password', user.password);
-
-					await Promise.all([
-						page.waitForURL('/', { timeout: 15000 }),
-						page.click('button[type="submit"]')
-					]);
-				} else {
-					throw new Error(`登入失敗: ${responseData.message || '未知錯誤'}`);
-				}
-			} else if (response.status() === 200) {
-				// 等待頁面跳轉到首頁
-				await page.waitForURL('/', { timeout: 15000 });
-			} else if (response.status() === 401) {
-				// 用戶不存在或密碼錯誤，嘗試註冊
-				throw new Error('USER_NOT_FOUND');
-			} else {
-				const responseData = await response.json();
-				throw new Error(`登入失敗 (${response.status()}): ${responseData.message || '未知錯誤'}`);
-			}
-
-			// 等待首頁載入完成
-			await page.waitForLoadState('networkidle', { timeout: 10000 });
-			await page.waitForTimeout(500);
-		} catch (loginError) {
-			// 登入失敗，可能是用戶不存在，嘗試註冊
-			console.log('登入失敗，嘗試註冊新用戶:', loginError);
-
-			try {
-				await page.goto('/auth/register');
-				await page.waitForLoadState('domcontentloaded');
-				await page.waitForSelector('input#nickname', { state: 'visible', timeout: 5000 });
-				await page.fill('input#nickname', user.nickname);
-				await page.fill('input#email', user.username);
-				await page.fill('input#password', user.password);
-				await page.fill('input#confirmPassword', user.password);
-
-				// 勾選同意條款
-				await page.check('input[type="checkbox"]');
-
-				await Promise.all([
-					page.waitForResponse((resp) => resp.url().includes('/api/auth/register'), {
-						timeout: 10000
-					}),
-					page.click('button[type="submit"]')
-				]);
-
-				// 等待註冊完成
-				await page.waitForTimeout(2000); // 增加等待時間
-
-				// 自動驗證
-				console.log('註冊成功，正在驗證用戶...');
-				const verifyResponse = await page.request.post(
-					'http://localhost:5173/api/test/verify-user',
-					{
-						data: { email: user.username }
-					}
-				);
-
-				if (!verifyResponse.ok()) {
-					console.error('驗證失敗:', await verifyResponse.json().catch(() => ({})));
-				}
-				console.log('用戶驗證成功');
-
-				// 等待驗證完成
-				await page.waitForTimeout(1000);
-
-				// 登入
-				await page.goto('/auth/login');
-				await page.waitForLoadState('domcontentloaded');
-
-				// 等待並確保輸入框可見且可互動
-				await page.waitForSelector('input#email', { state: 'visible', timeout: 10000 });
-				await page.waitForTimeout(500); // 給予 onMount 檢查的時間
-
-				await page.fill('input#email', user.username);
-				await page.fill('input#password', user.password);
-
-				// 點擊提交並等待導航
-				const submitButton = page.locator('button[type="submit"]');
-				await submitButton.click();
-
-				// 等待導航到首頁
-				try {
-					await page.waitForURL('/', { timeout: 20000, waitUntil: 'domcontentloaded' });
-				} catch (navError) {
-					console.error('導航到首頁失敗:', navError);
-					console.log('當前 URL:', page.url());
-					await page.screenshot({ path: `test-results/navigation-failed-${Date.now()}.png` });
-					throw navError;
-				}
-
-				// 等待首頁載入完成
-				await page.waitForLoadState('networkidle', { timeout: 15000 });
-				await page.waitForTimeout(1000);
-			} catch (registerError) {
-				console.error('註冊和登入都失敗:', registerError);
-				// 拍張截圖以便調試
-				await page.screenshot({ path: `test-results/ensure-logged-in-failed-${Date.now()}.png` });
-				throw registerError;
-			}
-		}
-	}
-
-	// 確認在首頁並等待關鍵元素（ActionButton 的文字在 button 標籤內）
-	// 先確保 URL 是首頁
-	if (!page.url().includes('localhost:5173/') || page.url().includes('/auth/')) {
-		console.log('當前不在首頁，正在導航...');
-		await page.goto('/');
-		await page.waitForLoadState('networkidle', { timeout: 10000 });
-		await page.waitForTimeout(1000);
-	}
-
-	// 等待首頁的載入狀態結束
-	const loadingSpinner = page.locator('text=載入中');
-	const isLoadingVisible = await loadingSpinner.isVisible({ timeout: 1000 }).catch(() => false);
-	if (isLoadingVisible) {
-		await loadingSpinner.waitFor({ state: 'hidden', timeout: 10000 });
-	}
-
-	// 等待按鈕出現
-	await page.waitForSelector('button.action-btn, button:has-text("離開房間")', {
-		state: 'visible',
-		timeout: 15000
+	// Step 1: 確保用戶存在並已驗證
+	const verifyResp = await page.request.post('http://localhost:5173/api/test/verify-user', {
+		data: { email: user.username }
 	});
 
-	// 檢查用戶是否在遊戲中（如果有「離開房間」按鈕）
-	const hasLeaveButton = await page
-		.locator('button:has-text("離開房間")')
-		.isVisible({ timeout: 1000 })
-		.catch(() => false);
+	if (verifyResp.status() === 404) {
+		// 用戶不存在，透過測試 API 建立
+		console.log('用戶不存在，正在建立:', user.username);
+		await createTestUsersInDatabase(page, [user]);
+	}
+
+	// Step 2: 清除既有 session 以避免衝突
+	await page.context().clearCookies();
+
+	// Step 3: 透過 API 登入（會在瀏覽器上下文中設定 auth_session cookie）
+	let loginResp = await page.request.post('http://localhost:5173/api/auth/login', {
+		data: { email: user.username, password: user.password }
+	});
+
+	if (loginResp.status() === 403) {
+		// Email 未驗證，先驗證再重試
+		console.log('用戶未驗證，正在驗證:', user.username);
+		await page.request.post('http://localhost:5173/api/test/verify-user', {
+			data: { email: user.username }
+		});
+		loginResp = await page.request.post('http://localhost:5173/api/auth/login', {
+			data: { email: user.username, password: user.password }
+		});
+	}
+
+	if (loginResp.status() !== 200) {
+		throw new Error(`登入失敗: ${loginResp.status()} ${await loginResp.text()}`);
+	}
+
+	// Step 3.5: 將 JWT token 存入 localStorage 及 cookie（socket 連線需要）
+	try {
+		const loginData = await loginResp.json();
+		if (loginData.token) {
+			// 先導航到有效頁面再設定 localStorage
+			await page.goto('/', { waitUntil: 'domcontentloaded' });
+			await page.evaluate((token: string) => {
+				localStorage.setItem('jwt_token', token);
+				document.cookie = `jwt=${token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+			}, loginData.token);
+		}
+	} catch {
+		// 如果 JSON 解析失敗，忽略（auth_session cookie 仍然有效）
+	}
+
+	// Step 4: 導航到首頁並確認已登入狀態
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	// 等待已登入的 UI 出現
+	await page
+		.locator('button:has-text("創建房間"), button:has-text("回到房間")')
+		.first()
+		.waitFor({ state: 'visible', timeout: 10000 });
+
+	console.log('✓ 已確認登入狀態:', user.username);
+
+	// 處理用戶可能在房間中的情況（顯示「回到房間」+「離開房間」）
+	const leaveButton = page.locator('button:has-text("離開房間")');
+	const hasLeaveButton = await leaveButton.isVisible().catch(() => false);
 
 	if (hasLeaveButton) {
 		console.log('用戶在房間中，正在離開...');
-		// 用戶在遊戲中，先離開房間
-		await page.click('button:has-text("離開房間")');
+		await leaveButton.click();
 
-		// 等待確認對話框出現並確認
+		// 等待確認對話框出現
 		const confirmButton = page.locator('button:has-text("確認離開"), button:has-text("確定")');
-		const isConfirmVisible = await confirmButton.isVisible({ timeout: 2000 }).catch(() => false);
-
-		if (isConfirmVisible) {
-			await confirmButton.click();
+		try {
+			await confirmButton.first().waitFor({ state: 'visible', timeout: 3000 });
+			await confirmButton.first().click();
 			await page.waitForTimeout(1000);
+		} catch {
+			// 如果沒有確認對話框，可能已直接離開
 		}
 
-		// 等待回到首頁並確保顯示創建房間按鈕
-		await page.waitForSelector('button.action-btn', {
-			state: 'visible',
-			timeout: 10000
-		});
+		// 等待回到首頁顯示「創建房間」
+		await page.locator('button:has-text("創建房間")').waitFor({ state: 'visible', timeout: 10000 });
 		console.log('已成功離開房間');
 	}
 }
@@ -494,7 +403,7 @@ export async function expectLoginPage(page: Page) {
 }
 
 /**
- * 期望當前頁面是首頁
+ * 期望當前頁面是首頁（已登入狀態）
  */
 export async function expectHomePage(page: Page) {
 	// 等待 URL 變為首頁
@@ -503,17 +412,17 @@ export async function expectHomePage(page: Page) {
 	// 等待頁面載入完成
 	await page.waitForLoadState('networkidle', { timeout: 10000 });
 
-	// 檢查首頁的特定元素（創建房間或回到房間按鈕）
-	const hasCreateButton = await page
-		.locator('button:has-text("創建房間"), button:has-text("回到房間")')
-		.first()
-		.isVisible({ timeout: 10000 })
-		.catch(() => false);
-
-	if (!hasCreateButton) {
-		// 如果找不到按鈕，打印頁面內容以便調試
+	// 等待已登入 UI 中的「創建房間」或「回到房間」按鈕出現
+	try {
+		await page
+			.locator('button:has-text("創建房間"), button:has-text("回到房間")')
+			.first()
+			.waitFor({ state: 'visible', timeout: 10000 });
+	} catch {
+		// 打印頁面內容以便調試
 		const bodyText = await page.locator('body').textContent();
 		console.log('頁面內容:', bodyText?.substring(0, 500));
+		console.log('當前 URL:', page.url());
 		throw new Error('首頁載入失敗：找不到創建房間或回到房間按鈕');
 	}
 
@@ -614,8 +523,8 @@ export async function cleanupTestData(page: Page) {
 		// 先導航到一個有效的頁面，避免 localStorage SecurityError
 		await page.goto('/auth/login', { waitUntil: 'domcontentloaded' });
 
-		// 清除所有存儲
-		await page.evaluate(() => {
+		// 清除所有存儲及 Service Worker 快取
+		await page.evaluate(async () => {
 			localStorage.clear();
 			sessionStorage.clear();
 			// 清除所有 cookies
@@ -624,6 +533,20 @@ export async function cleanupTestData(page: Page) {
 					.replace(/^ +/, '')
 					.replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
 			});
+			// 取消 Service Worker 註冊
+			if ('serviceWorker' in navigator) {
+				const registrations = await navigator.serviceWorker.getRegistrations();
+				for (const registration of registrations) {
+					await registration.unregister();
+				}
+			}
+			// 清除 Cache Storage
+			if ('caches' in window) {
+				const cacheNames = await caches.keys();
+				for (const cacheName of cacheNames) {
+					await caches.delete(cacheName);
+				}
+			}
 		});
 
 		// 使用 Playwright 的 API 清除上下文中的所有 cookies
@@ -660,7 +583,7 @@ export async function expectErrorMessage(page: Page, message: string) {
 	await errorLocator.first().waitFor({ state: 'visible', timeout: 10000 });
 
 	// 檢查錯誤訊息包含預期文本
-	await expect(errorLocator).toContainText(message);
+	await expect(errorLocator.first()).toContainText(message);
 }
 
 /**

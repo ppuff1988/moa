@@ -2,7 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import { getJWTToken } from './jwt';
 
 let socket: Socket | null = null;
-let isInitialized = false; // 追蹤是否已經初始化過監聽器
+let isInitialized = false; // 追蹤是否已經初始化過監聯器
 
 export function initSocket(): Socket {
 	// 如果已經連接，直接返回（不重新初始化）
@@ -19,20 +19,20 @@ export function initSocket(): Socket {
 	}
 
 	const token = getJWTToken();
-	if (!token) {
-		throw new Error('未找到身份token');
-	}
 
 	socket = io({
 		path: '/socket.io/',
 		auth: {
-			token
+			// 傳遞 JWT token（如果有的話），伺服器端也支援從 cookie 驗證
+			token: token ?? undefined
 		},
 		autoConnect: true,
 		reconnection: true,
 		reconnectionDelay: 1000,
 		reconnectionDelayMax: 5000,
 		reconnectionAttempts: 5,
+		// 確保 cookie 隨 handshake 一起傳送（用於 Lucia session / jwt cookie fallback）
+		withCredentials: true,
 		// 在開發環境中使用 polling，避免需要自定義服務器
 		transports: ['polling', 'websocket']
 	});

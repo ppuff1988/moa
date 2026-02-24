@@ -1,5 +1,4 @@
 import { goto } from '$app/navigation';
-import { getJWTToken } from './jwt';
 
 /**
  * 離開房間的通用函數
@@ -12,17 +11,9 @@ export async function leaveRoom(roomName: string): Promise<boolean> {
 	}
 
 	try {
-		const token = getJWTToken();
-		if (!token) {
-			alert('請先登入');
-			return false;
-		}
-
 		const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/leave`, {
 			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${token}`
-			}
+			credentials: 'include'
 		});
 
 		if (response.ok) {

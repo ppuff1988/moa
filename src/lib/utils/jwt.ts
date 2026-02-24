@@ -60,9 +60,10 @@ export async function logout(): Promise<void> {
 		console.error('登出錯誤:', error);
 	} finally {
 		removeJWTToken();
-		// 清除所有 localStorage
+		// 清除認證相關的 localStorage 項目（向下相容）
 		if (typeof window !== 'undefined') {
-			localStorage.clear();
+			localStorage.removeItem('jwt_token');
+			localStorage.removeItem('moa_jwt_token');
 			// 使用 location.replace 而不是 location.href，這樣可以防止使用者按返回鈕回到登入狀態
 			// 同時添加時間戳確保強制重新載入
 			window.location.replace('/auth/login?t=' + Date.now());

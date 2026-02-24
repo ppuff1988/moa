@@ -5,9 +5,10 @@ import { user } from '$lib/server/db/schema';
 import { verifyPassword } from '$lib/server/password';
 import { generateUserJWT, generateVerificationToken } from '$lib/server/auth';
 import { queueEmailVerification } from '$lib/server/email';
+import { lucia } from '$lib/server/lucia';
 import { eq } from 'drizzle-orm';
 
-export const POST: RequestHandler = async ({ request, url }) => {
+export const POST: RequestHandler = async ({ request, url, cookies }) => {
 	try {
 		const { email, password } = await request.json();
 
@@ -72,6 +73,16 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			);
 		}
 
+		// 創建 Lucia session
+		const session = await lucia.createSession(String(userData.id), {});
+		const sessionCookie = lucia.createSessionCookie(session.id);
+
+		cookies.set(sessionCookie.name, sessionCookie.value, {
+			...sessionCookie.attributes,
+			path: '/'
+		});
+
+		// 同時生成 JWT token（向下相容）
 		const token = generateUserJWT(userData);
 
 		return json(

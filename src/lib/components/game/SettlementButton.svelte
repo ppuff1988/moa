@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getJWTToken } from '$lib/utils/jwt';
 	import { addNotification } from '$lib/stores/notifications';
 
 	export let roomName: string;
@@ -12,19 +11,14 @@
 		if (!isHost || currentRound !== 3) return;
 
 		isCalculating = true;
-		const token = getJWTToken();
-		if (!token) {
-			isCalculating = false;
-			return;
-		}
 
 		try {
 			const response = await fetch(
 				`/api/room/${encodeURIComponent(roomName)}/calculate-settlement`,
 				{
 					method: 'POST',
+					credentials: 'include',
 					headers: {
-						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json'
 					}
 				}

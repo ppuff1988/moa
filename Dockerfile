@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 RUN npm run build
 
 # Production stage - Main App
-FROM node:22-alpine AS app
+FROM node:24-alpine AS app
 
 WORKDIR /app
 
@@ -47,13 +47,13 @@ EXPOSE 5173
 
 # Health check (use wget instead of curl to avoid QEMU ARM64 build issues)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
+	CMD wget --no-verbose --tries=1 --spider http://localhost:5173/api/health || exit 1
 
 # Start the application
 CMD ["node", "scripts/production-server.js"]
 
 # Worker stage - Email Worker (輕量化)
-FROM node:22-alpine AS worker
+FROM node:24-alpine AS worker
 
 WORKDIR /app
 
@@ -63,7 +63,7 @@ COPY tsconfig.json ./
 
 # 只安裝 worker 需要的依賴（不包含前端相關）
 RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit && \
-    npm install -g tsx
+	npm install -g tsx
 
 # 只複製 worker 需要的文件
 COPY scripts/email-worker.ts ./scripts/

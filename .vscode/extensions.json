@@ -1,0 +1,33 @@
+{
+	"recommendations": [
+		// Svelte/Frontend 開發
+		"svelte.svelte-vscode",
+		"bradlc.vscode-tailwindcss",
+
+		// TypeScript
+		"yoavbls.pretty-ts-errors",
+
+		// 程式碼品質
+		"esbenp.prettier-vscode",
+		"dbaeumer.vscode-eslint",
+
+		// 測試
+		"vitest.explorer",
+		"ms-playwright.playwright",
+
+		// Docker
+		"ms-azuretools.vscode-docker",
+
+		// 資料庫
+		"mtxr.sqltools",
+		"mtxr.sqltools-driver-pg",
+
+		// Git
+		"eamodio.gitlens",
+
+		// 其他工具
+		"yzhang.markdown-all-in-one",
+		"editorconfig.editorconfig",
+		"streetsidesoftware.code-spell-checker"
+	]
+}

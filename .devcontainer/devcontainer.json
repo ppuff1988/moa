@@ -1,0 +1,155 @@
+{
+	"name": "MOA 遊戲開發環境",
+	"dockerComposeFile": "docker-compose.devcontainer.yml",
+	"service": "app",
+	"workspaceFolder": "/workspace",
+
+	// 容器建立後要執行的指令
+	"postCreateCommand": "npm install && npm run db:migrate",
+
+	// 容器啟動後要執行的指令
+	"postStartCommand": "git config --global --add safe.directory /workspace && git config --global core.autocrlf input",
+
+	// 初始化指令
+	"initializeCommand": "docker volume create moa_devcontainer_node_modules 2>nul || exit 0",
+
+	// VS Code 設定
+	"customizations": {
+		"vscode": {
+			// 推薦的擴充套件
+			"extensions": [
+				// Svelte
+				"svelte.svelte-vscode",
+
+				// TypeScript & JavaScript
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+
+				// Database
+				"mtxr.sqltools",
+				"mtxr.sqltools-driver-pg",
+
+				// Testing
+				"vitest.explorer",
+				"ms-playwright.playwright",
+
+				// Docker
+				"ms-azuretools.vscode-docker",
+
+				// Git
+				"eamodio.gitlens",
+
+				// Utility
+				"christian-kohler.path-intellisense",
+				"usernamehw.errorlens",
+				"wayou.vscode-todo-highlight",
+				"gruntfuggly.todo-tree",
+
+				"github.copilot-chat"
+			],
+
+			// 編輯器設定
+			"settings": {
+				"editor.formatOnSave": true,
+				"editor.codeActionsOnSave": {
+					"source.fixAll.eslint": "explicit"
+				},
+				"editor.tabSize": 2,
+				"editor.insertSpaces": false,
+				"editor.detectIndentation": false,
+
+				// Svelte 設定
+				"[svelte]": {
+					"editor.defaultFormatter": "svelte.svelte-vscode"
+				},
+
+				// TypeScript 設定
+				"typescript.tsdk": "node_modules/typescript/lib",
+				"typescript.enablePromptUseWorkspaceTsdk": true,
+
+				// ESLint 設定
+				"eslint.validate": ["javascript", "typescript", "svelte"],
+
+				// Prettier 設定
+				"prettier.configPath": ".prettierrc",
+
+				// 檔案排除設定
+				"files.exclude": {
+					"**/.git": true,
+					"**/.svn": true,
+					"**/.hg": true,
+					"**/CVS": true,
+					"**/.DS_Store": true,
+					"**/node_modules": true,
+					"**/build": true,
+					"**/.svelte-kit": true
+				},
+
+				// 搜尋排除設定
+				"search.exclude": {
+					"**/node_modules": true,
+					"**/build": true,
+					"**/.svelte-kit": true,
+					"**/package-lock.json": true
+				},
+
+				// Terminal 設定
+				"terminal.integrated.defaultProfile.linux": "bash",
+
+				// Git 設定
+				"git.enableSmartCommit": true,
+				"git.confirmSync": false,
+
+				// SQLTools 設定
+				"sqltools.connections": [
+					{
+						"name": "MOA PostgreSQL",
+						"driver": "PostgreSQL",
+						"server": "db",
+						"port": 5432,
+						"database": "moa_db",
+						"username": "moa_user",
+						"password": "moa_pass"
+					}
+				]
+			}
+		}
+	},
+
+	// 轉發的連接埠
+	"forwardPorts": [
+		5173, // 應用程式
+		5432 // PostgreSQL
+	],
+
+	// 連接埠標籤
+	"portsAttributes": {
+		"5173": {
+			"label": "應用程式",
+			"onAutoForward": "notify"
+		},
+		"5432": {
+			"label": "PostgreSQL",
+			"onAutoForward": "silent"
+		}
+	},
+
+	// 容器功能
+	"features": {
+		"ghcr.io/devcontainers/features/git:1": {
+			"version": "latest"
+		}
+	},
+
+	// Mount 設定 - 提升效能
+	"mounts": [
+		// Node modules cache
+		"source=moa-node-modules,target=/workspace/node_modules,type=volume"
+	],
+
+	// 遠端使用者
+	"remoteUser": "node",
+
+	// 覆寫 Docker Compose 檔案中的指令
+	"overrideCommand": true
+}

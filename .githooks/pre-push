@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+
+# Pre-push hook for running tests
+# 執行測試
+
+node scripts/pre-push-checks.js

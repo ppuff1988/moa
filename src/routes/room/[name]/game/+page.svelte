@@ -1,32 +1,30 @@
 <script lang="ts">
-	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { onMount, onDestroy } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-	import { getJWTToken } from '$lib/utils/jwt';
-	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
+	import { page } from '$app/stores';
 	import { GameService } from '$lib/services/gameService';
 	import { createGameState } from '$lib/stores/gameState';
-	import { initSocket, disconnectSocket } from '$lib/utils/socket';
+	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
+	import { disconnectSocket, initSocket } from '$lib/utils/socket';
 	import type { Socket } from 'socket.io-client';
-
+	import { onDestroy, onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	// Components
-	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
-	import ActionSequence from '$lib/components/ui/ActionSequence.svelte';
-	import PlayerOrderDisplay from '$lib/components/player/PlayerOrderDisplay.svelte';
-	import ArtifactDisplay from '$lib/components/ui/ArtifactDisplay.svelte';
-	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
-	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
+	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
+	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
+	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
 	import GameHeader from '$lib/components/game/GameHeader.svelte';
+	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
 	import PhaseIndicator from '$lib/components/game/PhaseIndicator.svelte';
 	import SkillPhase from '$lib/components/game/SkillPhase.svelte';
-	import AssignPhase from '$lib/components/game/AssignPhase.svelte';
-	import IdentifyPlayerPhase from '$lib/components/game/IdentifyPlayerPhase.svelte';
-	import FinalResultPanel from '$lib/components/game/FinalResultPanel.svelte';
-	import BlockedActionModal from '$lib/components/game/BlockedActionModal.svelte';
+	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
+	import PlayerOrderDisplay from '$lib/components/player/PlayerOrderDisplay.svelte';
+	import ActionSequence from '$lib/components/ui/ActionSequence.svelte';
+	import ArtifactDisplay from '$lib/components/ui/ArtifactDisplay.svelte';
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
+	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
+	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 
-	import type { User, ActionedPlayer } from '$lib/types/game';
+	import type { ActionedPlayer, User } from '$lib/types/game';
 
 	// Game state
 	const gameState = createGameState();
@@ -169,6 +167,19 @@
 	async function fetchArtifacts() {
 		const artifacts = await gameService.fetchArtifacts();
 		if (artifacts.length > 0) {
+			// 對已鑑定的獸首，保留目前 store 中的 isGenuine 值，
+			// 避免伺服器回傳的原始值覆蓋交換後的鑑定結果
+			const currentHeads = $beastHeads;
+			if (currentHeads.length > 0) {
+				for (const artifact of artifacts) {
+					if ($identifiedArtifacts.includes(artifact.id)) {
+						const existing = currentHeads.find((b) => b.id === artifact.id);
+						if (existing) {
+							artifact.isGenuine = existing.isGenuine;
+						}
+					}
+				}
+			}
 			beastHeads.set(artifacts);
 		}
 	}
@@ -263,12 +274,9 @@
 	}
 
 	async function fetchTeammateInfo() {
-		const token = getJWTToken();
-		if (!token) return;
-
 		try {
 			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/teammate-info`, {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (response.ok) {
@@ -488,6 +496,19 @@
 					return [...heads];
 				});
 
+				// 記錄鑑定行動到 performedActions，確保頁面恢復時能保留正確的鑑定結果
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_artifact',
+						data: {
+							artifactName: `${beast.animal}首`,
+							artifactId: beastId,
+							result: data.result.isGenuine
+						}
+					}
+				]);
+
 				addNotification(
 					`你鑑定了${beast.animal}首，結果：${data.result.isGenuine ? '真品' : '贗品'}`,
 					data.result.isGenuine ? 'success' : 'info',
@@ -513,6 +534,20 @@
 			} else {
 				failedIdentifications.update((list) => [...list, beastId]);
 				usedSkills.update((s) => ({ ...s, checkArtifact: s.checkArtifact + 1 }));
+
+				// 記錄被封鎖的鑑定行動
+				performedActions.update((list) => [
+					...list,
+					{
+						type: 'identify_artifact',
+						data: {
+							artifactName: `${beast.animal}首`,
+							artifactId: beastId,
+							blocked: true
+						}
+					}
+				]);
+
 				addNotification(`${beast.animal}首無法鑑定`, 'warning', 3000);
 
 				if ($skillActions && $usedSkills.checkArtifact >= $skillActions.checkArtifact) {
@@ -834,17 +869,11 @@
 		// 立即初始化 gameService
 		gameService = new GameService(roomName);
 
-		// 檢查用戶是否已登入
-		const token = getJWTToken();
-		if (!token) {
-			// 未登入，重定向到登入頁
-			goto('/auth/login', { invalidateAll: true });
-			return;
-		}
+		// 檢查用戶是否已登入（使用 Lucia session cookie 驗證）
 
 		try {
 			const userResponse = await fetch('/api/user/profile', {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (userResponse.ok) {
@@ -855,7 +884,7 @@
 			}
 
 			const roomResponse = await fetch(`/api/room/${encodeURIComponent(roomName)}`, {
-				headers: { Authorization: `Bearer ${token}` }
+				credentials: 'include'
 			});
 
 			if (roomResponse.ok) {
@@ -934,6 +963,10 @@
 						// 重新獲取其他數據
 						await fetchArtifacts();
 						await updatePlayersAndRound();
+
+						// 重新套用鑑定狀態，避免 fetchArtifacts 覆蓋交換後的鑑定結果
+						restoreIdentifiedState();
+
 						addNotification('連線已恢復', 'success', 2000);
 					});
 
@@ -1124,10 +1157,13 @@
 			await fetchArtifacts();
 			await updatePlayersAndRound();
 			await fetchMyRole();
+
+			// 重新套用鑑定狀態，避免 fetchArtifacts 覆蓋交換後的鑑定結果
+			restoreIdentifiedState();
 		}
 	}
 
-	// 在 onMount 中註冊可見性變化監聽器
+	// 在 onMount 中註冊可見性變化監聯器
 	$effect(() => {
 		if (typeof document !== 'undefined' && !isLoading) {
 			document.addEventListener('visibilitychange', handleVisibilityChange);

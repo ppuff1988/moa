@@ -18,7 +18,7 @@ test.describe('忘記密碼流程', () => {
 	test('應該能夠完成完整的忘記密碼流程', async ({ page }) => {
 		// 1. 前往登入頁面
 		await page.goto('http://localhost:5173/auth/login');
-		await expect(page).toHaveTitle(/MOA/);
+		await expect(page).toHaveTitle(/古董局中局/);
 
 		// 2. 點擊忘記密碼連結
 		await page.click('text=忘記密碼');

@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// 確保 Playwright 使用正確的瀏覽器路徑
+process.env.PLAYWRIGHT_BROWSERS_PATH = '/workspace/.browsers';
+
 /**
  * Playwright E2E 測試配置
  */
@@ -28,7 +31,8 @@ export default defineConfig({
 		screenshot: 'on',
 		video: 'on',
 		navigationTimeout: 60000, // 60秒
-		actionTimeout: 30000 // 30秒
+		actionTimeout: 30000, // 30秒
+		serviceWorkers: 'block' // 封鎖 Service Worker 避免快取干擾 E2E 測試
 	},
 
 	projects: [
@@ -36,7 +40,10 @@ export default defineConfig({
 			name: 'chromium',
 			use: {
 				...devices['Desktop Chrome'],
-				headless: true // CI 上自動 headless
+				// 使用系統的 Chromium 而不是下載的版本
+				headless: true, // CI 上自動 headless
+				executablePath: '/usr/bin/chromium-browser',
+				launchArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
 			}
 		}
 	],
@@ -46,7 +53,7 @@ export default defineConfig({
 		: {
 				command: 'npm run dev',
 				url: 'http://localhost:5173',
-				reuseExistingServer: false,
+				reuseExistingServer: true,
 				timeout: 120000,
 				stdout: 'pipe',
 				stderr: 'pipe'
