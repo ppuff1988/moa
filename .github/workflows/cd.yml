@@ -127,14 +127,28 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # cloudflared 透過環境變數 TUNNEL_SERVICE_TOKEN_ID / TUNNEL_SERVICE_TOKEN_SECRET 自動認證
-          # 不在 ProxyCommand 中傳 CLI 旗標，避免多層 shell 解析破壞 token 值
           echo "🔍 cloudflared $(cloudflared --version 2>&1 | head -1)"
           echo "🔍 TUNNEL_SERVICE_TOKEN_ID 長度: ${#TUNNEL_SERVICE_TOKEN_ID}"
           echo "🔍 TUNNEL_SERVICE_TOKEN_SECRET 長度: ${#TUNNEL_SERVICE_TOKEN_SECRET}"
 
           KEY_PATH=~/.ssh/deploy_key
-          CF_PROXY="cloudflared access ssh --hostname %h"
+
+          # 建立 proxy wrapper script：
+          # cloudflared 的 urfave/cli 中 c.IsSet() 不偵測環境變數，
+          # 只對 CLI 旗標回傳 true。若 IsSet 為 false，service token headers
+          # 不會加入請求 → Access 回傳 302 → 瀏覽器 fallback。
+          # wrapper script 從繼承的環境變數讀取 token，轉為 CLI 旗標傳入，
+          # 同時避免 ProxyCommand 多層 shell 解析破壞 token 值。
+          PROXY_SCRIPT=$(mktemp)
+          cat > "$PROXY_SCRIPT" <<'CFEOF'
+          #!/bin/sh
+          exec cloudflared access ssh --hostname "$1" \
+            --service-token-id "$TUNNEL_SERVICE_TOKEN_ID" \
+            --service-token-secret "$TUNNEL_SERVICE_TOKEN_SECRET"
+          CFEOF
+          chmod +x "$PROXY_SCRIPT"
+
+          CF_PROXY="$PROXY_SCRIPT %h"
           SSH_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
           SCP_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
 
@@ -147,7 +161,7 @@ jobs:
 
           # 在 Runner 本機產生安全的 .env 檔
           ENV_FILE=$(mktemp)
-          cleanup() { rm -f "$ENV_FILE"; }
+          cleanup() { rm -f "$ENV_FILE" "$PROXY_SCRIPT"; }
           trap cleanup EXIT
 
           escape_squotes() {
