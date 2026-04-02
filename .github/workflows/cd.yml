@@ -84,28 +84,28 @@ jobs:
 
       - name: � 驗證 Cloudflare Service Token
         env:
-          CF_Access_Client_Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_Access_Client_Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
-          if [ -z "$CF_Access_Client_Id" ]; then
+          if [ -z "$CF_ACCESS_CLIENT_ID" ]; then
             echo "❌ CF_ACCESS_CLIENT_ID secret 未設定或為空！"
             echo "   請至 GitHub Repo → Settings → Secrets → Actions 新增 CF_ACCESS_CLIENT_ID"
             exit 1
           fi
-          if [ -z "$CF_Access_Client_Secret" ]; then
+          if [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
             echo "❌ CF_ACCESS_CLIENT_SECRET secret 未設定或為空！"
             echo "   請至 GitHub Repo → Settings → Secrets → Actions 新增 CF_ACCESS_CLIENT_SECRET"
             exit 1
           fi
-          echo "✅ Cloudflare Service Token 已設定（長度: ${#CF_Access_Client_Id} / ${#CF_Access_Client_Secret}）"
+          echo "✅ Cloudflare Service Token 已設定（長度: ${#CF_ACCESS_CLIENT_ID} / ${#CF_ACCESS_CLIENT_SECRET}）"
 
       - name: �🚀 部署到伺服器
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          CF_Access_Client_Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_Access_Client_Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
