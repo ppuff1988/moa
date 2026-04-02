@@ -102,8 +102,9 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          # cloudflared 原生環境變數，子程序自動繼承，無需經 ProxyCommand shell 解析
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -126,11 +127,23 @@ jobs:
         run: |
           set -euxo pipefail
 
+          # cloudflared 透過環境變數 TUNNEL_SERVICE_TOKEN_ID / TUNNEL_SERVICE_TOKEN_SECRET 自動認證
+          # 不在 ProxyCommand 中傳 CLI 旗標，避免多層 shell 解析破壞 token 值
+          echo "🔍 cloudflared $(cloudflared --version 2>&1 | head -1)"
+          echo "🔍 TUNNEL_SERVICE_TOKEN_ID 長度: ${#TUNNEL_SERVICE_TOKEN_ID}"
+          echo "🔍 TUNNEL_SERVICE_TOKEN_SECRET 長度: ${#TUNNEL_SERVICE_TOKEN_SECRET}"
+
           KEY_PATH=~/.ssh/deploy_key
-          # 直接以 --service-token-id / --service-token-secret 旗標傳入，與本機指令行為一致
-          CF_PROXY="cloudflared access ssh --hostname %h --service-token-id $CF_ACCESS_CLIENT_ID --service-token-secret $CF_ACCESS_CLIENT_SECRET"
+          CF_PROXY="cloudflared access ssh --hostname %h"
           SSH_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
           SCP_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
+
+          # Pre-flight: 測試 SSH 連線是否正常
+          echo "🔗 測試 SSH 連線..."
+          if ! ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'"; then
+            echo "❌ SSH 連線失敗，請檢查 DEPLOY_HOST / SSH 金鑰 / Cloudflare Service Token 設定"
+            exit 1
+          fi
 
           # 在 Runner 本機產生安全的 .env 檔
           ENV_FILE=$(mktemp)
