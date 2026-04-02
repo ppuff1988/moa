@@ -82,7 +82,24 @@ jobs:
 
           echo "✅ SSH 金鑰設定完成"
 
-      - name: 🚀 部署到伺服器
+      - name: � 驗證 Cloudflare Service Token
+        env:
+          CF_Access_Client_Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_Access_Client_Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          if [ -z "$CF_Access_Client_Id" ]; then
+            echo "❌ CF_ACCESS_CLIENT_ID secret 未設定或為空！"
+            echo "   請至 GitHub Repo → Settings → Secrets → Actions 新增 CF_ACCESS_CLIENT_ID"
+            exit 1
+          fi
+          if [ -z "$CF_Access_Client_Secret" ]; then
+            echo "❌ CF_ACCESS_CLIENT_SECRET secret 未設定或為空！"
+            echo "   請至 GitHub Repo → Settings → Secrets → Actions 新增 CF_ACCESS_CLIENT_SECRET"
+            exit 1
+          fi
+          echo "✅ Cloudflare Service Token 已設定（長度: ${#CF_Access_Client_Id} / ${#CF_Access_Client_Secret}）"
+
+      - name: �🚀 部署到伺服器
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
