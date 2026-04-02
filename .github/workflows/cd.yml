@@ -131,6 +131,28 @@ jobs:
           echo "🔍 TUNNEL_SERVICE_TOKEN_ID 長度: ${#TUNNEL_SERVICE_TOKEN_ID}"
           echo "🔍 TUNNEL_SERVICE_TOKEN_SECRET 長度: ${#TUNNEL_SERVICE_TOKEN_SECRET}"
           echo "🔍 DEPLOY_HOST: $DEPLOY_HOST"
+          echo "🔍 DEPLOY_HOST 長度: ${#DEPLOY_HOST}"
+
+          # 去除 secrets 可能的尾部空白/換行
+          DEPLOY_HOST=$(echo "$DEPLOY_HOST" | tr -d '[:space:]')
+          TUNNEL_SERVICE_TOKEN_ID=$(echo "$TUNNEL_SERVICE_TOKEN_ID" | tr -d '[:space:]')
+          TUNNEL_SERVICE_TOKEN_SECRET=$(echo "$TUNNEL_SERVICE_TOKEN_SECRET" | tr -d '[:space:]')
+
+          # 直接用 curl 測試 Service Token 對 Cloudflare Access 的有效性
+          echo "🧪 測試 Service Token 有效性（curl → https://$DEPLOY_HOST）..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "CF-Access-Client-Id: $TUNNEL_SERVICE_TOKEN_ID" \
+            -H "CF-Access-Client-Secret: $TUNNEL_SERVICE_TOKEN_SECRET" \
+            "https://$DEPLOY_HOST" 2>&1) || true
+          echo "🔍 Service Token 測試回應碼: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "000" ]; then
+            echo "❌ Service Token 被 Cloudflare Access 拒絕！請確認："
+            echo "   1. DEPLOY_HOST = moa-ssh.sportify.tw（不是伺服器 IP）"
+            echo "   2. Cloudflare Access 應用策略包含 'Service Auth' action（不是 Allow）"
+            echo "   3. Service Token ID/Secret 與本機使用的一致"
+            echo "   4. Service Token 未過期"
+            exit 1
+          fi
 
           KEY_PATH=~/.ssh/deploy_key
           echo "🔍 SSH 金鑰指紋:"; ssh-keygen -l -f "$KEY_PATH" 2>&1 || echo "⚠️ 無法讀取金鑰"
