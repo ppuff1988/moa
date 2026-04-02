@@ -125,37 +125,14 @@ jobs:
           SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
           DEPLOY_VERSION: ${{ steps.get_version.outputs.version }}
         run: |
-          set -euxo pipefail
-
-          echo "🔍 cloudflared $(cloudflared --version 2>&1 | head -1)"
-          echo "🔍 TUNNEL_SERVICE_TOKEN_ID 長度: ${#TUNNEL_SERVICE_TOKEN_ID}"
-          echo "🔍 TUNNEL_SERVICE_TOKEN_SECRET 長度: ${#TUNNEL_SERVICE_TOKEN_SECRET}"
-          echo "🔍 DEPLOY_HOST: $DEPLOY_HOST"
-          echo "🔍 DEPLOY_HOST 長度: ${#DEPLOY_HOST}"
+          set -euo pipefail
 
           # 去除 secrets 可能的尾部空白/換行
           DEPLOY_HOST=$(echo "$DEPLOY_HOST" | tr -d '[:space:]')
           TUNNEL_SERVICE_TOKEN_ID=$(echo "$TUNNEL_SERVICE_TOKEN_ID" | tr -d '[:space:]')
           TUNNEL_SERVICE_TOKEN_SECRET=$(echo "$TUNNEL_SERVICE_TOKEN_SECRET" | tr -d '[:space:]')
 
-          # 直接用 curl 測試 Service Token 對 Cloudflare Access 的有效性
-          echo "🧪 測試 Service Token 有效性（curl → https://$DEPLOY_HOST）..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "CF-Access-Client-Id: $TUNNEL_SERVICE_TOKEN_ID" \
-            -H "CF-Access-Client-Secret: $TUNNEL_SERVICE_TOKEN_SECRET" \
-            "https://$DEPLOY_HOST" 2>&1) || true
-          echo "🔍 Service Token 測試回應碼: $HTTP_CODE"
-          if [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "000" ]; then
-            echo "❌ Service Token 被 Cloudflare Access 拒絕！請確認："
-            echo "   1. DEPLOY_HOST = moa-ssh.sportify.tw（不是伺服器 IP）"
-            echo "   2. Cloudflare Access 應用策略包含 'Service Auth' action（不是 Allow）"
-            echo "   3. Service Token ID/Secret 與本機使用的一致"
-            echo "   4. Service Token 未過期"
-            exit 1
-          fi
-
           KEY_PATH=~/.ssh/deploy_key
-          echo "🔍 SSH 金鑰指紋:"; ssh-keygen -l -f "$KEY_PATH" 2>&1 || echo "⚠️ 無法讀取金鑰"
 
           # 使用 printf 將 token 值直接寫入 wrapper script（避免 heredoc YAML 縮排問題）
           PROXY_SCRIPT=$(mktemp)
@@ -163,18 +140,12 @@ jobs:
             "$TUNNEL_SERVICE_TOKEN_ID" "$TUNNEL_SERVICE_TOKEN_SECRET" > "$PROXY_SCRIPT"
           chmod 700 "$PROXY_SCRIPT"
 
-          echo "🔍 Wrapper script 內容（token 已遮罩）:"
-          head -1 "$PROXY_SCRIPT"
-          echo "  --service-token-id [${#TUNNEL_SERVICE_TOKEN_ID} 字元]"
-          echo "  --service-token-secret [${#TUNNEL_SERVICE_TOKEN_SECRET} 字元]"
-
           CF_PROXY="$PROXY_SCRIPT %h"
           SSH_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
           SCP_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
 
-          # Pre-flight: 測試 SSH 連線（-v 詳細 debug 輸出）
           echo "🔗 測試 SSH 連線..."
-          if ! ssh -v "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'" 2>&1; then
+          if ! ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'"; then
             echo "❌ SSH 連線失敗，請檢查 DEPLOY_HOST / SSH 金鑰 / Cloudflare Service Token 設定"
             exit 1
           fi
