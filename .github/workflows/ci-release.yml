@@ -13,7 +13,7 @@ jobs:
     # Auto Version Bump 只會在 PR 合併到 main 時執行，所以不需要檢查分支
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && 
+      (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success')
     environment: production
     permissions:
@@ -224,7 +224,7 @@ jobs:
                 draft: false,
                 prerelease: version.includes('-') || version.includes('alpha') || version.includes('beta')
               });
-              
+
               console.log(`✅ GitHub Release 已創建: ${release.data.html_url}`);
             } catch (error) {
               console.log(`⚠️ 創建 Release 失敗: ${error.message}`);
@@ -237,7 +237,7 @@ jobs:
     needs: [build-docker, create-tag]
     # 只在 build-docker 實際執行（非跳過）且（失敗或成功發布）時通知
     if: |
-      always() && 
+      always() &&
       needs.build-docker.result != 'skipped' &&
       (needs.build-docker.result == 'failure' || needs.create-tag.outputs.should_release == 'true')
     steps:
@@ -301,7 +301,7 @@ jobs:
                   tag: tag
                 }
               });
-              
+
               console.log('✅ CD 工作流程已成功觸發');
               console.log('ℹ️ 請前往 Actions 頁面查看部署進度');
               console.log(`🔗 https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/cd.yml`);
