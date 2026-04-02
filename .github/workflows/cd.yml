@@ -130,31 +130,29 @@ jobs:
           echo "🔍 cloudflared $(cloudflared --version 2>&1 | head -1)"
           echo "🔍 TUNNEL_SERVICE_TOKEN_ID 長度: ${#TUNNEL_SERVICE_TOKEN_ID}"
           echo "🔍 TUNNEL_SERVICE_TOKEN_SECRET 長度: ${#TUNNEL_SERVICE_TOKEN_SECRET}"
+          echo "🔍 DEPLOY_HOST: $DEPLOY_HOST"
 
           KEY_PATH=~/.ssh/deploy_key
+          echo "🔍 SSH 金鑰指紋:"; ssh-keygen -l -f "$KEY_PATH" 2>&1 || echo "⚠️ 無法讀取金鑰"
 
-          # 建立 proxy wrapper script：
-          # cloudflared 的 urfave/cli 中 c.IsSet() 不偵測環境變數，
-          # 只對 CLI 旗標回傳 true。若 IsSet 為 false，service token headers
-          # 不會加入請求 → Access 回傳 302 → 瀏覽器 fallback。
-          # wrapper script 從繼承的環境變數讀取 token，轉為 CLI 旗標傳入，
-          # 同時避免 ProxyCommand 多層 shell 解析破壞 token 值。
+          # 使用 printf 將 token 值直接寫入 wrapper script（避免 heredoc YAML 縮排問題）
           PROXY_SCRIPT=$(mktemp)
-          cat > "$PROXY_SCRIPT" <<'CFEOF'
-          #!/bin/sh
-          exec cloudflared access ssh --hostname "$1" \
-            --service-token-id "$TUNNEL_SERVICE_TOKEN_ID" \
-            --service-token-secret "$TUNNEL_SERVICE_TOKEN_SECRET"
-          CFEOF
-          chmod +x "$PROXY_SCRIPT"
+          printf '#!/bin/sh\nexec cloudflared access ssh --hostname "$1" --service-token-id "%s" --service-token-secret "%s"\n' \
+            "$TUNNEL_SERVICE_TOKEN_ID" "$TUNNEL_SERVICE_TOKEN_SECRET" > "$PROXY_SCRIPT"
+          chmod 700 "$PROXY_SCRIPT"
+
+          echo "🔍 Wrapper script 內容（token 已遮罩）:"
+          head -1 "$PROXY_SCRIPT"
+          echo "  --service-token-id [${#TUNNEL_SERVICE_TOKEN_ID} 字元]"
+          echo "  --service-token-secret [${#TUNNEL_SERVICE_TOKEN_SECRET} 字元]"
 
           CF_PROXY="$PROXY_SCRIPT %h"
           SSH_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
           SCP_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
 
-          # Pre-flight: 測試 SSH 連線是否正常
+          # Pre-flight: 測試 SSH 連線（-v 詳細 debug 輸出）
           echo "🔗 測試 SSH 連線..."
-          if ! ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'"; then
+          if ! ssh -v "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'" 2>&1; then
             echo "❌ SSH 連線失敗，請檢查 DEPLOY_HOST / SSH 金鑰 / Cloudflare Service Token 設定"
             exit 1
           fi
