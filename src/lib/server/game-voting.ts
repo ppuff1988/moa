@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { PublishedVotingResult } from '$lib/types/game';
-import { db } from './db';
+import type { db } from './db';
 import { gameArtifacts } from './db/schema';
 
 type DatabaseExecutor = Pick<typeof db, 'select'>;

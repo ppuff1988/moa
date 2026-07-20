@@ -8,6 +8,9 @@ on:
   # push:
   #   branches: [dev]
 
+env:
+  NPM_VERSION: '12.0.1'
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -17,9 +20,25 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
+      - run: npm install --global npm@${NPM_VERSION}
       - run: npm ci
       - run: npm run lint
       - run: npm run check
+
+  test-unit:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm ci
+      - run: npm run test:unit -- --run
+        env:
+          JWT_SECRET: unit-test-secret-for-ci-only
 
   test-api:
     runs-on: ubuntu-latest
@@ -45,6 +64,7 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - run: npm install --global npm@${NPM_VERSION}
       - run: npm ci
 
       - name: 初始化測試資料庫
@@ -83,6 +103,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
           JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-secret-key-for-testing-only' }}
+          ORIGIN: http://localhost:5173
 
       - name: 等待伺服器啟動
         run: npx wait-on http://localhost:5173 --timeout 30000
@@ -95,12 +116,22 @@ jobs:
           JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-secret-key-for-testing-only' }}
           API_BASE_URL: http://localhost:5173
 
+      - name: 安裝 Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: 執行 E2E smoke 測試
+        run: npm run test:e2e:smoke
+        env:
+          CI: true
+          DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER || 'moa_test_user' }}:${{ secrets.TEST_DB_PASSWORD || 'moa_test_pass' }}@localhost:5432/${{ secrets.TEST_DB_NAME || 'moa_test_db' }}
+          JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-secret-key-for-testing-only' }}
+
   notify:
     name: 測試通知
     runs-on: ubuntu-latest
-    needs: [lint, test-api]
+    needs: [lint, test-unit, test-api]
     # 只在測試失敗時通知
-    if: always() && (needs.lint.result == 'failure' || needs.test-api.result == 'failure')
+    if: always() && (needs.lint.result == 'failure' || needs.test-unit.result == 'failure' || needs.test-api.result == 'failure')
     steps:
       - name: 📣 發送測試失敗通知
         uses: appleboy/telegram-action@master
@@ -118,6 +149,7 @@ jobs:
 
             *失敗項目:*
             ${{ needs.lint.result == 'failure' && '• ❌ Lint 檢查失敗' || '' }}
+            ${{ needs.test-unit.result == 'failure' && '• ❌ Unit 測試失敗' || '' }}
             ${{ needs.test-api.result == 'failure' && '• ❌ API 測試失敗' || '' }}
 
             [立即查看](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

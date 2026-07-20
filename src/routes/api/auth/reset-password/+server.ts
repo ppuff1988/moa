@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { user, passwordResetToken } from '$lib/server/db/schema';
-import { eq, and, isNull, gt } from 'drizzle-orm';
+import { user, passwordResetToken, session } from '$lib/server/db/schema';
+import { eq, and, isNull, gt, sql } from 'drizzle-orm';
 import { hashPassword } from '$lib/server/password';
 
 /**
@@ -38,28 +38,42 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ message: '重置連結無效或已過期' }, { status: 400 });
 		}
 
-		const resetTokenData = tokens[0];
-
-		// 更新用戶密碼
 		const hashedPassword = await hashPassword(password);
-		await db
-			.update(user)
-			.set({
-				passwordHash: hashedPassword,
-				updatedAt: new Date()
-			})
-			.where(eq(user.id, resetTokenData.userId));
+		const resetAt = new Date();
+		const passwordWasReset = await db.transaction(async (tx) => {
+			const [claimedToken] = await tx
+				.update(passwordResetToken)
+				.set({ usedAt: resetAt })
+				.where(
+					and(
+						eq(passwordResetToken.token, token),
+						isNull(passwordResetToken.usedAt),
+						gt(passwordResetToken.expiresAt, resetAt)
+					)
+				)
+				.returning({ userId: passwordResetToken.userId });
 
-		// 標記 token 為已使用
-		await db
-			.update(passwordResetToken)
-			.set({
-				usedAt: new Date()
-			})
-			.where(eq(passwordResetToken.id, resetTokenData.id));
+			if (!claimedToken) return false;
+
+			await tx
+				.update(user)
+				.set({
+					passwordHash: hashedPassword,
+					tokenVersion: sql`${user.tokenVersion} + 1`,
+					updatedAt: resetAt
+				})
+				.where(eq(user.id, claimedToken.userId));
+
+			await tx.delete(session).where(eq(session.userId, claimedToken.userId));
+			return true;
+		});
+
+		if (!passwordWasReset) {
+			return json({ message: '重置連結無效或已過期' }, { status: 400 });
+		}
 
 		if (process.env.NODE_ENV !== 'test') {
-			console.log('✅ 密碼重置成功，用戶 ID:', resetTokenData.userId);
+			console.log('✅ 密碼重置成功');
 		}
 
 		return json(

@@ -22,6 +22,7 @@ export const user = pgTable('users', {
 		withTimezone: true,
 		mode: 'date'
 	}), // Email 驗證 token 過期時間
+	tokenVersion: integer('token_version').notNull().default(0),
 	createdAt: timestamp('created_at').defaultNow(),
 	updatedAt: timestamp('updated_at').defaultNow()
 });
