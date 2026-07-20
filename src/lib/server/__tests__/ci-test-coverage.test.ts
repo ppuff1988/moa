@@ -6,8 +6,25 @@ describe('CI test coverage', () => {
 	const root = process.cwd();
 	const workflow = readFileSync(resolve(root, '.github/workflows/ci-test.yml'), 'utf8');
 	const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+		engines: { npm: string };
 		scripts: Record<string, string>;
 	};
+
+	it('CI 在 npm ci 前安裝 package engines 指定的 npm 版本', () => {
+		const npmVersion = packageJson.engines.npm.replace(/^\^/, '');
+		expect(workflow).toContain(`NPM_VERSION: '${npmVersion}'`);
+
+		const jobSections = workflow.split(/^ {2}(?:lint|test-unit|test-api):$/m).slice(1);
+		expect(jobSections).toHaveLength(3);
+
+		for (const section of jobSections) {
+			const installVersion = section.indexOf('run: npm install --global npm@${NPM_VERSION}');
+			const installDependencies = section.indexOf('run: npm ci');
+
+			expect(installVersion).toBeGreaterThan(-1);
+			expect(installVersion).toBeLessThan(installDependencies);
+		}
+	});
 
 	it('以不連資料庫的獨立設定執行 unit tests', () => {
 		const unitConfigPath = resolve(root, 'vitest.unit.config.ts');
