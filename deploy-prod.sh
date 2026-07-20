@@ -126,23 +126,26 @@ sleep 10
 
 echo "🏥 檢查服務健康狀態..."
 max_attempts=10
-attempt=0
+attempt=1
+health_response=""
 
-while [ $attempt -lt $max_attempts ]; do
-    if curl -s http://localhost:5173/api/health > /dev/null 2>&1; then
+while [ "$attempt" -le "$max_attempts" ]; do
+    if health_response=$(curl -fsS http://localhost:5173/api/health 2>/dev/null) && \
+        printf '%s' "$health_response" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
         echo "✅ 服務健康檢查通過！"
         break
     fi
 
-    attempt=$((attempt + 1))
-    if [ $attempt -eq $max_attempts ]; then
-        echo "⚠️  警告：服務健康檢查超時"
-        echo "請手動檢查服務狀態："
-        echo "  $DOCKER_COMPOSE -f docker-compose.prod.yml logs -f app"
-    else
-        echo "   等待中... ($attempt/$max_attempts)"
-        sleep 2
+    if [ "$attempt" -eq "$max_attempts" ]; then
+        echo "❌ 服務健康檢查失敗"
+        echo "📋 最近的應用日誌："
+        $DOCKER_COMPOSE -f docker-compose.prod.yml logs --tail=100 app || true
+        exit 1
     fi
+
+    echo "   等待中... ($attempt/$max_attempts)"
+    sleep 2
+    attempt=$((attempt + 1))
 done
 
 echo ""
