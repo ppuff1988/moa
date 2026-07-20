@@ -37,6 +37,7 @@ CREATE TABLE users (
     email_verified BOOLEAN DEFAULT FALSE,
     email_verification_token TEXT,
     email_verification_token_expires_at TIMESTAMPTZ,
+    token_version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

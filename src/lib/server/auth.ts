@@ -11,6 +11,7 @@ const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN || '30d';
 export interface JWTPayload {
 	userId: number;
 	email: string;
+	tokenVersion?: number;
 }
 
 export interface JWTVerifyResult {
@@ -77,8 +78,14 @@ export async function getUserFromJWT(token: string): Promise<User | null> {
 
 	try {
 		const foundUser = await db.select().from(user).where(eq(user.id, payload.userId)).limit(1);
+		const authenticatedUser = foundUser[0];
 
-		return foundUser.length > 0 ? foundUser[0] : null;
+		if (!authenticatedUser) return null;
+		if ((payload.tokenVersion ?? 0) !== authenticatedUser.tokenVersion) {
+			return null;
+		}
+
+		return authenticatedUser;
 	} catch {
 		return null;
 	}
@@ -91,10 +98,11 @@ export async function getUserFromJWT(token: string): Promise<User | null> {
  * @param user - 用戶資料
  * @returns JWT token 字串
  */
-export function generateUserJWT(user: { id: number; email: string }): string {
+export function generateUserJWT(user: { id: number; email: string; tokenVersion: number }): string {
 	const jwtPayload: JWTPayload = {
 		userId: user.id,
-		email: user.email
+		email: user.email,
+		tokenVersion: user.tokenVersion
 	};
 	return generateJWT(jwtPayload);
 }
@@ -108,7 +116,7 @@ export function generateUserJWT(user: { id: number; email: string }): string {
  * @returns JWT token 字串
  */
 export function generateAndSetJWTCookie(
-	user: { id: number; email: string },
+	user: { id: number; email: string; tokenVersion: number },
 	cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void }
 ): string {
 	const token = generateUserJWT(user);

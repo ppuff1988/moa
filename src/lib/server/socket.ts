@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Server as HTTPServer } from 'http';
 import type { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
-import { verifyJWT } from './auth';
+import { getUserFromJWT } from './auth';
 import { db } from './db';
 import { gamePlayers, games } from './db/schema';
 import { getGameState, updatePlayerOnlineStatus } from './game';
@@ -46,9 +46,9 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 			// 1. 優先使用 handshake auth 中的 JWT token
 			const token = socket.handshake.auth.token;
 			if (token) {
-				const payload = verifyJWT(token);
-				if (payload) {
-					socket.data.userId = payload.userId;
+				const authenticatedUser = await getUserFromJWT(token);
+				if (authenticatedUser) {
+					socket.data.userId = authenticatedUser.id;
 					return next();
 				}
 			}
@@ -61,9 +61,9 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				.find((c) => c.startsWith('jwt='));
 			if (jwtCookie) {
 				const jwtToken = jwtCookie.substring(4);
-				const payload = verifyJWT(jwtToken);
-				if (payload) {
-					socket.data.userId = payload.userId;
+				const authenticatedUser = await getUserFromJWT(jwtToken);
+				if (authenticatedUser) {
+					socket.data.userId = authenticatedUser.id;
 					return next();
 				}
 			}

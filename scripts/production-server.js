@@ -27,6 +27,14 @@ async function verifyJWT(token) {
 	try {
 		const secret = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
 		const payload = jwt.verify(token, secret);
+		const userResult = await pool.query('SELECT token_version FROM users WHERE id = $1', [
+			payload.userId
+		]);
+		if (userResult.rows.length === 0) return null;
+
+		if ((payload.tokenVersion ?? 0) !== userResult.rows[0].token_version) {
+			return null;
+		}
 		return payload;
 	} catch {
 		return null;
