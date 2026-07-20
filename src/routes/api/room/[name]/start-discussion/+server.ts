@@ -77,6 +77,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 							currentActionPlayer.blockedRound,
 							currentActionPlayer.attackedRounds as number[] | null,
 							currentRound.round,
+							currentRound.id,
 							roleSkill
 						);
 					}

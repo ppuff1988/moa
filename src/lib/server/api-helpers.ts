@@ -558,6 +558,7 @@ export async function restoreCanActionIfNeeded(
 	blockedRound: number | null,
 	attackedRounds: number[] | null,
 	currentRoundNumber: number,
+	currentRoundId: number,
 	roleSkill: Record<string, number> | null
 ): Promise<void> {
 	const { gameActions } = await import('./db/schema');
@@ -572,20 +573,11 @@ export async function restoreCanActionIfNeeded(
 		return;
 	}
 
-	// 查詢當前回合
-	const [currentRound] = await db
-		.select()
-		.from(gameRounds)
-		.where(eq(gameRounds.round, currentRoundNumber))
-		.limit(1);
-
-	if (!currentRound) return;
-
 	// 查詢玩家在當前回合的所有行動
 	const actions = await db
 		.select()
 		.from(gameActions)
-		.where(and(eq(gameActions.playerId, playerId), eq(gameActions.roundId, currentRound.id)));
+		.where(and(eq(gameActions.playerId, playerId), eq(gameActions.roundId, currentRoundId)));
 
 	// 統計技能使用情況
 	const usageCounts = countSkillUsage(actions);
