@@ -4,7 +4,7 @@
 	interface BeastHead {
 		id: number;
 		animal: string;
-		isGenuine: boolean;
+		identifiedIsGenuine?: boolean;
 		votes: number;
 		voteRank?: number | null; // 投票排名
 	}
@@ -138,10 +138,6 @@
 		if (identifiedArtifacts.includes(beast.id)) {
 			return true;
 		}
-		// 如果是投票結果階段，只顯示排名第二的獸首真偽
-		if (showVotingResults && beast.voteRank === 2) {
-			return true;
-		}
 		return false;
 	}
 </script>
@@ -183,8 +179,8 @@
 						</div>
 						<div class="beast-name">{beast.animal}</div>
 						{#if shouldShowGenuine(beast)}
-							<div class="beast-status" class:is-real={beast.isGenuine}>
-								{beast.isGenuine ? '真品' : '贗品'}
+							<div class="beast-status" class:is-real={beast.identifiedIsGenuine}>
+								{beast.identifiedIsGenuine ? '真品' : '贗品'}
 							</div>
 						{:else if failedIdentifications.includes(beast.id)}
 							<div class="beast-status failed">無法鑑定</div>

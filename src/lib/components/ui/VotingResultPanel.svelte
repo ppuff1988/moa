@@ -2,25 +2,15 @@
 	import SettlementButton from '$lib/components/game/SettlementButton.svelte';
 	import Portal from '$lib/components/ui/Portal.svelte';
 	import { addNotification } from '$lib/stores/notifications';
+	import type { PublishedVotingResult } from '$lib/types/game';
 	import { chineseNumeral } from '$lib/utils/round';
 
-	interface BeastHead {
-		id: number;
-		animal: string;
-		isGenuine: boolean;
-		votes: number;
-		voteRank?: number | null;
-	}
-
 	export let roomName: string;
-	export let beastHeads: BeastHead[] = [];
+	export let votingResult: PublishedVotingResult | null = null;
 	export let isHost: boolean = false;
 	export let currentRound: number = 1;
 	export let onNextRound: () => void = () => {};
 	export let isOpen: boolean = true;
-
-	// 十二生肖順序
-	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
 
 	let isStartingNextRound = false;
 
@@ -31,20 +21,7 @@
 		return rank.toString();
 	};
 
-	// 排序獸首並獲取前兩名
-	$: sortedBeasts = beastHeads
-		.filter((b) => b.votes >= 0)
-		.sort((a, b) => {
-			if (b.votes !== a.votes) {
-				return b.votes - a.votes;
-			}
-			// 票數相同時按生肖順序
-			const orderA = ZODIAC_ORDER.indexOf(a.animal);
-			const orderB = ZODIAC_ORDER.indexOf(b.animal);
-			return orderA - orderB;
-		});
-
-	$: topTwo = sortedBeasts.slice(0, 2);
+	$: topTwo = votingResult ? [votingResult.firstPlace, votingResult.secondPlace] : [];
 
 	const startNextRound = async () => {
 		if (isStartingNextRound) return;
@@ -86,7 +63,7 @@
 					<p class="result-description">本回合投票已完成</p>
 				</div>
 				<div class="result-content">
-					{#if topTwo && topTwo.length > 0}
+					{#if votingResult && topTwo.length === 2}
 						<div class="all-results">
 							{#each topTwo as beast, index (beast.id)}
 								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
@@ -99,8 +76,11 @@
 										<div class="beast-status-pending">待揭曉</div>
 									{:else if index === 1}
 										<!-- 第二名一定會公布真偽 -->
-										<div class="beast-status-large" class:is-real={beast.isGenuine}>
-											{beast.isGenuine ? '真品 ✓' : '贗品 ✗'}
+										<div
+											class="beast-status-large"
+											class:is-real={votingResult.secondPlace.isGenuine}
+										>
+											{votingResult.secondPlace.isGenuine ? '真品 ✓' : '贗品 ✗'}
 										</div>
 									{/if}
 								</div>
@@ -108,7 +88,7 @@
 						</div>
 					{:else}
 						<div class="no-votes-message">
-							<p>尚未有投票結果</p>
+							<p>載入投票結果中...</p>
 						</div>
 					{/if}
 

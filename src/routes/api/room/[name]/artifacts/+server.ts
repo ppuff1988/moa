@@ -28,8 +28,6 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		.select({
 			id: gameArtifacts.id,
 			animal: gameArtifacts.animal,
-			isGenuine: gameArtifacts.isGenuine,
-			isSwapped: gameArtifacts.isSwapped,
 			isBlocked: gameArtifacts.isBlocked,
 			votes: gameArtifacts.votes,
 			voteRank: gameArtifacts.voteRank
@@ -48,7 +46,6 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		artifacts: sortedArtifacts.map((artifact) => ({
 			id: artifact.id,
 			animal: artifact.animal,
-			isGenuine: artifact.isGenuine,
 			isBlocked: artifact.isBlocked || false,
 			votes: artifact.votes || 0,
 			voteRank: artifact.voteRank,

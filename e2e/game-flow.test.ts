@@ -1441,6 +1441,22 @@ test.describe('Game Flow', () => {
 
 								console.log(`   ${rankBadge} ${beastName}: ${voteCount} - ${status?.trim() || ''}`);
 							}
+
+							const hostResult = await topTwoResults.evaluateAll((cards) =>
+								cards.map((card) => (card as HTMLElement).innerText.replace(/\s+/g, ' ').trim())
+							);
+
+							// 公開結果是伺服器權威資料；所有非房主必須與房主完全一致。
+							for (let playerIndex = 1; playerIndex < pages.length; playerIndex++) {
+								const playerPanel = pages[playerIndex].locator('.voting-result-panel');
+								await expect(playerPanel).toBeVisible({ timeout: 10000 });
+								const playerResult = await playerPanel
+									.locator('.result-card')
+									.evaluateAll((cards) =>
+										cards.map((card) => (card as HTMLElement).innerText.replace(/\s+/g, ' ').trim())
+									);
+								expect(playerResult).toEqual(hostResult);
+							}
 						}
 
 						// 如果是房主且不是第3回合，點擊開始下一回合

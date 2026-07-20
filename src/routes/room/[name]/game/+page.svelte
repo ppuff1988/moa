@@ -24,7 +24,7 @@
 	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
 	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 
-	import type { ActionedPlayer, User } from '$lib/types/game';
+	import type { ActionedPlayer, PublishedVotingResult, User } from '$lib/types/game';
 
 	// Game state
 	const gameState = createGameState();
@@ -36,6 +36,7 @@
 		currentRound,
 		roundPhase,
 		isHost,
+		publishedVotingResult,
 		currentPlayerRole,
 		skillActions,
 		hasLoadedSkills,
@@ -67,6 +68,7 @@
 	let isIdentifying = $state(false);
 	let actionAreaElement: HTMLDivElement | null = $state(null);
 	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
+	let roundStatusRequestSequence = 0;
 
 	// roomName 需要立即從 URL 參數初始化
 	let roomName = $state($page.params.name || '');
@@ -167,15 +169,15 @@
 	async function fetchArtifacts() {
 		const artifacts = await gameService.fetchArtifacts();
 		if (artifacts.length > 0) {
-			// 對已鑑定的獸首，保留目前 store 中的 isGenuine 值，
-			// 避免伺服器回傳的原始值覆蓋交換後的鑑定結果
+			// 私人鑑定結果不屬於 artifacts API，刷新結構資料時保留在
+			// identifiedIsGenuine，避免與公開投票結果共用欄位。
 			const currentHeads = $beastHeads;
 			if (currentHeads.length > 0) {
 				for (const artifact of artifacts) {
 					if ($identifiedArtifacts.includes(artifact.id)) {
 						const existing = currentHeads.find((b) => b.id === artifact.id);
 						if (existing) {
-							artifact.isGenuine = existing.isGenuine;
+							artifact.identifiedIsGenuine = existing.identifiedIsGenuine;
 						}
 					}
 				}
@@ -246,14 +248,27 @@
 	}
 
 	async function fetchRoundStatus() {
+		const requestSequence = ++roundStatusRequestSequence;
 		// 如果遊戲已結束，不再更新狀態
 		if ($isGameFinished) return;
 
 		try {
 			const data = await gameService.fetchRoundStatus();
+			if (requestSequence !== roundStatusRequestSequence) return;
 			if (!data) {
 				console.warn('[fetchRoundStatus] API 返回空數據，跳過更新');
 				return;
+			}
+
+			// 公開結果必須先於 result phase 寫入，避免面板以舊資料渲染。
+			if (data.votingResult) {
+				publishedVotingResult.set(data.votingResult);
+			} else if (data.phase !== 'result') {
+				publishedVotingResult.set(null);
+			}
+
+			if (data.round) {
+				currentRound.set(data.round);
 			}
 
 			if (data.phase) {
@@ -271,6 +286,13 @@
 			console.error('[fetchRoundStatus] 獲取回合狀態失敗:', error);
 			// 不拋出錯誤，讓遊戲繼續載入
 		}
+	}
+
+	function applyPublishedVotingResult(result: PublishedVotingResult) {
+		if (result.round < $currentRound) return;
+		publishedVotingResult.set(result);
+		currentRound.set(result.round);
+		roundPhase.set('result');
 	}
 
 	async function fetchTeammateInfo() {
@@ -385,7 +407,7 @@
 									if (index !== -1) {
 										heads[index] = {
 											...heads[index],
-											isGenuine: identifyAction.data.result as boolean
+											identifiedIsGenuine: identifyAction.data.result as boolean
 										};
 									}
 									return [...heads];
@@ -491,7 +513,10 @@
 				beastHeads.update((heads) => {
 					const index = heads.findIndex((b) => b.id === beastId);
 					if (index !== -1 && data.result) {
-						heads[index] = { ...heads[index], isGenuine: data.result.isGenuine };
+						heads[index] = {
+							...heads[index],
+							identifiedIsGenuine: data.result.isGenuine
+						};
 					}
 					return [...heads];
 				});
@@ -933,20 +958,10 @@
 					console.log(`[socket] 加入房間: ${roomName}`);
 					socket.emit('join-room', roomName);
 
-					// 監聽連線事件
-					socket.on('connect', () => {
+					// connect 在首次連線與每次重連都會觸發。
+					socket.on('connect', async () => {
 						console.log('[socket] Socket 已連線');
-						// 重新加入房間
 						socket!.emit('join-room', roomName);
-					});
-
-					// 監聽重新連線事件
-					socket.on('reconnect', async () => {
-						console.log('[socket] Socket 重新連線成功，同步數據...');
-						// 重新加入房間
-						socket!.emit('join-room', roomName);
-
-						// 先獲取回合狀態檢查遊戲是否結束
 						await fetchRoundStatus();
 
 						// 如果遊戲已結束但還沒有最終結果，主動獲取
@@ -960,14 +975,9 @@
 							}
 						}
 
-						// 重新獲取其他數據
 						await fetchArtifacts();
 						await updatePlayersAndRound();
-
-						// 重新套用鑑定狀態，避免 fetchArtifacts 覆蓋交換後的鑑定結果
 						restoreIdentifiedState();
-
-						addNotification('連線已恢復', 'success', 2000);
 					});
 
 					// 監聽房間加入成功事件
@@ -988,16 +998,14 @@
 						console.log('[voting-completed] 收到投票完成事件:', data);
 						addNotification('投票結果已公布', 'info', 3000);
 
-						// Update phase to result
-						if (data.phase) {
-							console.log('[voting-completed] 更新階段為:', data.phase);
-							roundPhase.set(data.phase);
+						if (data.votingResult) {
+							applyPublishedVotingResult(data.votingResult);
 						}
 
 						// Refresh artifacts to get voting results
 						console.log('[voting-completed] 刷新獸首資料...');
-						await fetchArtifacts();
 						await fetchRoundStatus();
+						await fetchArtifacts();
 						console.log('[voting-completed] 數據刷新完成');
 					});
 
@@ -1329,14 +1337,17 @@
 								beastHeads={$beastHeads}
 								identifiedArtifacts={$identifiedArtifacts}
 								isHost={$isHost}
-								onVotesSubmitted={fetchArtifacts}
+								onVotesSubmitted={(result) => {
+									applyPublishedVotingResult(result);
+									void fetchArtifacts();
+								}}
 							/>
 						</div>
 					</div>
 				{:else if $roundPhase === 'result'}
 					<VotingResultPanel
 						{roomName}
-						beastHeads={$beastHeads}
+						votingResult={$publishedVotingResult}
 						isHost={$isHost}
 						currentRound={$currentRound}
 						onNextRound={async () => {
