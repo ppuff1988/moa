@@ -26,16 +26,22 @@ type Guard = <T>(
 
 describe('identification transaction guard', () => {
 	let phase = 'identification';
+	let gameStatus = 'playing';
+	let playerExists = true;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		phase = 'identification';
+		gameStatus = 'playing';
+		playerExists = true;
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
 
 		const rowsFor = (table: unknown) => {
-			if (table === games) return [{ id: 'game-1', roomName: '123456', status: 'playing' }];
+			if (table === games) return [{ id: 'game-1', roomName: '123456', status: gameStatus }];
 			if (table === gamePlayers) {
-				return [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }];
+				return playerExists
+					? [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }]
+					: [];
 			}
 			if (table === roles) return [{ id: 3, name: '許愿' }];
 			if (table === gameRounds) {
@@ -70,6 +76,23 @@ describe('identification transaction guard', () => {
 		return (apiHelpers as unknown as { runIdentificationTransaction?: Guard })
 			.runIdentificationTransaction;
 	}
+
+	it('在回傳遊戲狀態前拒絕非房內玩家', async () => {
+		gameStatus = 'waiting';
+		playerExists = false;
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			vi.fn()
+		);
+
+		expect(result).toHaveProperty('error');
+		if ('error' in result) expect(result.error.status).toBe(403);
+	});
 
 	it('鎖定第三回合後在同一 transaction 執行投票動作', async () => {
 		const guard = getGuard();

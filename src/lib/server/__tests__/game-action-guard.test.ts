@@ -27,19 +27,25 @@ type Guard = <T>(
 describe('current action transaction guard', () => {
 	let roundPhase = 'action';
 	let actionOrder: number[] = [11];
+	let gameStatus = 'playing';
+	let playerExists = true;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		roundPhase = 'action';
 		actionOrder = [11];
+		gameStatus = 'playing';
+		playerExists = true;
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
 
 		const rowsFor = (table: unknown) => {
 			if (table === games) {
-				return [{ id: 'game-1', roomName: '123456', status: 'playing' }];
+				return [{ id: 'game-1', roomName: '123456', status: gameStatus }];
 			}
 			if (table === gamePlayers) {
-				return [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }];
+				return playerExists
+					? [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }]
+					: [];
 			}
 			if (table === roles) return [{ id: 3, name: '老朝奉' }];
 			if (table === gameRounds) {
@@ -79,6 +85,23 @@ describe('current action transaction guard', () => {
 		return (apiHelpers as unknown as { runCurrentActionTransaction?: Guard })
 			.runCurrentActionTransaction;
 	}
+
+	it('在回傳遊戲狀態前拒絕非房內玩家', async () => {
+		gameStatus = 'waiting';
+		playerExists = false;
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			vi.fn()
+		);
+
+		expect(result).toHaveProperty('error');
+		if ('error' in result) expect(result.error.status).toBe(403);
+	});
 
 	it('拒絕非 actionOrder[0] 的房內玩家', async () => {
 		actionOrder = [99, 11];

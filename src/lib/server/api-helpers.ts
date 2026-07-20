@@ -377,6 +377,20 @@ export async function runCurrentActionTransaction<T>(
 			.for('update');
 
 		if (!game) return { error: ErrorResponses.roomNotFound() };
+
+		const [player] = await transaction
+			.select()
+			.from(gamePlayers)
+			.where(
+				and(
+					eq(gamePlayers.gameId, game.id),
+					eq(gamePlayers.userId, authResult.user.id),
+					isNull(gamePlayers.leftAt)
+				)
+			)
+			.limit(1);
+
+		if (!player) return { error: ErrorResponses.notInRoom() };
 		if (game.status !== 'playing') {
 			return { error: ErrorResponses.wrongStatus('playing') };
 		}
@@ -394,19 +408,6 @@ export async function runCurrentActionTransaction<T>(
 			return { error: ErrorResponses.notActionPhase() };
 		}
 
-		const [player] = await transaction
-			.select()
-			.from(gamePlayers)
-			.where(
-				and(
-					eq(gamePlayers.gameId, game.id),
-					eq(gamePlayers.userId, authResult.user.id),
-					isNull(gamePlayers.leftAt)
-				)
-			)
-			.limit(1);
-
-		if (!player) return { error: ErrorResponses.notInRoom() };
 		if (!player.roleId) return { error: ErrorResponses.noRole() };
 
 		const actionOrder = Array.isArray(currentRound.actionOrder)
@@ -457,6 +458,20 @@ export async function runIdentificationTransaction<T>(
 			.for('update');
 
 		if (!game) return { error: ErrorResponses.roomNotFound() };
+
+		const [player] = await transaction
+			.select()
+			.from(gamePlayers)
+			.where(
+				and(
+					eq(gamePlayers.gameId, game.id),
+					eq(gamePlayers.userId, authResult.user.id),
+					isNull(gamePlayers.leftAt)
+				)
+			)
+			.limit(1);
+
+		if (!player) return { error: ErrorResponses.notInRoom() };
 		if (game.status !== 'playing') {
 			return { error: ErrorResponses.wrongStatus('playing') };
 		}
@@ -473,19 +488,6 @@ export async function runIdentificationTransaction<T>(
 			return { error: ErrorResponses.notIdentificationPhase() };
 		}
 
-		const [player] = await transaction
-			.select()
-			.from(gamePlayers)
-			.where(
-				and(
-					eq(gamePlayers.gameId, game.id),
-					eq(gamePlayers.userId, authResult.user.id),
-					isNull(gamePlayers.leftAt)
-				)
-			)
-			.limit(1);
-
-		if (!player) return { error: ErrorResponses.notInRoom() };
 		if (!player.roleId) return { error: ErrorResponses.noRole() };
 
 		const [role] = await transaction
