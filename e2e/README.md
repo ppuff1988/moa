@@ -6,11 +6,17 @@
 
 ```
 e2e/
-├── helpers.ts           # 共用的測試輔助函數（避免重複程式碼）
+├── smoke/              # PR CI 的短流程 smoke suite（7 tests）
+│   ├── health.test.ts  # liveness 與 database readiness
+│   ├── auth.test.ts    # 登入、session refresh 與登出撤銷
+│   ├── room.test.ts    # 建房、加入、離開與 Socket 名單同步
+│   └── authorization.test.ts # 未登入、非房主與回合階段 guard
+├── helpers.ts          # 完整 E2E 共用的測試輔助函數
 ├── auth.test.ts        # 身份驗證測試（註冊、登入、登出）
 ├── navigation.test.ts  # 導航測試（路由、頁面跳轉、權限控制）
 ├── room.test.ts        # 房間測試（創建、加入、玩家互動）
-├── game-flow.test.ts   # 遊戲流程測試（遊戲邏輯）
+├── game-flow.test.ts   # 8 人角色技能 UI 長流程
+├── game-completion.test.ts # 8 人三輪、鑑人與最終結果驗收
 └── README.md           # 本檔案
 ```
 
@@ -47,6 +53,24 @@ e2e/
 ```bash
 npm run test:e2e
 ```
+
+### 執行 CI smoke 測試
+
+```bash
+npm run test:e2e:smoke
+```
+
+PR CI 只執行 7 個 smoke tests，單一案例上限 30 秒、整套上限 120 秒。測試帳號使用每次執行唯一的名稱，避免與 API tests 或其他 smoke run 衝突；trace、screenshot 與 video 只在失敗時保留。
+
+完整 8 人 `game-flow.test.ts` 的單次時間預算為 20 分鐘，僅供本機或排程長流程測試使用，不會在每次 PR 執行。
+
+### 執行 8 人完整結束流程
+
+```bash
+npm run test:e2e:game-completion
+```
+
+`game-completion.test.ts` 使用 8 個獨立瀏覽器 session，嚴格驗證三輪皆完成 action、discussion、voting 與 result，接著完成鑑人投票、房主公布，並確認 8 位玩家都能看到三輪六件入選獸首、鑑人結果與最終勝方。此流程不使用資料庫直接修改階段，供本機、nightly 或 release 驗收使用。
 
 ### 執行特定測試檔案
 

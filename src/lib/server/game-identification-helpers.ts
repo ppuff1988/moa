@@ -1,6 +1,7 @@
 import { db } from '$lib/server/db';
 import { gamePlayers, roles, user, identificationVotes } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import type { StoredIdentificationVote } from '$lib/server/identification-voting';
+import { and, eq, isNull } from 'drizzle-orm';
 
 // 勝利條件常數
 export const XUYUAN_WIN_SCORE = 6;
@@ -66,8 +67,11 @@ export interface IdentificationResults {
 /**
  * 獲取遊戲中所有玩家及其角色資訊
  */
-export async function getPlayersWithRoles(gameId: string): Promise<PlayerWithRole[]> {
-	return await db
+export async function getPlayersWithRoles(
+	gameId: string,
+	executor: Pick<typeof db, 'select'> = db
+): Promise<PlayerWithRole[]> {
+	return await executor
 		.select({
 			playerId: gamePlayers.id,
 			userId: gamePlayers.userId,
@@ -79,7 +83,7 @@ export async function getPlayersWithRoles(gameId: string): Promise<PlayerWithRol
 		.from(gamePlayers)
 		.leftJoin(roles, eq(gamePlayers.roleId, roles.id))
 		.innerJoin(user, eq(gamePlayers.userId, user.id))
-		.where(eq(gamePlayers.gameId, gameId));
+		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
 }
 
 /**
@@ -87,14 +91,21 @@ export async function getPlayersWithRoles(gameId: string): Promise<PlayerWithRol
  */
 export async function calculateIdentificationResults(
 	gameId: string,
-	playersWithRoles: PlayerWithRole[]
+	playersWithRoles: PlayerWithRole[],
+	executor: Pick<typeof db, 'select'> = db
 ): Promise<IdentificationResults> {
-	// 獲取所有投票
-	const votes = await db
+	const votes = await executor
 		.select()
 		.from(identificationVotes)
 		.where(eq(identificationVotes.gameId, gameId));
 
+	return calculateIdentificationResultsFromVotes(playersWithRoles, votes);
+}
+
+export function calculateIdentificationResultsFromVotes(
+	playersWithRoles: PlayerWithRole[],
+	votes: StoredIdentificationVote[]
+): IdentificationResults {
 	// 找出各角色的玩家
 	const laoChaoFengPlayer = playersWithRoles.find((p) => p.roleName === '老朝奉');
 	const xuYuanPlayer = playersWithRoles.find((p) => p.roleName === '許愿');

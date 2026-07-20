@@ -1,136 +1,109 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyPlayerInRoomWithStatus } from '$lib/server/api-helpers';
-import { db } from '$lib/server/db';
-import { gameRounds, gamePlayers, roles, identificationVotes } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
-import { emitToRoom, getSocketIO } from '$lib/server/socket';
+import { runIdentificationTransaction } from '$lib/server/api-helpers';
+import { identificationVotes } from '$lib/server/db/schema';
+import { getPlayersWithRoles } from '$lib/server/game-identification-helpers';
+import {
+	getIdentificationVotingState,
+	validateIdentificationVote
+} from '$lib/server/identification-voting';
+import { emitToRoom } from '$lib/server/socket';
+import { and, eq } from 'drizzle-orm';
+
+type SubmitIdentificationResult =
+	| { ok: false; error: Response }
+	| {
+			ok: true;
+			playerId: number;
+			votedCount: number;
+			totalEligibleVoters: number;
+			allVoted: boolean;
+	  };
 
 export const POST: RequestHandler = async ({ request, params }) => {
+	let body: unknown;
 	try {
-		const verifyResult = await verifyPlayerInRoomWithStatus(request, params.name!, 'playing');
-		if ('error' in verifyResult) {
-			return verifyResult.error;
-		}
+		body = await request.json();
+	} catch {
+		return json({ message: '投票資料格式錯誤' }, { status: 400 });
+	}
 
-		const { game, player } = verifyResult;
-		const body = await request.json();
-		const { votes } = body;
+	const votes =
+		typeof body === 'object' && body !== null && 'votes' in body
+			? (body as { votes: unknown }).votes
+			: undefined;
 
-		// 檢查當前是否在鑑人階段
-		const currentRound = await db
-			.select()
-			.from(gameRounds)
-			.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, 3)))
-			.limit(1);
+	try {
+		const result = await runIdentificationTransaction<SubmitIdentificationResult>(
+			request,
+			params.name!,
+			async ({ transaction, game, player, role }) => {
+				const playersWithRoles = await getPlayersWithRoles(game.id, transaction);
+				const activePlayerIds = new Set(playersWithRoles.map(({ playerId }) => playerId));
+				const validation = validateIdentificationVote(role.name, player.id, votes, activePlayerIds);
 
-		if (currentRound.length === 0 || currentRound[0].phase !== 'identification') {
-			return json({ message: '當前不在鑑人階段' }, { status: 400 });
-		}
+				if (!validation.valid) {
+					return {
+						ok: false,
+						error: json({ message: validation.message }, { status: validation.status })
+					};
+				}
 
-		// 檢查是否已經投過票
-		const existingVote = await db
-			.select()
-			.from(identificationVotes)
-			.where(
-				and(eq(identificationVotes.gameId, game.id), eq(identificationVotes.playerId, player.id))
-			)
-			.limit(1);
+				const [existingVote] = await transaction
+					.select()
+					.from(identificationVotes)
+					.where(
+						and(
+							eq(identificationVotes.gameId, game.id),
+							eq(identificationVotes.playerId, player.id)
+						)
+					)
+					.limit(1);
 
-		if (existingVote.length > 0) {
-			return json({ message: '您已經投過票了' }, { status: 400 });
-		}
+				if (existingVote) {
+					return {
+						ok: false,
+						error: json({ message: '您已經投過票了' }, { status: 409 })
+					};
+				}
 
-		// 檢查玩家的角色和投票權限
-		const playerRole = await db
-			.select({
-				name: roles.name
-			})
-			.from(gamePlayers)
-			.innerJoin(roles, eq(gamePlayers.roleId, roles.id))
-			.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, player.userId)))
-			.limit(1);
+				await transaction.insert(identificationVotes).values({
+					gameId: game.id,
+					playerId: player.id,
+					...validation.values
+				});
 
-		if (playerRole.length === 0 || !playerRole[0].name) {
-			return json({ message: '您沒有角色' }, { status: 400 });
-		}
+				const allVotes = await transaction
+					.select()
+					.from(identificationVotes)
+					.where(eq(identificationVotes.gameId, game.id));
+				const votingState = getIdentificationVotingState(playersWithRoles, allVotes);
 
-		const roleName = playerRole[0].name;
+				return {
+					ok: true,
+					playerId: player.id,
+					votedCount: votingState.votedCount,
+					totalEligibleVoters: votingState.totalEligibleVoters,
+					allVoted: votingState.allVoted
+				};
+			}
+		);
 
-		// 驗證投票權限
-		const xuYuanCamp = ['許愿', '黃煙煙', '方震', '木戶加奈', '姬云浮'];
-		const canVoteLaoChaoFeng = xuYuanCamp.includes(roleName);
-		const canVoteXuYuan = roleName === '老朝奉';
-		const canVoteFangZhen = roleName === '藥不然';
+		if ('error' in result) return result.error;
+		if (!result.data.ok) return result.data.error;
 
-		// 建立投票記錄
-		const voteData = {
-			gameId: game.id,
-			playerId: player.id,
-			votedLaoChaoFeng: null as number | null,
-			votedXuYuan: null as number | null,
-			votedFangZhen: null as number | null
-		};
-
-		if (canVoteLaoChaoFeng && votes.laoChaoFeng) {
-			voteData.votedLaoChaoFeng = votes.laoChaoFeng;
-		}
-		if (canVoteXuYuan && votes.xuYuan) {
-			voteData.votedXuYuan = votes.xuYuan;
-		}
-		if (canVoteFangZhen && votes.fangZhen) {
-			voteData.votedFangZhen = votes.fangZhen;
-		}
-
-		// 儲存投票
-		await db.insert(identificationVotes).values(voteData);
-
-		// 獲取所有玩家及其角色
-		const allPlayersWithRoles = await db
-			.select({
-				playerId: gamePlayers.id,
-				userId: gamePlayers.userId,
-				roleName: roles.name
-			})
-			.from(gamePlayers)
-			.innerJoin(roles, eq(gamePlayers.roleId, roles.id))
-			.where(eq(gamePlayers.gameId, game.id));
-
-		// 計算有投票權的玩家數量（排除鄭國渠）
-		const eligibleVoters = allPlayersWithRoles.filter((p) => p.roleName !== '鄭國渠');
-		const totalEligibleVoters = eligibleVoters.length;
-
-		const allVotes = await db
-			.select()
-			.from(identificationVotes)
-			.where(eq(identificationVotes.gameId, game.id));
-
-		// 檢查 Socket.IO 是否可用
-		const socketIO = getSocketIO();
-		if (!socketIO) {
-			console.error('[submit-identification] ⚠️ Socket.IO 未初始化！');
-		}
-
-		// 通知房間有玩家完成投票
-		const eventData = {
-			playerId: player.id,
-			votedCount: allVotes.length,
-			totalEligibleVoters: totalEligibleVoters
-		};
-
-		emitToRoom(params.name!, 'player-voted-identification', eventData);
-
-		// 如果所有有投票權的玩家都投票了，通知房主可以公布結果
-		if (allVotes.length >= totalEligibleVoters) {
-			emitToRoom(params.name!, 'all-players-voted-identification', {
+		const eventData = result.data;
+		await emitToRoom(params.name!, 'player-voted-identification', eventData);
+		if (eventData.allVoted) {
+			await emitToRoom(params.name!, 'all-players-voted-identification', {
 				message: '所有玩家已完成投票，房主可以公布結果'
 			});
 		}
 
 		return json({
 			message: '投票成功',
-			votedCount: allVotes.length,
-			totalEligibleVoters: totalEligibleVoters
+			votedCount: eventData.votedCount,
+			totalEligibleVoters: eventData.totalEligibleVoters
 		});
 	} catch (error) {
 		console.error('提交鑑人投票錯誤:', error);

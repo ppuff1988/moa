@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getUserFromJWT, verifyJWTWithError } from './auth';
 import { db } from './db';
 import type { Game, GamePlayer, GameRound, Role, User } from './db/schema';
@@ -26,13 +26,29 @@ type PlayerInRoomWithStatusResult =
 
 type HostInRoomWithStatusResult = { error: Response } | { user: User; game: Game };
 
-type PlayerWithRoleResult =
-	| { error: Response }
-	| { user: User; game: Game; player: GamePlayer; role: Role };
-
 type HostInRoomResult = { error: Response } | { user: User; game: Game; player: GamePlayer };
 
 type CanActionCheckResult = { canAct: true } | { canAct: false; error: Response };
+
+export type ActionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export interface CurrentActionContext {
+	transaction: ActionTransaction;
+	user: User;
+	game: Game;
+	player: GamePlayer;
+	role: Role;
+	currentRound: GameRound;
+}
+
+export interface IdentificationContext {
+	transaction: ActionTransaction;
+	user: User;
+	game: Game;
+	player: GamePlayer;
+	role: Role;
+	currentRound: GameRound;
+}
 
 // ==================== 錯誤響應工廠函數 ====================
 
@@ -49,6 +65,11 @@ const ErrorResponses = {
 	noRole: () => json({ success: false, message: '你還沒有選擇角色' }, { status: 400 }),
 	roleNotFound: () => json({ success: false, message: '角色不存在' }, { status: 400 }),
 	noCurrentRound: () => json({ success: false, message: '當前沒有進行中的回合' }, { status: 400 }),
+	notActionPhase: () => json({ success: false, message: '當前階段不是行動階段' }, { status: 409 }),
+	notCurrentActionPlayer: () =>
+		json({ success: false, message: '目前不是你的行動回合' }, { status: 403 }),
+	notIdentificationPhase: () =>
+		json({ success: false, message: '當前階段不是鑑人階段' }, { status: 409 }),
 	blocked: () =>
 		json(
 			{ success: false, message: '你被攻擊封鎖，無法執行此操作', blocked: true },
@@ -337,30 +358,154 @@ export async function verifyHostWithStatus(
 }
 
 /**
- * 驗證玩家角色（統一處理角色驗證邏輯）
+ * 鎖定目前回合，驗證呼叫者是當前行動玩家，並在同一 transaction 執行動作。
  */
-export async function verifyPlayerRole(
+export async function runCurrentActionTransaction<T>(
 	request: Request,
-	roomName: string
-): Promise<PlayerWithRoleResult> {
-	const verifyResult = await verifyPlayerInRoom(request, roomName);
-	if ('error' in verifyResult) {
-		return verifyResult;
-	}
+	roomName: string,
+	action: (context: CurrentActionContext) => Promise<T>
+): Promise<{ data: T } | { error: Response }> {
+	const authResult = await verifyAuthToken(request);
+	if ('error' in authResult) return authResult;
 
-	const { user, game, player } = verifyResult;
+	return db.transaction(async (transaction) => {
+		const [game] = await transaction
+			.select()
+			.from(games)
+			.where(eq(games.roomName, decodeURIComponent(roomName)))
+			.limit(1)
+			.for('update');
 
-	if (!player.roleId) {
-		return { error: ErrorResponses.noRole() };
-	}
+		if (!game) return { error: ErrorResponses.roomNotFound() };
+		if (game.status !== 'playing') {
+			return { error: ErrorResponses.wrongStatus('playing') };
+		}
 
-	const [role] = await db.select().from(roles).where(eq(roles.id, player.roleId)).limit(1);
+		const [currentRound] = await transaction
+			.select()
+			.from(gameRounds)
+			.where(eq(gameRounds.gameId, game.id))
+			.orderBy(desc(gameRounds.round))
+			.limit(1)
+			.for('update');
 
-	if (!role) {
-		return { error: ErrorResponses.roleNotFound() };
-	}
+		if (!currentRound) return { error: ErrorResponses.noCurrentRound() };
+		if (currentRound.phase !== 'action') {
+			return { error: ErrorResponses.notActionPhase() };
+		}
 
-	return { user, game, player, role };
+		const [player] = await transaction
+			.select()
+			.from(gamePlayers)
+			.where(
+				and(
+					eq(gamePlayers.gameId, game.id),
+					eq(gamePlayers.userId, authResult.user.id),
+					isNull(gamePlayers.leftAt)
+				)
+			)
+			.limit(1);
+
+		if (!player) return { error: ErrorResponses.notInRoom() };
+		if (!player.roleId) return { error: ErrorResponses.noRole() };
+
+		const actionOrder = Array.isArray(currentRound.actionOrder)
+			? (currentRound.actionOrder as number[])
+			: [];
+		if (Number(actionOrder[0]) !== player.id) {
+			return { error: ErrorResponses.notCurrentActionPlayer() };
+		}
+
+		const [role] = await transaction
+			.select()
+			.from(roles)
+			.where(eq(roles.id, player.roleId))
+			.limit(1);
+		if (!role) return { error: ErrorResponses.roleNotFound() };
+
+		return {
+			data: await action({
+				transaction,
+				user: authResult.user,
+				game,
+				player,
+				role,
+				currentRound
+			})
+		};
+	});
+}
+
+/**
+ * 鎖定遊戲與第三回合，驗證呼叫者為仍在場且有角色的玩家，並在同一 transaction
+ * 執行鑑人投票提交或結算。
+ */
+export async function runIdentificationTransaction<T>(
+	request: Request,
+	roomName: string,
+	action: (context: IdentificationContext) => Promise<T>
+): Promise<{ data: T } | { error: Response }> {
+	const authResult = await verifyAuthToken(request);
+	if ('error' in authResult) return authResult;
+
+	return db.transaction(async (transaction) => {
+		const [game] = await transaction
+			.select()
+			.from(games)
+			.where(eq(games.roomName, decodeURIComponent(roomName)))
+			.limit(1)
+			.for('update');
+
+		if (!game) return { error: ErrorResponses.roomNotFound() };
+		if (game.status !== 'playing') {
+			return { error: ErrorResponses.wrongStatus('playing') };
+		}
+
+		const [currentRound] = await transaction
+			.select()
+			.from(gameRounds)
+			.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, 3)))
+			.limit(1)
+			.for('update');
+
+		if (!currentRound) return { error: ErrorResponses.noCurrentRound() };
+		if (currentRound.phase !== 'identification') {
+			return { error: ErrorResponses.notIdentificationPhase() };
+		}
+
+		const [player] = await transaction
+			.select()
+			.from(gamePlayers)
+			.where(
+				and(
+					eq(gamePlayers.gameId, game.id),
+					eq(gamePlayers.userId, authResult.user.id),
+					isNull(gamePlayers.leftAt)
+				)
+			)
+			.limit(1);
+
+		if (!player) return { error: ErrorResponses.notInRoom() };
+		if (!player.roleId) return { error: ErrorResponses.noRole() };
+
+		const [role] = await transaction
+			.select()
+			.from(roles)
+			.where(eq(roles.id, player.roleId))
+			.limit(1);
+		if (!role) return { error: ErrorResponses.roleNotFound() };
+
+		return {
+			data: await action({
+				transaction,
+				user: authResult.user,
+				game,
+				player,
+				role,
+				currentRound
+			})
+		};
+	});
 }
 
 /**
@@ -420,10 +565,14 @@ export async function getCurrentRoundOrError(
 /**
  * 計算下一個行動的順序編號
  */
-export async function getNextActionOrdering(gameId: string, roundId: number): Promise<number> {
+export async function getNextActionOrdering(
+	gameId: string,
+	roundId: number,
+	executor: Pick<typeof db, 'select'> = db
+): Promise<number> {
 	const { gameActions } = await import('./db/schema');
 
-	const allRoundActions = await db
+	const allRoundActions = await executor
 		.select()
 		.from(gameActions)
 		.where(and(eq(gameActions.gameId, gameId), eq(gameActions.roundId, roundId)));
@@ -559,7 +708,8 @@ export async function restoreCanActionIfNeeded(
 	attackedRounds: number[] | null,
 	currentRoundNumber: number,
 	currentRoundId: number,
-	roleSkill: Record<string, number> | null
+	roleSkill: Record<string, number> | null,
+	executor: Pick<typeof db, 'select' | 'update'> = db
 ): Promise<void> {
 	const { gameActions } = await import('./db/schema');
 
@@ -574,7 +724,7 @@ export async function restoreCanActionIfNeeded(
 	}
 
 	// 查詢玩家在當前回合的所有行動
-	const actions = await db
+	const actions = await executor
 		.select()
 		.from(gameActions)
 		.where(and(eq(gameActions.playerId, playerId), eq(gameActions.roundId, currentRoundId)));
@@ -586,6 +736,6 @@ export async function restoreCanActionIfNeeded(
 	if (areAllSkillsUsed(usageCounts, roleSkill)) {
 		// 恢復 canAction，讓玩家可以在下一回合行動
 		// 注意：姬云浮如果被攻擊過，attackedRounds 會有值，在鑑定時會被永久封鎖
-		await db.update(gamePlayers).set({ canAction: true }).where(eq(gamePlayers.id, playerId));
+		await executor.update(gamePlayers).set({ canAction: true }).where(eq(gamePlayers.id, playerId));
 	}
 }
