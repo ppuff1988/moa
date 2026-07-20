@@ -46,7 +46,7 @@ services:
     container_name: moa_devcontainer_postgres
     restart: unless-stopped
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PORT:-5433}:5432'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-moa_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moa_pass}
