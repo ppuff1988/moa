@@ -4,6 +4,7 @@
 	import { GameService } from '$lib/services/gameService';
 	import { createGameState } from '$lib/stores/gameState';
 	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
+	import { createLatestRequestTracker } from '$lib/utils/latestRequest';
 	import { disconnectSocket, initSocket } from '$lib/utils/socket';
 	import type { Socket } from 'socket.io-client';
 	import { onDestroy, onMount } from 'svelte';
@@ -68,7 +69,7 @@
 	let isIdentifying = $state(false);
 	let actionAreaElement: HTMLDivElement | null = $state(null);
 	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
-	let roundStatusRequestSequence = 0;
+	const roundStatusRequests = createLatestRequestTracker();
 
 	// roomName 需要立即從 URL 參數初始化
 	let roomName = $state($page.params.name || '');
@@ -248,13 +249,13 @@
 	}
 
 	async function fetchRoundStatus() {
-		const requestSequence = ++roundStatusRequestSequence;
+		const requestSequence = roundStatusRequests.start();
 		// 如果遊戲已結束，不再更新狀態
 		if ($isGameFinished) return;
 
 		try {
 			const data = await gameService.fetchRoundStatus();
-			if (requestSequence !== roundStatusRequestSequence) return;
+			if (!roundStatusRequests.isLatest(requestSequence)) return;
 			if (!data) {
 				console.warn('[fetchRoundStatus] API 返回空數據，跳過更新');
 				return;
@@ -290,6 +291,7 @@
 
 	function applyPublishedVotingResult(result: PublishedVotingResult) {
 		if (result.round < $currentRound) return;
+		roundStatusRequests.invalidate();
 		publishedVotingResult.set(result);
 		currentRound.set(result.round);
 		roundPhase.set('result');
