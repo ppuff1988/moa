@@ -108,8 +108,8 @@ Volume 掛載設定：
 
 ### 已安裝工具
 
-- **基礎**: Node.js 22 Alpine
-- **Shell**: Bash, Zsh, oh-my-zsh
+- **基礎**: Node.js 24 Alpine
+- **Shell**: Bash（彩色提示字元與 Git 分支）
 - **版本控制**: Git, SSH client
 - **編輯器**: Vim, Nano
 - **資料庫**: PostgreSQL client
@@ -120,7 +120,7 @@ Volume 掛載設定：
 
 - **預設使用者**: `node` (非 root)
 - **Sudo 權限**: 無需密碼
-- **預設 Shell**: Zsh with oh-my-zsh
+- **預設 Shell**: Bash
 
 ## 自訂設定
 

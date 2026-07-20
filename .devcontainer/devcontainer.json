@@ -5,7 +5,7 @@
 	"workspaceFolder": "/workspace",
 
 	// 容器建立後要執行的指令
-	"postCreateCommand": "npm install && npm run db:migrate",
+	"postCreateCommand": "sudo chown -R node:node /workspace/node_modules && npm install && npm run db:migrate",
 
 	// 容器啟動後要執行的指令
 	"postStartCommand": "git config --global --add safe.directory /workspace && git config --global core.autocrlf input",
@@ -42,7 +42,8 @@
 				"wayou.vscode-todo-highlight",
 				"gruntfuggly.todo-tree",
 
-				"github.copilot-chat"
+				"github.copilot-chat",
+				"openai.chatgpt"
 			],
 
 			// 編輯器設定

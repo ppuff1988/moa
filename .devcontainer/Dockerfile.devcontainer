@@ -36,11 +36,17 @@ RUN echo "node ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/node \
 	&& chmod 0440 /etc/sudoers.d/node \
 	&& adduser node docker || true
 
+# 使用 Bash 作為登入 Shell，並提供彩色提示字元與常用指令輸出
+RUN usermod -s /bin/bash node
+COPY --chown=node:node .devcontainer/bashrc /home/node/.bashrc
+
 # 建立 Playwright 瀏覽器目錄並建立符號連結到系統 Chromium
 RUN mkdir -p /workspace/.browsers/chromium_headless_shell-1193/chrome-linux && \
 	mkdir -p /workspace/.browsers/chromium-1193/chrome-linux && \
 	ln -s /usr/bin/chromium-browser /workspace/.browsers/chromium_headless_shell-1193/chrome-linux/headless_shell && \
-	ln -s /usr/bin/chromium-browser /workspace/.browsers/chromium-1193/chrome-linux/chrome
+	ln -s /usr/bin/chromium-browser /workspace/.browsers/chromium-1193/chrome-linux/chrome && \
+	mkdir -p /workspace/node_modules && \
+	chown node:node /workspace/node_modules
 
 # 切換到 node 使用者
 USER node
@@ -54,6 +60,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # 設定環境變數
 ENV NODE_ENV=development
+ENV SHELL=/bin/bash
 ENV PATH="/workspace/node_modules/.bin:${PATH}"
 
 # 預設指令
