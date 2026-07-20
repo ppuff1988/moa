@@ -411,9 +411,29 @@ export async function runCurrentActionTransaction<T>(
 		if (!player.roleId) return { error: ErrorResponses.noRole() };
 
 		const actionOrder = Array.isArray(currentRound.actionOrder)
-			? (currentRound.actionOrder as number[])
+			? (currentRound.actionOrder as number[]).map(Number)
 			: [];
-		if (Number(actionOrder[0]) !== player.id) {
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+		const activePlayerIds = new Set(activePlayers.map((activePlayer) => activePlayer.id));
+		const currentPlayerLeft = actionOrder.length > 0 && !activePlayerIds.has(actionOrder[0]);
+		const activeActionOrder = actionOrder.filter((playerId) => activePlayerIds.has(playerId));
+		const guardedActionOrder = currentPlayerLeft
+			? activeActionOrder.length > 0
+				? activeActionOrder
+				: [player.id]
+			: actionOrder;
+
+		if (currentPlayerLeft) {
+			await transaction
+				.update(gameRounds)
+				.set({ actionOrder: guardedActionOrder })
+				.where(eq(gameRounds.id, currentRound.id));
+		}
+
+		if (guardedActionOrder[0] !== player.id) {
 			return { error: ErrorResponses.notCurrentActionPlayer() };
 		}
 
@@ -431,7 +451,7 @@ export async function runCurrentActionTransaction<T>(
 				game,
 				player,
 				role,
-				currentRound
+				currentRound: { ...currentRound, actionOrder: guardedActionOrder }
 			})
 		};
 	});

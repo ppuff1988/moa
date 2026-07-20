@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { gamePlayers, gameRounds, games, roles } from '../db/schema';
 
-const { dbMock, getUserFromJWTMock, lockRoundMock } = vi.hoisted(() => ({
+const { dbMock, getUserFromJWTMock, lockRoundMock, updateRoundMock } = vi.hoisted(() => ({
 	dbMock: { transaction: vi.fn() },
 	getUserFromJWTMock: vi.fn(),
-	lockRoundMock: vi.fn()
+	lockRoundMock: vi.fn(),
+	updateRoundMock: vi.fn()
 }));
 
 vi.mock('../db', () => ({ db: dbMock }));
@@ -21,12 +22,17 @@ import * as apiHelpers from '../api-helpers';
 type Guard = <T>(
 	request: Request,
 	roomName: string,
-	action: (context: { transaction: unknown; player: { id: number } }) => Promise<T>
+	action: (context: {
+		transaction: unknown;
+		player: { id: number };
+		currentRound: { actionOrder: unknown };
+	}) => Promise<T>
 ) => Promise<{ data: T } | { error: Response }>;
 
 describe('current action transaction guard', () => {
 	let roundPhase = 'action';
 	let actionOrder: number[] = [11];
+	let activePlayerIds: number[] = [11, 99];
 	let gameStatus = 'playing';
 	let playerExists = true;
 
@@ -34,15 +40,17 @@ describe('current action transaction guard', () => {
 		vi.clearAllMocks();
 		roundPhase = 'action';
 		actionOrder = [11];
+		activePlayerIds = [11, 99];
 		gameStatus = 'playing';
 		playerExists = true;
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
 
-		const rowsFor = (table: unknown) => {
+		const rowsFor = (table: unknown, selection?: unknown) => {
 			if (table === games) {
 				return [{ id: 'game-1', roomName: '123456', status: gameStatus }];
 			}
 			if (table === gamePlayers) {
+				if (selection) return activePlayerIds.map((id) => ({ id }));
 				return playerExists
 					? [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }]
 					: [];
@@ -55,9 +63,9 @@ describe('current action transaction guard', () => {
 		};
 
 		const transaction = {
-			select: vi.fn(() => ({
+			select: vi.fn((selection?: unknown) => ({
 				from: (table: unknown) => {
-					const resolveRows = () => Promise.resolve(rowsFor(table));
+					const resolveRows = () => Promise.resolve(rowsFor(table, selection));
 					const limitResult = {
 						for: () => {
 							if (table === gameRounds) lockRoundMock();
@@ -71,9 +79,16 @@ describe('current action transaction guard', () => {
 					return {
 						where: () => ({
 							limit: () => limitResult,
-							orderBy: () => ({ limit: () => limitResult })
+							orderBy: () => ({ limit: () => limitResult }),
+							then: limitResult.then
 						})
 					};
+				}
+			})),
+			update: vi.fn((table: unknown) => ({
+				set: (values: unknown) => {
+					if (table === gameRounds) updateRoundMock(values);
+					return { where: () => Promise.resolve() };
 				}
 			}))
 		};
@@ -119,6 +134,40 @@ describe('current action transaction guard', () => {
 		expect(result).toHaveProperty('error');
 		if ('error' in result) expect(result.error.status).toBe(403);
 		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('當前玩家離場後讓最近一位仍在場玩家恢復行動權', async () => {
+		actionOrder = [99, 11];
+		activePlayerIds = [11, 12];
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			async ({ currentRound }) => currentRound.actionOrder
+		);
+
+		expect(result).toEqual({ data: [11] });
+		expect(updateRoundMock).toHaveBeenCalledWith({ actionOrder: [11] });
+	});
+
+	it('首位行動玩家離場且沒有歷史時讓仍在場玩家接手', async () => {
+		actionOrder = [99];
+		activePlayerIds = [11, 12];
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			async ({ currentRound }) => currentRound.actionOrder
+		);
+
+		expect(result).toEqual({ data: [11] });
+		expect(updateRoundMock).toHaveBeenCalledWith({ actionOrder: [11] });
 	});
 
 	it('拒絕 action 以外的回合階段', async () => {
