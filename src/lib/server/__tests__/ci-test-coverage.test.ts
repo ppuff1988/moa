@@ -52,6 +52,13 @@ describe('CI test coverage', () => {
 		expect(workflow).not.toContain('playwright test game-flow');
 	});
 
+	it('production 測試伺服器使用與 Playwright 相同的 HTTP origin', () => {
+		const serverStep = workflow.match(/- name: 啟動測試伺服器[\s\S]*?(?=\n {6}- name:)/)?.[0];
+
+		expect(serverStep).toBeTypeOf('string');
+		expect(serverStep).toContain('ORIGIN: http://localhost:5173');
+	});
+
 	it('smoke suite 以七個短案例覆蓋 health、auth、room 與 authorization', () => {
 		const smokeDirectory = resolve(root, 'e2e/smoke');
 		const smokeFiles = ['health.test.ts', 'auth.test.ts', 'room.test.ts', 'authorization.test.ts'];
