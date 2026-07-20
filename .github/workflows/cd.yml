@@ -224,12 +224,22 @@ jobs:
       - name: 🏥 健康檢查
         env:
           DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
+          if [ -z "$DEPLOY_URL" ] || [ -z "$CF_ACCESS_CLIENT_ID" ] || [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo "❌ 健康檢查所需的 DEPLOY_URL 或 Cloudflare Access Service Token 未設定！"
+            exit 1
+          fi
+
           max_attempts=10
           attempt=1
-          while [ $attempt -le $max_attempts ]; do
+          while [ "$attempt" -le "$max_attempts" ]; do
             echo "嘗試 $attempt/$max_attempts..."
-            if curl -fsS "$DEPLOY_URL/api/health" > /dev/null; then
+            if curl -fsS \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$DEPLOY_URL/api/health" > /dev/null; then
               echo "✅ 健康檢查通過！"
               exit 0
             fi
