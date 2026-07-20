@@ -4,8 +4,8 @@ import { handler } from '../build/handler.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import pg from 'pg';
+import { createSocketAuthenticator } from './socket-auth.js';
 
 // 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
@@ -21,25 +21,10 @@ const pool = new Pool({
 	connectionString:
 		process.env.DATABASE_URL || 'postgresql://moa_user:moa_pass@localhost:5432/moa_db'
 });
-
-// JWT 驗證函數
-async function verifyJWT(token) {
-	try {
-		const secret = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
-		const payload = jwt.verify(token, secret);
-		const userResult = await pool.query('SELECT token_version FROM users WHERE id = $1', [
-			payload.userId
-		]);
-		if (userResult.rows.length === 0) return null;
-
-		if ((payload.tokenVersion ?? 0) !== userResult.rows[0].token_version) {
-			return null;
-		}
-		return payload;
-	} catch {
-		return null;
-	}
-}
+const authenticateSocket = createSocketAuthenticator({
+	pool,
+	jwtSecret: process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
+});
 
 // 初始化 Socket.IO
 try {
@@ -55,17 +40,16 @@ try {
 	// 身份驗證中間件
 	io.use(async (socket, next) => {
 		try {
-			const token = socket.handshake.auth.token;
-			if (!token) {
-				return next(new Error('驗證失敗，請重新登入'));
-			}
-
-			const payload = await verifyJWT(token);
-			if (!payload || !payload.userId) {
+			const authenticatedUser = await authenticateSocket({
+				token:
+					typeof socket.handshake.auth.token === 'string' ? socket.handshake.auth.token : undefined,
+				cookieHeader: socket.handshake.headers.cookie || ''
+			});
+			if (!authenticatedUser) {
 				return next(new Error('無效的驗證令牌'));
 			}
 
-			socket.data.userId = payload.userId;
+			socket.data.userId = authenticatedUser.userId;
 			next();
 		} catch {
 			next(new Error('驗證失敗，請重新登入'));
