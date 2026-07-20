@@ -1,6 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom, getCurrentRoundOrError } from '$lib/server/api-helpers';
+import { getPublishedVotingResult } from '$lib/server/game-voting';
+import { db } from '$lib/server/db';
 
 // 獲取當前回合狀態
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -19,7 +21,8 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				phase: game.status === 'finished' ? 'finished' : 'terminated',
 				round: 3,
 				isHost: player.isHost,
-				gameStatus: game.status
+				gameStatus: game.status,
+				votingResult: null
 			});
 		}
 
@@ -39,13 +42,22 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			return roundResult.error;
 		}
 		const currentRound = roundResult.round;
+		const votingResult =
+			currentRound.phase === 'result'
+				? await getPublishedVotingResult(db, game.id, currentRound.round)
+				: null;
+
+		if (currentRound.phase === 'result' && !votingResult) {
+			return json({ message: '投票結果資料不完整' }, { status: 500 });
+		}
 
 		return json({
 			success: true,
 			phase: currentRound.phase,
 			round: currentRound.round,
 			isHost: player.isHost,
-			gameStatus: game.status
+			gameStatus: game.status,
+			votingResult
 		});
 	} catch (error) {
 		return json(

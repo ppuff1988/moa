@@ -25,11 +25,32 @@ export interface User {
 export interface BeastHead {
 	id: number;
 	animal: string;
-	isGenuine: boolean;
+	identifiedIsGenuine?: boolean;
 	isBlocked?: boolean;
 	votes: number;
 	voteRank?: number | null;
 	round?: number;
+}
+
+export interface PublishedVotingResult {
+	round: number;
+	firstPlace: {
+		id: number;
+		animal: string;
+		votes: number;
+		rank: 1;
+	};
+	secondPlace: {
+		id: number;
+		animal: string;
+		votes: number;
+		rank: 2;
+		isGenuine: boolean;
+	};
+}
+
+export interface FinalArtifact extends BeastHead {
+	isGenuine: boolean;
 }
 
 export interface ActionedPlayer {
@@ -94,7 +115,7 @@ export interface FinalGameResult {
 		xuYuan?: IdentificationResult;
 		fangZhen?: IdentificationResult;
 	};
-	allArtifacts: BeastHead[];
+	allArtifacts: FinalArtifact[];
 	players: Array<{
 		id: number;
 		nickname: string;

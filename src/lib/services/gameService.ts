@@ -1,7 +1,21 @@
 // Game API service for all game-related API calls
 import { goto } from '$app/navigation';
 import { addNotification } from '$lib/stores/notifications';
-import type { BeastHead, PerformedAction, SkillActions } from '$lib/types/game';
+import type {
+	BeastHead,
+	PerformedAction,
+	PublishedVotingResult,
+	SkillActions
+} from '$lib/types/game';
+
+export interface RoundStatusResponse {
+	success: boolean;
+	phase: string;
+	round: number;
+	isHost: boolean;
+	gameStatus: string;
+	votingResult: PublishedVotingResult | null;
+}
 
 export class GameService {
 	private roomName: string;
@@ -95,7 +109,7 @@ export class GameService {
 		return null;
 	}
 
-	async fetchRoundStatus() {
+	async fetchRoundStatus(): Promise<RoundStatusResponse | null> {
 		const response = await fetch(`/api/room/${encodeURIComponent(this.roomName)}/round-status`, {
 			credentials: 'include',
 			headers: this.getReadHeaders()

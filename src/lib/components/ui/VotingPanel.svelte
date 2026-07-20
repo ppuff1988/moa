@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Portal from '$lib/components/ui/Portal.svelte';
 	import { addNotification } from '$lib/stores/notifications';
+	import type { PublishedVotingResult } from '$lib/types/game';
 
 	interface BeastHead {
 		id: number;
 		animal: string;
-		isGenuine: boolean;
 		votes: number;
 	}
 
@@ -13,7 +13,7 @@
 	export let beastHeads: BeastHead[] = [];
 	export let identifiedArtifacts: number[] = [];
 	export let isHost: boolean = false;
-	export let onVotesSubmitted: () => void = () => {};
+	export let onVotesSubmitted: (result: PublishedVotingResult) => void = () => {};
 
 	// Suppress unused warning - kept for future use
 	$: void identifiedArtifacts;
@@ -108,8 +108,9 @@
 			});
 
 			if (response.ok) {
+				const data = await response.json();
 				addNotification('投票提交成功', 'success');
-				onVotesSubmitted();
+				onVotesSubmitted(data.votingResult);
 			} else {
 				const error = await response.json();
 				addNotification(error.message || '提交投票失敗', 'error');

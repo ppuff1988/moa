@@ -8,7 +8,9 @@ import type {
 	IdentifiedPlayerResult,
 	GamePhase,
 	PerformedAction,
-	UsedSkills
+	UsedSkills,
+	PublishedVotingResult,
+	FinalArtifact
 } from '$lib/types/game';
 
 export function createGameState() {
@@ -20,6 +22,7 @@ export function createGameState() {
 	const currentRound = writable<number>(1);
 	const roundPhase = writable<string>('action');
 	const isHost = writable<boolean>(false);
+	const publishedVotingResult = writable<PublishedVotingResult | null>(null);
 
 	// Player-specific state
 	const currentPlayerRole = writable<string | null>(null);
@@ -56,7 +59,7 @@ export function createGameState() {
 	const finalResult = writable<{
 		winner: string;
 		xuYuanScore: number;
-		allArtifacts: BeastHead[];
+		allArtifacts: FinalArtifact[];
 		players: Player[];
 		identificationResults?: {
 			laoChaoFeng?: {
@@ -118,6 +121,7 @@ export function createGameState() {
 		currentRound,
 		roundPhase,
 		isHost,
+		publishedVotingResult,
 		currentPlayerRole,
 		skillActions,
 		hasLoadedSkills,
@@ -175,6 +179,7 @@ export function createGameState() {
 			blockedArtifacts.set([]);
 			failedIdentifications.set([]);
 			performedActions.set([]);
+			publishedVotingResult.set(null);
 		}
 	};
 }
