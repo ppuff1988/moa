@@ -1,40 +1,40 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: 錯誤回報
+about: 回報問題以協助我們改善專案
 title: ''
 labels: ''
 assignees: ''
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**問題描述**
+請清楚且簡潔地描述此問題。
 
-**To Reproduce**
-Steps to reproduce the behavior:
+**重現步驟**
+請依序列出重現此問題的步驟：
 
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+1. 前往「……」
+2. 點擊「……」
+3. 捲動至「……」
+4. 查看錯誤
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**預期行為**
+請清楚且簡潔地描述您預期的正確行為。
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**螢幕截圖**
+如適用，請附上螢幕截圖以協助說明問題。
 
-**Desktop (please complete the following information):**
+**桌面環境（請填寫以下資訊）：**
 
-- OS: [e.g. iOS]
-- Browser [e.g. chrome, safari]
-- Version [e.g. 22]
+- 作業系統：[例如 Windows 11、macOS 15]
+- 瀏覽器：[例如 Chrome、Safari]
+- 瀏覽器版本：[例如 138]
 
-**Smartphone (please complete the following information):**
+**手機環境（請填寫以下資訊）：**
 
-- Device: [e.g. iPhone6]
-- OS: [e.g. iOS8.1]
-- Browser [e.g. stock browser, safari]
-- Version [e.g. 22]
+- 裝置：[例如 iPhone 16]
+- 作業系統：[例如 iOS 18.5、Android 16]
+- 瀏覽器：[例如 Safari、Chrome]
+- 瀏覽器版本：[例如 138]
 
-**Additional context**
-Add any other context about the problem here.
+**其他資訊**
+請補充任何可能有助於分析問題的資訊，例如錯誤訊息、日誌或發生頻率。
