@@ -8,6 +8,7 @@ import {
 } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameActions, user, roles } from '$lib/server/db/schema';
+import { getAttackedRound } from '$lib/server/game-turn-order';
 import { eq, and } from 'drizzle-orm';
 
 // 定義受影響的玩家類型
@@ -213,33 +214,20 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		);
 	}
 
-	// 檢查目標玩家是否已經在當前回合行動過
-	const targetPlayerActions = await db
-		.select()
-		.from(gameActions)
-		.where(
-			and(
-				eq(gameActions.gameId, game.id),
-				eq(gameActions.roundId, currentRound.id),
-				eq(gameActions.playerId, targetPlayerId)
-			)
-		);
-
-	const targetHasActed = targetPlayerActions.length > 0;
-
 	// 处理攻击效果
 	const isPermanentBlock = targetRole?.name === '姬云浮';
 
 	// 計算被攻擊的回合數
+	// actionOrder 會保留所有已輪到的玩家，即使玩家沒有使用技能、沒有 gameActions 紀錄。
+	// 因此不能用 gameActions 判斷玩家是否已行動，否則直接交棒的玩家會被錯判為尚未行動。
 	// 姬云浮也根據是否行動過記錄對應的回合，不設定為 999
 	// - 目標已行動：記錄為下一回合 (currentRound + 1)
 	// - 目標未行動：記錄為當前回合 (currentRound)
-	let attackedRoundValue: number;
-	if (targetHasActed) {
-		attackedRoundValue = currentRound.round + 1;
-	} else {
-		attackedRoundValue = currentRound.round;
-	}
+	const attackedRoundValue = getAttackedRound(
+		currentRound.round,
+		currentRound.actionOrder,
+		targetPlayerId
+	);
 
 	// 更新目标玩家的被攻擊狀態
 	await updatePlayerAttackedStatus(targetPlayerId, attackedRoundValue);
@@ -254,20 +242,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		const xuYuanPlayer = await getPlayerByRoleName(game.id, '許愿');
 
 		if (xuYuanPlayer) {
-			// 檢查許愿是否已行動
-			const xuYuanActions = await db
-				.select()
-				.from(gameActions)
-				.where(
-					and(
-						eq(gameActions.gameId, game.id),
-						eq(gameActions.roundId, currentRound.id),
-						eq(gameActions.playerId, xuYuanPlayer.playerId)
-					)
-				);
-
-			const xuYuanHasActed = xuYuanActions.length > 0;
-			const xuYuanAttackedRound = xuYuanHasActed ? currentRound.round + 1 : currentRound.round;
+			const xuYuanAttackedRound = getAttackedRound(
+				currentRound.round,
+				currentRound.actionOrder,
+				xuYuanPlayer.playerId
+			);
 
 			// 許愿的被攻擊記錄邏輯與方震相同
 			await updatePlayerAttackedStatus(xuYuanPlayer.playerId, xuYuanAttackedRound);
