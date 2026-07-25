@@ -9,6 +9,7 @@ import {
 	gameActions
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { getNextRoundStarter } from './game-turn-order';
 
 // 遊戲角色配置
 export const GAME_ROLES = {
@@ -670,22 +671,10 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 		throw new Error(`第 ${roundNumber} 回合已存在`);
 	}
 
-	// 獲取上一回合最後一個行動的玩家
-	const lastActions = await db
-		.select({
-			playerId: gameActions.playerId,
-			ordering: gameActions.ordering
-		})
-		.from(gameActions)
-		.where(and(eq(gameActions.gameId, gameId), eq(gameActions.roundId, previousRound.id)))
-		.orderBy(gameActions.ordering);
-
-	if (lastActions.length === 0) {
-		throw new Error('上一回合沒有任何玩家行動記錄');
+	const lastPlayerId = getNextRoundStarter(previousRound.actionOrder);
+	if (lastPlayerId === null) {
+		throw new Error('上一回合沒有有效的行動順序');
 	}
-
-	// 最後一個行動的玩家
-	const lastPlayerId = lastActions[lastActions.length - 1].playerId;
 
 	// 創建新回合，並將上一回合最後一位玩家設為第一位
 	const [newRound] = await db
