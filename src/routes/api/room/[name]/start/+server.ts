@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 import { startGame, startRoleSelection } from '$lib/server/game';
 import { verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gamePlayers, gameRounds, gameActions, roles } from '$lib/server/db/schema';
+import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
+import { getNextRoundStarter } from '$lib/server/game-turn-order';
 import { eq, and } from 'drizzle-orm';
 import { chineseNumeral } from '$lib/utils/round';
 
@@ -255,24 +256,12 @@ export const POST: RequestHandler = async (event) => {
 				return json({ message: `第 ${nextRoundNumber} 回合已經存在` }, { status: 400 });
 			}
 
-			// 獲取上一回合的最後一個行動玩家
-			const lastActions = await db
-				.select({
-					playerId: gameActions.playerId,
-					ordering: gameActions.ordering
-				})
-				.from(gameActions)
-				.where(and(eq(gameActions.gameId, game.id), eq(gameActions.roundId, previousRound.id)))
-				.orderBy(gameActions.ordering);
-
-			if (lastActions.length === 0) {
-				return json({ message: '上一回合沒有任何玩家行動記錄' }, { status: 400 });
+			const lastPlayerId = getNextRoundStarter(previousRound.actionOrder);
+			if (lastPlayerId === null) {
+				return json({ message: '上一回合沒有有效的行動順序' }, { status: 400 });
 			}
 
-			// 獲取最後一個行動的玩家
-			const lastPlayerId = lastActions[lastActions.length - 1].playerId;
-
-			// 創建新回合，最後行動的玩家成為新回合的起始玩家
+			// 創建新回合，上一回合最後輪到的玩家成為新回合的起始玩家
 			const [newRound] = await db
 				.insert(gameRounds)
 				.values({
