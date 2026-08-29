@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const { user: currentUser, game, player: playerInRoom } = verifyResult;
 
 	// 獲取房間所有玩家資訊
-	const players = await db
+	const playersWithRoles = await db
 		.select({
 			id: gamePlayers.id,
 			userId: gamePlayers.userId,
@@ -30,6 +30,10 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		.from(gamePlayers)
 		.innerJoin(user, eq(gamePlayers.userId, user.id))
 		.where(eq(gamePlayers.gameId, game.id));
+	const players = playersWithRoles.map((player) => ({
+		...player,
+		roleId: player.userId === currentUser.id ? player.roleId : null
+	}));
 
 	return json({
 		game: {
@@ -37,6 +41,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			roomName: game.roomName,
 			hostId: game.hostId,
 			status: game.status,
+			autoAssignRolesAndColors: game.autoAssignRolesAndColors,
 			playerCount: game.playerCount,
 			totalScore: game.totalScore,
 			createdAt: game.createdAt,

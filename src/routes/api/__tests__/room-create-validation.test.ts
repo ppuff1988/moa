@@ -41,6 +41,41 @@ describe('Room Creation Validation API', () => {
 	});
 
 	describe('POST /api/room/create - Input Validation', () => {
+		it('應該建立自動分派房間並回傳不可變的房間模式', async () => {
+			const response = await fetch(`${API_BASE}/api/room/create`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${testUsers[0].token}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					password: 'test123',
+					autoAssignRolesAndColors: true
+				})
+			});
+
+			expect(response.status).toBe(201);
+			const data = await response.json();
+			expect(data.autoAssignRolesAndColors).toBe(true);
+			testGames.push(data.gameId);
+		});
+
+		it('應該拒絕非布林值的自動分派設定', async () => {
+			const response = await fetch(`${API_BASE}/api/room/create`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${testUsers[0].token}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					password: 'test123',
+					autoAssignRolesAndColors: 'yes'
+				})
+			});
+
+			expect(response.status).toBe(400);
+		});
+
 		it('應該成功創建房間並自動生成房間名稱', async () => {
 			const response = await fetch(`${API_BASE}/api/room/create`, {
 				method: 'POST',
@@ -56,6 +91,7 @@ describe('Room Creation Validation API', () => {
 			expect(response.status).toBe(201);
 			const data = await response.json();
 			expect(data.roomName).toMatch(/^\d{6}$/); // 6碼數字
+			expect(data.autoAssignRolesAndColors).toBe(false);
 			testGames.push(data.gameId);
 		});
 

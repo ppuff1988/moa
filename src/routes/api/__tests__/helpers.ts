@@ -85,7 +85,10 @@ export async function loginTestUser(email: string, password: string) {
 /**
  * 創建測試房間
  */
-export async function createTestRoom(authToken: string) {
+export async function createTestRoom(
+	authToken: string,
+	options: { autoAssignRolesAndColors?: boolean } = {}
+) {
 	const password = 'room123';
 
 	const response = await fetch(`${API_BASE}/api/room/create`, {
@@ -94,7 +97,10 @@ export async function createTestRoom(authToken: string) {
 			Authorization: `Bearer ${authToken}`,
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ password })
+		body: JSON.stringify({
+			password,
+			autoAssignRolesAndColors: options.autoAssignRolesAndColors ?? false
+		})
 	});
 
 	if (!response.ok) {

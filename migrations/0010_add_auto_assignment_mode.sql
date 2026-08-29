@@ -1,0 +1,2 @@
+ALTER TABLE games
+ADD COLUMN IF NOT EXISTS auto_assign_roles_and_colors BOOLEAN NOT NULL DEFAULT FALSE;

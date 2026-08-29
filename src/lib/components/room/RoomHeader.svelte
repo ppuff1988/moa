@@ -8,6 +8,7 @@
 	export let maxPlayers: number;
 	export let minPlayers: number;
 	export let isHost: boolean;
+	export let autoAssignRolesAndColors: boolean = false;
 	export let allPlayersReady: boolean;
 	export let players: Player[] = [];
 	export let onStartSelection: () => void;
@@ -21,6 +22,7 @@
 	{maxPlayers}
 	{minPlayers}
 	{isHost}
+	{autoAssignRolesAndColors}
 	{allPlayersReady}
 	{players}
 	{onStartSelection}

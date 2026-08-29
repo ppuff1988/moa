@@ -17,10 +17,23 @@
 
 	// 使用 composable 管理房間邏輯 - 只创建一次
 	const roomLobby = useRoomLobby(roomName);
-	const { currentUser, players, isLoading, isHost, gameStatus, allPlayersReady } = roomLobby;
+	const {
+		currentUser,
+		players,
+		isLoading,
+		isHost,
+		gameStatus,
+		autoAssignRolesAndColors,
+		allPlayersReady
+	} = roomLobby;
 
 	// 計算底部裝飾文字
-	$: footerText = $players.length < minPlayers ? '等待更多玩家加入' : '等待房主開始遊戲';
+	$: footerText =
+		$players.length < minPlayers
+			? '等待更多玩家加入'
+			: $autoAssignRolesAndColors && !$allPlayersReady
+				? '等待所有玩家準備'
+				: '等待房主開始遊戲';
 
 	// 同步遊戲狀態到通知系統
 	$: if ($gameStatus) {
@@ -62,6 +75,7 @@
 			{maxPlayers}
 			{minPlayers}
 			isHost={$isHost}
+			autoAssignRolesAndColors={$autoAssignRolesAndColors}
 			allPlayersReady={$allPlayersReady}
 			players={$players}
 			onStartSelection={roomLobby.startSelection}
@@ -73,8 +87,10 @@
 			currentUserId={$currentUser?.id}
 			isHost={$isHost}
 			gameStatus={$gameStatus}
+			autoAssignRolesAndColors={$autoAssignRolesAndColors}
 			{roomName}
 			onKickPlayer={roomLobby.kickPlayer}
+			onToggleReady={roomLobby.setReady}
 		/>
 
 		<div class="footer-wrapper">

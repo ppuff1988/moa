@@ -5,11 +5,12 @@ import { getSocket, initSocket } from '$lib/utils/socket';
 import { derived, get, writable } from 'svelte/store';
 
 interface GameData {
-	id: number;
+	id: string;
 	status: string;
 	hostId: number;
 	roomName: string;
 	playerCount: number;
+	autoAssignRolesAndColors: boolean;
 }
 
 export function useRoomLobby(roomName: string) {
@@ -19,6 +20,7 @@ export function useRoomLobby(roomName: string) {
 	const isLoading = writable<boolean>(true);
 	const isHost = writable<boolean>(false);
 	const gameStatus = writable<string>('waiting');
+	const autoAssignRolesAndColors = writable<boolean>(false);
 	const allPlayersReady = writable<boolean>(false);
 
 	let socket: ReturnType<typeof getSocket> = null;
@@ -60,6 +62,7 @@ export function useRoomLobby(roomName: string) {
 			// 驗證數據結構
 			if (roomData && roomData.game) {
 				gameStatus.set(roomData.game.status);
+				autoAssignRolesAndColors.set(Boolean(roomData.game.autoAssignRolesAndColors));
 				const user = get(currentUser);
 				if (user) {
 					isHost.set(roomData.game.hostId === user.id);
@@ -183,6 +186,7 @@ export function useRoomLobby(roomName: string) {
 
 			if (data.game) {
 				gameStatus.set(data.game.status);
+				autoAssignRolesAndColors.set(Boolean(data.game.autoAssignRolesAndColors));
 				const user = get(currentUser);
 				if (user) {
 					isHost.set(data.game.hostId === user.id);
@@ -261,7 +265,6 @@ export function useRoomLobby(roomName: string) {
 			(data: {
 				playerId: string;
 				userId: number;
-				roleId: number;
 				color: string;
 				colorCode: string;
 				isReady: boolean;
@@ -271,7 +274,6 @@ export function useRoomLobby(roomName: string) {
 						if (player.userId === data.userId) {
 							return {
 								...player,
-								roleId: data.roleId,
 								isReady: data.isReady,
 								color: data.color,
 								colorCode: data.colorCode
@@ -412,6 +414,35 @@ export function useRoomLobby(roomName: string) {
 		}
 	}
 
+	async function setReady(isReady: boolean) {
+		try {
+			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/ready`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ isReady })
+			});
+
+			const data = await response.json();
+			if (!response.ok) {
+				addNotification(data.message || '更新準備狀態失敗', 'error');
+				return;
+			}
+
+			const user = get(currentUser);
+			if (user) {
+				players.update(($players) =>
+					$players.map((player) =>
+						player.userId === user.id ? { ...player, isReady: data.isReady } : player
+					)
+				);
+			}
+		} catch (error) {
+			console.error('更新準備狀態失敗:', error);
+			addNotification('更新準備狀態失敗', 'error');
+		}
+	}
+
 	// Kick player
 	async function kickPlayer(targetUserId: number) {
 		try {
@@ -471,6 +502,7 @@ export function useRoomLobby(roomName: string) {
 		isLoading,
 		isHost,
 		gameStatus,
+		autoAssignRolesAndColors,
 		allPlayersReady,
 
 		// Methods
@@ -479,6 +511,7 @@ export function useRoomLobby(roomName: string) {
 		leaveRoom,
 		startSelection,
 		startGame,
+		setReady,
 		kickPlayer
 	};
 }

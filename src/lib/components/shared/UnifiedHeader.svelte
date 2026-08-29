@@ -17,6 +17,7 @@
 	export let maxPlayers: number = 8;
 	export let minPlayers: number = 6;
 	export let isHost: boolean = false;
+	export let autoAssignRolesAndColors: boolean = false;
 	export let allPlayersReady: boolean = false;
 	export let players: Player[] = [];
 	export let onStartSelection: (() => void) | undefined = undefined;
@@ -88,6 +89,10 @@
 					<span class="value player-count">{playerCount}/{maxPlayers}</span>
 				</div>
 
+				{#if autoAssignRolesAndColors}
+					<div class="mode-badge" title="角色與顏色會在遊戲開始時隨機分派">自動分派</div>
+				{/if}
+
 				{#if gameStatus === 'waiting'}
 					<div class="info-section status-section">
 						<span class="label">狀態</span>
@@ -113,6 +118,7 @@
 		{playerCount}
 		{minPlayers}
 		{isHost}
+		{autoAssignRolesAndColors}
 		{allPlayersReady}
 		{onStartSelection}
 		{onStartGame}
@@ -270,6 +276,17 @@
 	.status-selecting {
 		color: #a855f7;
 		font-weight: 700;
+	}
+
+	.mode-badge {
+		padding: 0.25rem 0.55rem;
+		border: 1px solid rgba(251, 191, 36, 0.45);
+		border-radius: 999px;
+		background: rgba(251, 191, 36, 0.12);
+		color: #fbbf24;
+		font-size: 0.75rem;
+		font-weight: 700;
+		white-space: nowrap;
 	}
 
 	@media (max-width: 1024px) {

@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		return verifyResult.error;
 	}
 
-	const { game } = verifyResult;
+	const { game, user: currentUser } = verifyResult;
 
 	// 獲取當前最新的回合資訊
 	const currentRound = await getCurrentRound(game.id);
@@ -60,7 +60,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		avatar: player.avatar,
 		color: player.color,
 		colorCode: player.colorCode,
-		roleName: player.roleName,
+		roleName: player.userId === currentUser.id ? player.roleName : null,
 		isHost: player.isHost,
 		isReady: player.isReady,
 		isCurrentAction: currentActionPlayerId === player.id,
@@ -77,7 +77,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 						nickname: player.nickname,
 						color: player.color || '',
 						colorCode: player.colorCode || '#888',
-						roleName: player.roleName
+						roleName: player.userId === currentUser.id ? player.roleName : null
 					}
 				: null;
 		})
@@ -93,7 +93,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				nickname: player.nickname,
 				color: player.color || '',
 				colorCode: player.colorCode || '#888',
-				roleName: player.roleName
+				roleName: player.userId === currentUser.id ? player.roleName : null
 			};
 		}
 	}

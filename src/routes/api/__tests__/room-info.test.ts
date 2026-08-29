@@ -41,6 +41,21 @@ describe('Room Info and Status APIs', () => {
 	});
 
 	describe('GET /api/room/[name]', () => {
+		it('應該回傳建立後不可變的自動分派模式', async () => {
+			const room = await createTestRoom(testUsers[0].token, {
+				autoAssignRolesAndColors: true
+			});
+			testGames.push(room.gameId);
+
+			const response = await fetch(`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}`, {
+				headers: { Authorization: `Bearer ${testUsers[0].token}` }
+			});
+
+			expect(response.status).toBe(200);
+			const data = await response.json();
+			expect(data.game.autoAssignRolesAndColors).toBe(true);
+		});
+
 		it('應該成功返回房間資訊給房間內的玩家', async () => {
 			const room = await createTestRoom(testUsers[0].token);
 			testGames.push(room.gameId);
