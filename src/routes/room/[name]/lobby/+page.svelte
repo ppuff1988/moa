@@ -51,10 +51,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>房間大廳 - {roomName} - 古董局中局</title>
-</svelte:head>
-
 {#if $isLoading}
 	<LoadingSpinner message="載入房間中..." />
 {:else}
