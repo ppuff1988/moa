@@ -1,4 +1,4 @@
-# MOA - 古董局中局桌遊輔助網站
+# 古董局中局｜非官方桌遊輔助網站（MOA）
 
 [![CI](https://github.com/ppuff1988/moa/actions/workflows/ci.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/ci.yml)
 [![CD](https://github.com/ppuff1988/moa/actions/workflows/cd.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/cd.yml)
@@ -16,6 +16,8 @@
 🌐 **線上版本**: [https://moa.sportify.tw](https://moa.sportify.tw)
 
 無需安裝，打開瀏覽器即可開始遊戲！
+
+> 對外網站名稱與 PWA 安裝名稱統一為「古董局中局」；MOA 為本專案的開發代號。
 
 ## 📖 關於本專案
 
@@ -57,7 +59,7 @@
 - 💬 遊戲內聊天
 - 🐳 支援 Docker 部署
 - 🔑 一鍵 Google 登入
-- 📱 **PWA 支援** - 可安裝到桌面，支援離線使用
+- 📱 **PWA 支援** - 可安裝到桌面，安裝後顯示名稱為「古董局中局」
 
 ## 🚀 快速開始
 
@@ -174,7 +176,7 @@ cp .env.example .env
 - `GOOGLE_CLIENT_SECRET`: Google OAuth 用戶端密鑰
 - `GOOGLE_REDIRECT_URI`: OAuth 回調網址（本地: `http://localhost:5173/auth/google/callback`）
 
-> 📖 **詳細設定步驟**：請參考 [Google OAuth 快速開始指南](docs/GOOGLE-OAUTH-QUICKSTART.md)
+> 📖 **詳細設定步驟**：請參考 [Google OAuth 設定指南](docs/GOOGLE-OAUTH-SETUP.md)
 
 **Docker Hub（生產部署用）**
 
@@ -253,14 +255,14 @@ Push to main
 ## 📚 完整文件
 
 - 📖 [遊戲規則說明](docs/RULE.md) - 遊戲玩法與規則
-- �️ [開發工具與腳本指南](docs/DEVELOPMENT-TOOLS.md) - NPM Scripts、Makefile、Shell 腳本使用說明
+- 🛠️ [開發工具與腳本指南](docs/DEVELOPMENT-TOOLS.md) - NPM Scripts、Makefile、Shell 腳本使用說明
 - 🔄 [工作流程說明](docs/WORKFLOWS.md) - Git 工作流程與開發規範
-- �🗄️ [資料庫架構說明](docs/DATABASE-SCHEMA.md) - 資料庫表結構與管理方式
 - 🚀 [生產環境部署](docs/PRODUCTION-DEPLOYMENT.md) - 部署到生產環境
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
 - 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）
 - 📱 [Telegram Bot 設定](docs/TELEGRAM-BOT-SETUP.md) - 設定部署通知機器人
-- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範- 📲 **[PWA 功能說明](docs/PWA.md)** - Progressive Web App 安裝與使用指南
+- 🎨 [程式碼風格指南](docs/STYLE.md) - 開發規範
+- 📲 [PWA 功能說明](docs/PWA.md) - Progressive Web App 安裝與使用指南
 
 ### 📧 關於郵件隊列系統
 
@@ -296,7 +298,7 @@ Push to main
 
 ## 📝 授權
 
-本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 文件
+本專案採用 MIT 授權條款 - 詳見 [LICENCE](LICENCE) 文件
 
 ## 🙏 致謝
 

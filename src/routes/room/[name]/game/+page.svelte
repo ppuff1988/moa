@@ -1181,10 +1181,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>遊戲中 - {roomName} - 古董局中局</title>
-</svelte:head>
-
 {#if isLoading}
 	<div class="loading-container">
 		<div class="loading-spinner"></div>

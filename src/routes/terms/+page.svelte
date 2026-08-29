@@ -8,10 +8,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>使用者條款 - 古董局中局非官方APP</title>
-</svelte:head>
-
 <Navigation />
 
 <div class="terms-container">

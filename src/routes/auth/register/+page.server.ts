@@ -7,8 +7,5 @@ export const load = async ({ locals }: ServerLoadEvent) => {
 		throw redirect(302, '/');
 	}
 
-	return {
-		title: '註冊 - 古董局中局非官方APP',
-		description: '註冊古董局中局非官方APP，開始您的古董鑑賞之旅'
-	};
+	return {};
 };
