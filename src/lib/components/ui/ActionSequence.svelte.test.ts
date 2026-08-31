@@ -114,6 +114,19 @@ describe('ActionSequence round history details', () => {
 		await expect.element(screen.getByRole('heading', { name: '回合歷史' })).toBeVisible();
 		await expect.element(screen.getByText('5 票 · 真偽未公開')).toBeVisible();
 		await expect.element(screen.getByText('4 票 · 贗品')).toBeVisible();
+		const completedRound = document.querySelector<HTMLElement>('.round-card.round-completed');
+		expect(completedRound).not.toBeNull();
+		expect(getComputedStyle(completedRound!).opacity).toBe('1');
+
+		const orderDisclosure = document.querySelector<HTMLDetailsElement>('.player-order-disclosure');
+		const chipDisclosure = document.querySelector<HTMLDetailsElement>('.chip-breakdown-disclosure');
+		expect(orderDisclosure?.open).toBe(false);
+		expect(chipDisclosure?.open).toBe(false);
+		await expect.element(screen.getByText('藥不然')).not.toBeVisible();
+
+		await screen.getByText('玩家行動順序').click();
+		await screen.getByText('四獸首票數與籌碼明細').click();
+		await expect.element(screen.getByText('藥不然')).toBeVisible();
 		await expect.element(screen.getByRole('img', { name: '老朝奉的紅色籌碼 2 枚' })).toBeVisible();
 
 		await vi.waitFor(() => {
@@ -125,6 +138,17 @@ describe('ActionSequence round history details', () => {
 			).toEqual(['許愿', '方震', '藥不然']);
 			expect(document.querySelectorAll('.history-artifact')).toHaveLength(4);
 		});
+
+		const playerRows = Array.from(document.querySelectorAll<HTMLElement>('.player-order-list li'));
+		playerRows.forEach((row) => {
+			row.style.width = '600px';
+		});
+		const dotOffsets = playerRows.map((row) => {
+			const dot = row.querySelector<HTMLElement>('.player-color-dot');
+			return (dot?.getBoundingClientRect().left ?? 0) - row.getBoundingClientRect().left;
+		});
+		expect(Math.max(...dotOffsets) - Math.min(...dotOffsets)).toBeLessThan(1);
+
 		expect(fetchMock).toHaveBeenCalledWith('/api/room/room%20%2F%20one/action-history', {
 			credentials: 'include'
 		});

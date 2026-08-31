@@ -289,12 +289,16 @@
 								</div>
 
 								{#if round.playerOrder.length > 0}
-									<section
-										class="round-summary-section"
-										aria-label={`第 ${round.roundNumber} 回合玩家順序`}
-									>
-										<h4>玩家行動順序</h4>
-										<ol class="player-order-list">
+									<details class="round-summary-section player-order-disclosure">
+										<summary class="disclosure-summary">
+											<span>玩家行動順序</span>
+											<small>{round.playerOrder.length} 位玩家</small>
+											<span class="disclosure-icon" aria-hidden="true"></span>
+										</summary>
+										<ol
+											class="player-order-list disclosure-content"
+											aria-label={`第 ${round.roundNumber} 回合玩家順序`}
+										>
 											{#each round.playerOrder as orderedPlayer (orderedPlayer.playerId)}
 												<li class:is-me={orderedPlayer.playerId === actionHistory.playerInfo.id}>
 													<span class="order-number">{orderedPlayer.position}</span>
@@ -302,17 +306,19 @@
 														class="player-color-dot"
 														style:background={orderedPlayer.colorCode ?? '#6B7280'}
 													></span>
-													<span class="ordered-player-name">{orderedPlayer.nickname}</span>
+													<span class="ordered-player-identity">
+														<span class="ordered-player-name">{orderedPlayer.nickname}</span>
+														{#if orderedPlayer.playerId === actionHistory.playerInfo.id}
+															<span class="me-label">你</span>
+														{/if}
+													</span>
 													<span class="ordered-player-color"
 														>{orderedPlayer.color ?? '未設定'}色</span
 													>
-													{#if orderedPlayer.playerId === actionHistory.playerInfo.id}
-														<span class="me-label">你</span>
-													{/if}
 												</li>
 											{/each}
 										</ol>
-									</section>
+									</details>
 								{/if}
 
 								{#if round.myOrderIndex !== null}
@@ -347,53 +353,60 @@
 											</div>
 										</div>
 
-										<div class="artifact-vote-grid">
-											{#each round.votingResult.artifacts as artifact (artifact.id)}
-												<article
-													class="history-artifact"
-													class:first-place={artifact.rank === 1}
-													class:second-place={artifact.rank === 2}
-												>
-													<header>
-														<div>
-															{#if artifact.rank === 1}
-																<span class="artifact-rank">🥇 入選</span>
-															{:else if artifact.rank === 2}
-																<span class="artifact-rank">🥈 入選</span>
-															{:else}
-																<span class="artifact-rank">未入選</span>
-															{/if}
-															<strong>{artifact.animal}首</strong>
-														</div>
-														<span class="artifact-vote-total"
-															>{artifact.votes}<small>票</small></span
-														>
-													</header>
+										<details class="chip-breakdown-disclosure">
+											<summary class="disclosure-summary">
+												<span>四獸首票數與籌碼明細</span>
+												<small>{round.votingResult.artifacts.length} 個獸首</small>
+												<span class="disclosure-icon" aria-hidden="true"></span>
+											</summary>
+											<div class="artifact-vote-grid disclosure-content">
+												{#each round.votingResult.artifacts as artifact (artifact.id)}
+													<article
+														class="history-artifact"
+														class:first-place={artifact.rank === 1}
+														class:second-place={artifact.rank === 2}
+													>
+														<header>
+															<div>
+																{#if artifact.rank === 1}
+																	<span class="artifact-rank">🥇 入選</span>
+																{:else if artifact.rank === 2}
+																	<span class="artifact-rank">🥈 入選</span>
+																{:else}
+																	<span class="artifact-rank">未入選</span>
+																{/if}
+																<strong>{artifact.animal}首</strong>
+															</div>
+															<span class="artifact-vote-total"
+																>{artifact.votes}<small>票</small></span
+															>
+														</header>
 
-													<div class="history-chip-breakdown">
-														{#if artifact.colorBreakdown.length === 0}
-															<span class="no-chip-detail">無玩家籌碼明細</span>
-														{:else}
-															{#each artifact.colorBreakdown as chip (`${artifact.id}-${chip.playerId}`)}
-																<div class="history-chip-row">
-																	<VotingChip
-																		colorCode={chip.colorCode}
-																		layers={chip.chips}
-																		size="small"
-																		label={`${chip.nickname}的${chip.color}色籌碼 ${chip.chips} 枚`}
-																	/>
-																	<span>
-																		<strong>{chip.nickname}</strong>
-																		<small>{chip.color}色</small>
-																	</span>
-																	<b>×{chip.chips}</b>
-																</div>
-															{/each}
-														{/if}
-													</div>
-												</article>
-											{/each}
-										</div>
+														<div class="history-chip-breakdown">
+															{#if artifact.colorBreakdown.length === 0}
+																<span class="no-chip-detail">無玩家籌碼明細</span>
+															{:else}
+																{#each artifact.colorBreakdown as chip (`${artifact.id}-${chip.playerId}`)}
+																	<div class="history-chip-row">
+																		<VotingChip
+																			colorCode={chip.colorCode}
+																			layers={chip.chips}
+																			size="small"
+																			label={`${chip.nickname}的${chip.color}色籌碼 ${chip.chips} 枚`}
+																		/>
+																		<span>
+																			<strong>{chip.nickname}</strong>
+																			<small>{chip.color}色</small>
+																		</span>
+																		<b>×{chip.chips}</b>
+																	</div>
+																{/each}
+															{/if}
+														</div>
+													</article>
+												{/each}
+											</div>
+										</details>
 									</section>
 								{/if}
 
@@ -458,7 +471,8 @@
 		left: 0;
 		width: 100%;
 		height: 100%;
-		background-color: rgba(0, 0, 0, 0.7);
+		background: rgba(10, 8, 6, 0.78);
+		backdrop-filter: blur(8px);
 		display: flex;
 		justify-content: center;
 		align-items: center;
@@ -467,15 +481,20 @@
 	}
 
 	.modal-content {
-		background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+		background:
+			radial-gradient(circle at 12% 0%, rgba(168, 105, 58, 0.16), transparent 32%),
+			linear-gradient(155deg, #2b2925 0%, #191816 100%);
 		border-radius: 16px;
 		max-width: 1200px;
 		width: 100%;
 		max-height: 90vh;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		box-shadow:
+			0 24px 72px rgba(7, 5, 3, 0.62),
+			inset 0 1px 0 rgba(255, 248, 232, 0.08);
+		border: 1px solid rgba(214, 188, 118, 0.32);
+		overflow: hidden;
 	}
 
 	.modal-header {
@@ -483,28 +502,44 @@
 		justify-content: space-between;
 		align-items: center;
 		padding: 1rem 1.25rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		border-bottom: 1px solid rgba(214, 188, 118, 0.18);
+		background: rgba(255, 248, 232, 0.025);
 	}
 
 	.modal-header h2 {
 		margin: 0;
-		color: #f8fafc;
+		color: #f6f0e7;
 		font-size: 1.25rem;
 		font-weight: 600;
 	}
 
 	.close-btn {
-		background: none;
-		border: none;
-		color: #94a3b8;
-		font-size: 1.5rem;
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		background: rgba(255, 248, 232, 0.06);
+		border: 1px solid rgba(255, 248, 232, 0.14);
+		border-radius: 10px;
+		color: #cfc5b8;
+		font-size: 1.25rem;
 		cursor: pointer;
-		padding: 0.25rem 0.5rem;
-		transition: color 0.2s;
+		padding: 0;
+		transition:
+			background-color 0.2s,
+			border-color 0.2s,
+			color 0.2s;
 	}
 
 	.close-btn:hover {
-		color: #f8fafc;
+		border-color: rgba(214, 188, 118, 0.5);
+		background: rgba(214, 188, 118, 0.12);
+		color: #f6f0e7;
+	}
+
+	.close-btn:focus-visible {
+		outline: 2px solid #d6bc76;
+		outline-offset: 3px;
 	}
 
 	.modal-body {
@@ -540,7 +575,7 @@
 	.no-actions {
 		text-align: center;
 		padding: 2rem;
-		color: #94a3b8;
+		color: #b9afa3;
 	}
 
 	.error {
@@ -548,11 +583,12 @@
 	}
 
 	.player-info {
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(255, 248, 232, 0.055);
 		border-radius: 12px;
 		padding: 1.25rem;
 		margin-bottom: 1.5rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(214, 188, 118, 0.18);
+		box-shadow: inset 0 1px 0 rgba(255, 248, 232, 0.04);
 	}
 
 	.info-row {
@@ -567,17 +603,17 @@
 	}
 
 	.label {
-		color: #94a3b8;
+		color: #b9afa3;
 		font-size: 0.9rem;
 	}
 
 	.value {
-		color: #f8fafc;
+		color: #f4eee3;
 		font-weight: 500;
 	}
 
 	.value.highlight {
-		color: #60a5fa;
+		color: #e3c76f;
 		font-weight: 600;
 	}
 
@@ -601,24 +637,30 @@
 	.rounds-container {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 1.25rem;
 	}
 
 	.round-card {
-		background: rgba(255, 255, 255, 0.05);
+		background:
+			linear-gradient(135deg, rgba(255, 248, 232, 0.07), rgba(255, 248, 232, 0.035)),
+			rgba(20, 18, 15, 0.42);
 		border-radius: 12px;
 		padding: 1.25rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(214, 188, 118, 0.2);
+		box-shadow: inset 0 1px 0 rgba(255, 248, 232, 0.045);
 		transition: all 0.3s;
 	}
 
 	.round-card.round-current {
-		border-color: #60a5fa;
-		box-shadow: 0 0 20px rgba(96, 165, 250, 0.3);
+		border-color: rgba(226, 195, 101, 0.72);
+		box-shadow:
+			0 0 24px rgba(185, 131, 45, 0.16),
+			inset 0 1px 0 rgba(255, 248, 232, 0.08);
 	}
 
 	.round-card.round-completed {
-		opacity: 0.7;
+		opacity: 1;
+		border-color: rgba(214, 188, 118, 0.26);
 	}
 
 	.round-header {
@@ -630,14 +672,15 @@
 
 	.round-header h3 {
 		margin: 0;
-		color: #f8fafc;
+		color: #f6f0e7;
 		font-size: 1.25rem;
 	}
 
 	.phase-badge {
 		padding: 0.25rem 0.75rem;
-		background: rgba(168, 85, 247, 0.2);
-		color: #a855f7;
+		background: rgba(214, 188, 118, 0.12);
+		border: 1px solid rgba(214, 188, 118, 0.22);
+		color: #d9c17f;
 		border-radius: 12px;
 		font-size: 0.75rem;
 		font-weight: 600;
@@ -645,8 +688,9 @@
 
 	.current-badge {
 		padding: 0.25rem 0.75rem;
-		background: rgba(96, 165, 250, 0.2);
-		color: #60a5fa;
+		background: rgba(226, 195, 101, 0.14);
+		border: 1px solid rgba(226, 195, 101, 0.28);
+		color: #e6cb78;
 		border-radius: 12px;
 		font-size: 0.75rem;
 		font-weight: 600;
@@ -664,15 +708,15 @@
 	}
 
 	.order-info {
-		background: rgba(59, 130, 246, 0.1);
+		background: rgba(214, 188, 118, 0.08);
 		padding: 0.75rem;
 		border-radius: 8px;
 		margin-bottom: 1rem;
-		border-left: 3px solid #3b82f6;
+		border-left: 3px solid #d6bc76;
 	}
 
 	.order-info span {
-		color: #93c5fd;
+		color: #dac98f;
 		font-size: 0.9rem;
 		font-weight: 500;
 	}
@@ -693,6 +737,59 @@
 		letter-spacing: 0.08em;
 	}
 
+	.disclosure-summary {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto 1rem;
+		align-items: center;
+		gap: 0.625rem;
+		min-height: 2.25rem;
+		color: #d6bc76;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		cursor: pointer;
+		list-style: none;
+	}
+
+	.disclosure-summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.disclosure-summary small {
+		color: #968c80;
+		font-size: 0.68rem;
+		font-weight: 500;
+		letter-spacing: 0;
+	}
+
+	.disclosure-summary:focus-visible {
+		outline: 2px solid rgba(214, 188, 118, 0.72);
+		outline-offset: 4px;
+	}
+
+	.disclosure-icon {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-right: 1.5px solid currentColor;
+		border-bottom: 1.5px solid currentColor;
+		transform: rotate(45deg) translateY(-0.125rem);
+		transform-origin: center;
+		transition: transform 180ms ease;
+	}
+
+	details[open] > .disclosure-summary .disclosure-icon {
+		transform: rotate(225deg) translate(-0.125rem, -0.125rem);
+	}
+
+	.disclosure-content {
+		margin-top: 0.75rem;
+	}
+
+	.chip-breakdown-disclosure {
+		padding-top: 0.75rem;
+		border-top: 1px solid rgba(214, 188, 118, 0.14);
+	}
+
 	.player-order-list {
 		display: flex;
 		align-items: center;
@@ -705,7 +802,7 @@
 
 	.player-order-list li {
 		display: grid;
-		grid-template-columns: auto auto auto auto;
+		grid-template-columns: 1.35rem 0.75rem minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 0.375rem;
 		min-height: 2.25rem;
@@ -737,14 +834,25 @@
 	.player-color-dot {
 		width: 0.75rem;
 		height: 0.75rem;
+		justify-self: center;
 		border: 1px solid rgba(255, 255, 255, 0.65);
 		border-radius: 50%;
 		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.42);
 	}
 
+	.ordered-player-identity {
+		display: flex;
+		align-items: baseline;
+		gap: 0.375rem;
+		min-width: 0;
+	}
+
 	.ordered-player-name {
+		overflow: hidden;
 		font-size: 0.82rem;
 		font-weight: 650;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.ordered-player-color,
@@ -754,7 +862,7 @@
 	}
 
 	.me-label {
-		grid-column: 3 / -1;
+		flex: 0 0 auto;
 		color: #d6bc76;
 	}
 
@@ -916,7 +1024,7 @@
 	}
 
 	.actions-list h4 {
-		color: #cbd5e1;
+		color: #d6bc76;
 		font-size: 0.95rem;
 		margin: 0 0 0.75rem 0;
 		font-weight: 500;
@@ -942,7 +1050,7 @@
 	}
 
 	.action-type {
-		color: #f8fafc;
+		color: #f4eee3;
 		font-weight: 600;
 		font-size: 0.9rem;
 	}
@@ -958,19 +1066,19 @@
 	}
 
 	.modal-body::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
+		background: rgba(214, 188, 118, 0.3);
 		border-radius: 4px;
 	}
 
 	.modal-body::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.3);
+		background: rgba(214, 188, 118, 0.46);
 	}
 
 	.action-full-details {
 		margin-top: 0.5rem;
 		padding-top: 0.5rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
-		color: #cbd5e1;
+		color: #c9beb0;
 		font-size: 0.85rem;
 	}
 
@@ -988,7 +1096,7 @@
 		width: 0.4rem;
 		height: 0.4rem;
 		border-radius: 50%;
-		background: #60a5fa;
+		background: #d6bc76;
 	}
 
 	.attacked-warning {
