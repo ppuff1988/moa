@@ -24,6 +24,7 @@
 		isHost,
 		gameStatus,
 		autoAssignRolesAndColors,
+		onlineVotingEnabled,
 		allPlayersReady
 	} = roomLobby;
 
@@ -76,11 +77,19 @@
 			{minPlayers}
 			isHost={$isHost}
 			autoAssignRolesAndColors={$autoAssignRolesAndColors}
+			onlineVotingEnabled={$onlineVotingEnabled}
 			allPlayersReady={$allPlayersReady}
 			players={$players}
 			onStartSelection={roomLobby.startSelection}
 			onStartGame={roomLobby.startGame}
 		/>
+
+		{#if $onlineVotingEnabled}
+			<div class="online-voting-notice" role="note">
+				<strong>本房間採線上投票</strong>
+				<span>每輪每人獲得 2 枚籌碼，未使用可累積；第三輪必須全部投出。</span>
+			</div>
+		{/if}
 
 		<PlayersGrid
 			players={$players}
@@ -120,6 +129,28 @@
 		width: 100%;
 	}
 
+	.online-voting-notice {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid hsl(var(--secondary) / 0.45);
+		border-radius: var(--radius);
+		background: hsl(var(--secondary) / 0.1);
+		color: hsl(var(--foreground));
+		line-height: 1.5;
+	}
+
+	.online-voting-notice strong {
+		white-space: nowrap;
+		color: hsl(var(--secondary));
+	}
+
+	.online-voting-notice span {
+		color: hsl(var(--muted-foreground));
+	}
+
 	.footer-text {
 		margin-top: 2rem;
 		color: hsl(var(--muted-foreground));
@@ -149,6 +180,12 @@
 	@media (max-width: 768px) {
 		.lobby-container {
 			padding: 1rem;
+		}
+
+		.online-voting-notice {
+			align-items: flex-start;
+			flex-direction: column;
+			gap: 0.25rem;
 		}
 	}
 </style>

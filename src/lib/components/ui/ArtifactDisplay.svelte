@@ -1,4 +1,5 @@
 <script lang="ts">
+	import VotingChip from '$lib/components/ui/VotingChip.svelte';
 	import { chineseNumeral } from '$lib/utils/round';
 
 	interface BeastHead {
@@ -7,6 +8,14 @@
 		identifiedIsGenuine?: boolean;
 		votes: number;
 		voteRank?: number | null; // 投票排名
+	}
+
+	interface VotingControls {
+		allocations: Record<number, number>;
+		remaining: number;
+		playerColorCode: string;
+		locked: boolean;
+		onAdjust: (beastId: number, difference: number) => void;
 	}
 
 	interface Props {
@@ -27,6 +36,7 @@
 		showIdentifyHint?: boolean; // 是否顯示鑑定提示
 		remainingIdentifyCount?: number; // 剩餘鑑定次數
 		hasIdentifySkill?: boolean; // 是否有鑑定技能
+		votingControls?: VotingControls;
 	}
 
 	let {
@@ -45,7 +55,8 @@
 		autoCollapse = false,
 		showIdentifyHint = false,
 		remainingIdentifyCount = 0,
-		hasIdentifySkill = true
+		hasIdentifySkill = true,
+		votingControls
 	}: Props = $props();
 
 	// 收起/展開狀態
@@ -142,7 +153,12 @@
 	}
 </script>
 
-<div class="beast-heads-section" class:collapsed={isCollapsed} bind:this={beastHeadsSectionElement}>
+<div
+	class="beast-heads-section"
+	class:collapsed={isCollapsed}
+	class:voting-mode={Boolean(votingControls)}
+	bind:this={beastHeadsSectionElement}
+>
 	<div class="section-header">
 		<div class="spacer"></div>
 		<h3 class="section-title">第{chineseNumeral(currentRound)}回合</h3>
@@ -157,6 +173,8 @@
 	{#if !isCollapsed}
 		<div class="beast-heads-grid">
 			{#each beastHeads as beast (beast.id)}
+				<!-- role and tabindex change together outside voting mode. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div
 					class="beast-card"
 					class:revealed={identifiedArtifacts.includes(beast.id)}
@@ -164,11 +182,12 @@
 					class:locked={blockedArtifacts.includes(beast.id)}
 					class:selected={selectedBeastHead === beast.id}
 					class:interactive={isInteractive(beast.id)}
+					class:voting={Boolean(votingControls)}
 					class:top-ranked={showVotingResults && (beast.voteRank === 1 || beast.voteRank === 2)}
-					onclick={() => handleBeastClick(beast.id)}
-					onkeydown={(e) => handleKeydown(e, beast.id)}
-					role="button"
-					tabindex={isInteractive(beast.id) ? 0 : -1}
+					onclick={votingControls ? undefined : () => handleBeastClick(beast.id)}
+					onkeydown={votingControls ? undefined : (e) => handleKeydown(e, beast.id)}
+					role={votingControls ? undefined : 'button'}
+					tabindex={votingControls ? undefined : isInteractive(beast.id) ? 0 : -1}
 				>
 					<div class="beast-card-inner">
 						{#if showVotingResults && beast.voteRank}
@@ -192,6 +211,39 @@
 						{/if}
 						{#if showVotingResults && beast.votes > 0}
 							<div class="vote-count">{beast.votes} 票</div>
+						{/if}
+						{#if votingControls}
+							<div class="card-voting-controls">
+								<div class="voting-chip-preview">
+									<VotingChip
+										colorCode={votingControls.playerColorCode}
+										layers={votingControls.allocations[beast.id] ?? 0}
+										muted={(votingControls.allocations[beast.id] ?? 0) === 0}
+									/>
+								</div>
+								<div class="chip-stepper">
+									<button
+										type="button"
+										aria-label={`減少投給${beast.animal}首的籌碼`}
+										disabled={votingControls.locked ||
+											(votingControls.allocations[beast.id] ?? 0) === 0}
+										onclick={(event) => {
+											event.stopPropagation();
+											votingControls.onAdjust(beast.id, -1);
+										}}>−</button
+									>
+									<output aria-live="polite">{votingControls.allocations[beast.id] ?? 0} 枚</output>
+									<button
+										type="button"
+										aria-label={`增加投給${beast.animal}首的籌碼`}
+										disabled={votingControls.locked || votingControls.remaining === 0}
+										onclick={(event) => {
+											event.stopPropagation();
+											votingControls.onAdjust(beast.id, 1);
+										}}>＋</button
+									>
+								</div>
+							</div>
 						{/if}
 					</div>
 				</div>
@@ -235,6 +287,17 @@
 		padding: 0.75rem 1rem;
 		backdrop-filter: blur(10px);
 		transition: padding 0.2s ease;
+	}
+
+	.beast-heads-section.voting-mode {
+		padding: 0.75rem 1rem 1rem;
+		border-color: rgba(191, 156, 77, 0.42);
+		background:
+			radial-gradient(circle at 12% 0%, rgba(177, 119, 72, 0.13), transparent 32%),
+			rgba(31, 30, 28, 0.88);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.08),
+			0 18px 42px rgba(16, 12, 8, 0.18);
 	}
 
 	.beast-heads-section.collapsed {
@@ -302,6 +365,13 @@
 		padding: 1.5rem;
 		transition: all 0.3s ease;
 		position: relative;
+	}
+
+	.beast-card.voting {
+		padding: 1.25rem 1rem 1rem;
+		border-color: rgba(208, 197, 177, 0.28);
+		background: linear-gradient(165deg, rgba(255, 255, 255, 0.075), rgba(40, 38, 35, 0.2));
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
 	}
 
 	.beast-card.interactive {
@@ -433,6 +503,75 @@
 		border: 1px solid rgba(212, 175, 55, 0.4);
 	}
 
+	.card-voting-controls {
+		width: 100%;
+		margin-top: 0.375rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid rgba(226, 211, 184, 0.16);
+	}
+
+	.voting-chip-preview {
+		height: 3.25rem;
+		margin: 0 auto -0.125rem;
+		text-align: center;
+	}
+
+	.chip-stepper {
+		display: grid;
+		grid-template-columns: 2.5rem minmax(3.5rem, 1fr) 2.5rem;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.chip-stepper button {
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		padding: 0;
+		border: 1px solid rgba(218, 202, 174, 0.42);
+		border-radius: 0.625rem;
+		background: rgba(225, 216, 200, 0.12);
+		color: #f2eadc;
+		font: inherit;
+		font-size: 1.45rem;
+		font-weight: 500;
+		cursor: pointer;
+		touch-action: manipulation;
+		transition:
+			transform 180ms ease,
+			background 180ms ease,
+			border-color 180ms ease;
+	}
+
+	.chip-stepper button:hover:not(:disabled) {
+		transform: translateY(-1px);
+		border-color: rgba(214, 176, 89, 0.82);
+		background: rgba(191, 156, 77, 0.2);
+	}
+
+	.chip-stepper button:active:not(:disabled) {
+		transform: translateY(1px) scale(0.97);
+	}
+
+	.chip-stepper button:focus-visible {
+		outline: 3px solid hsl(var(--ring) / 0.55);
+		outline-offset: 2px;
+	}
+
+	.chip-stepper button:disabled {
+		opacity: 0.26;
+		cursor: not-allowed;
+	}
+
+	.chip-stepper output {
+		color: #f2eadc;
+		font-size: 0.875rem;
+		font-weight: 650;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+	}
+
 	/* 鑑定提示區域 */
 	.identify-hint-section {
 		margin-top: 1rem;
@@ -552,6 +691,10 @@
 			padding: 1rem;
 		}
 
+		.beast-card.voting {
+			padding-inline: 0.625rem;
+		}
+
 		.beast-icon {
 			font-size: 2rem;
 		}
@@ -562,6 +705,22 @@
 
 		.crown-badge {
 			font-size: 1.5rem;
+		}
+
+		.chip-stepper {
+			grid-template-columns: 2.25rem minmax(2.75rem, 1fr) 2.25rem;
+			gap: 0.25rem;
+		}
+
+		.chip-stepper button {
+			width: 2.25rem;
+			height: 2.25rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.chip-stepper button {
+			transition: none;
 		}
 	}
 </style>

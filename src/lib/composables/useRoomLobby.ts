@@ -11,6 +11,7 @@ interface GameData {
 	roomName: string;
 	playerCount: number;
 	autoAssignRolesAndColors: boolean;
+	onlineVotingEnabled: boolean;
 }
 
 export function useRoomLobby(roomName: string) {
@@ -21,6 +22,7 @@ export function useRoomLobby(roomName: string) {
 	const isHost = writable<boolean>(false);
 	const gameStatus = writable<string>('waiting');
 	const autoAssignRolesAndColors = writable<boolean>(false);
+	const onlineVotingEnabled = writable<boolean>(false);
 	const allPlayersReady = writable<boolean>(false);
 
 	let socket: ReturnType<typeof getSocket> = null;
@@ -63,6 +65,7 @@ export function useRoomLobby(roomName: string) {
 			if (roomData && roomData.game) {
 				gameStatus.set(roomData.game.status);
 				autoAssignRolesAndColors.set(Boolean(roomData.game.autoAssignRolesAndColors));
+				onlineVotingEnabled.set(Boolean(roomData.game.onlineVotingEnabled));
 				const user = get(currentUser);
 				if (user) {
 					isHost.set(roomData.game.hostId === user.id);
@@ -187,6 +190,7 @@ export function useRoomLobby(roomName: string) {
 			if (data.game) {
 				gameStatus.set(data.game.status);
 				autoAssignRolesAndColors.set(Boolean(data.game.autoAssignRolesAndColors));
+				onlineVotingEnabled.set(Boolean(data.game.onlineVotingEnabled));
 				const user = get(currentUser);
 				if (user) {
 					isHost.set(data.game.hostId === user.id);
@@ -503,6 +507,7 @@ export function useRoomLobby(roomName: string) {
 		isHost,
 		gameStatus,
 		autoAssignRolesAndColors,
+		onlineVotingEnabled,
 		allPlayersReady,
 
 		// Methods

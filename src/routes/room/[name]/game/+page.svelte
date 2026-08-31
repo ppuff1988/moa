@@ -69,6 +69,7 @@
 	let isIdentifying = $state(false);
 	let actionAreaElement: HTMLDivElement | null = $state(null);
 	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
+	let onlineVotingEnabled = $state(false);
 	const roundStatusRequests = createLatestRequestTracker();
 
 	// roomName 需要立即從 URL 參數初始化
@@ -83,10 +84,11 @@
 	});
 
 	// 使用 $derived 代替 $: 的計算值
-	const isMyTurn = $derived(
-		$currentActionPlayer?.id === $players.find((p) => p.nickname === currentUser?.nickname)?.id
+	const currentPlayerIdentity = $derived(
+		$players.find((player) => player.nickname === currentUser?.nickname)
 	);
-	const currentUserId = $derived($players.find((p) => p.nickname === currentUser?.nickname)?.id);
+	const isMyTurn = $derived($currentActionPlayer?.id === currentPlayerIdentity?.id);
+	const currentUserId = $derived(currentPlayerIdentity?.id);
 	const assignablePlayers = $derived(
 		$players.filter((player) => {
 			if (player.id === $currentActionPlayer?.id) return false;
@@ -917,6 +919,7 @@
 			if (roomResponse.ok) {
 				const roomData = await roomResponse.json();
 				const currentGameStatus = roomData.game?.status || 'playing';
+				onlineVotingEnabled = Boolean(roomData.game?.onlineVotingEnabled);
 
 				// 如果遊戲狀態是 waiting 或 selecting，導向到 lobby 頁面
 				if (currentGameStatus === 'waiting' || currentGameStatus === 'selecting') {
@@ -1192,6 +1195,8 @@
 			{roomName}
 			currentUserNickname={currentUser?.nickname}
 			currentPlayerRole={$currentPlayerRole}
+			currentPlayerColor={currentPlayerIdentity?.color}
+			currentPlayerColorCode={currentPlayerIdentity?.colorCode}
 			{teammateInfo}
 			{gameStatus}
 			onOpenHistory={() => (isActionHistoryOpen = true)}
@@ -1240,7 +1245,7 @@
 					<PhaseIndicator {isMyTurn} gamePhase={$gamePhase} />
 				{/if}
 
-				{#if $roundPhase !== 'identification' && $roundPhase !== 'finished'}
+				{#if $roundPhase !== 'identification' && $roundPhase !== 'finished' && !($roundPhase === 'voting' && onlineVotingEnabled)}
 					<ArtifactDisplay
 						beastHeads={$beastHeads}
 						identifiedArtifacts={$identifiedArtifacts}
@@ -1334,7 +1339,11 @@
 								{roomName}
 								beastHeads={$beastHeads}
 								identifiedArtifacts={$identifiedArtifacts}
+								failedIdentifications={$failedIdentifications}
+								blockedArtifacts={$blockedArtifacts}
 								isHost={$isHost}
+								{onlineVotingEnabled}
+								currentRound={$currentRound}
 								onVotesSubmitted={(result) => {
 									applyPublishedVotingResult(result);
 									void fetchArtifacts();

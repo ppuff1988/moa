@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: '無效的 JSON 格式' }, { status: 400 });
 	}
 
-	const { password, autoAssignRolesAndColors = false } = requestBody;
+	const { password, autoAssignRolesAndColors = false, onlineVotingEnabled = false } = requestBody;
 
 	// 驗證密碼輸入
 	if (!password) {
@@ -31,12 +31,21 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (typeof autoAssignRolesAndColors !== 'boolean') {
 		return json({ message: '自動分派設定必須是布林值' }, { status: 400 });
 	}
+	if (typeof onlineVotingEnabled !== 'boolean') {
+		return json({ message: '線上投票設定必須是布林值' }, { status: 400 });
+	}
 
 	// 創建遊戲
 	try {
 		// 自動生成唯一的5碼數字房間名稱
 		const roomName = await generateUniqueRoomName();
-		const game = await createGame(roomName, password, user.id, autoAssignRolesAndColors);
+		const game = await createGame(
+			roomName,
+			password,
+			user.id,
+			autoAssignRolesAndColors,
+			onlineVotingEnabled
+		);
 
 		// 房主自動加入遊戲
 		const player = await joinGame(game.id, user.id, true);
@@ -47,6 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				gameId: game.id,
 				roomName: game.roomName,
 				autoAssignRolesAndColors: game.autoAssignRolesAndColors,
+				onlineVotingEnabled: game.onlineVotingEnabled,
 				player
 			},
 			{ status: 201 }

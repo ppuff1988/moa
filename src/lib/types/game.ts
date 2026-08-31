@@ -34,6 +34,17 @@ export interface BeastHead {
 
 export interface PublishedVotingResult {
 	round: number;
+	artifacts?: Array<{
+		id: number;
+		animal: string;
+		votes: number;
+		rank: number | null;
+		colorBreakdown: Array<{
+			color: string;
+			colorCode: string;
+			chips: number;
+		}>;
+	}>;
 	firstPlace: {
 		id: number;
 		animal: string;

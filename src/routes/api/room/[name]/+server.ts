@@ -42,6 +42,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			hostId: game.hostId,
 			status: game.status,
 			autoAssignRolesAndColors: game.autoAssignRolesAndColors,
+			onlineVotingEnabled: game.onlineVotingEnabled,
 			playerCount: game.playerCount,
 			totalScore: game.totalScore,
 			createdAt: game.createdAt,

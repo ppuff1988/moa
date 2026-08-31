@@ -87,7 +87,7 @@ export async function loginTestUser(email: string, password: string) {
  */
 export async function createTestRoom(
 	authToken: string,
-	options: { autoAssignRolesAndColors?: boolean } = {}
+	options: { autoAssignRolesAndColors?: boolean; onlineVotingEnabled?: boolean } = {}
 ) {
 	const password = 'room123';
 
@@ -99,7 +99,8 @@ export async function createTestRoom(
 		},
 		body: JSON.stringify({
 			password,
-			autoAssignRolesAndColors: options.autoAssignRolesAndColors ?? false
+			autoAssignRolesAndColors: options.autoAssignRolesAndColors ?? false,
+			onlineVotingEnabled: options.onlineVotingEnabled ?? false
 		})
 	});
 

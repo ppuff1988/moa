@@ -109,7 +109,8 @@ export async function createGame(
 	roomName: string,
 	roomPassword: string,
 	hostId: number,
-	autoAssignRolesAndColors: boolean = false
+	autoAssignRolesAndColors: boolean = false,
+	onlineVotingEnabled: boolean = false
 ) {
 	// 檢查房間名稱是否已存在
 	const existingGame = await db
@@ -131,6 +132,7 @@ export async function createGame(
 			hostId,
 			status: 'waiting',
 			autoAssignRolesAndColors,
+			onlineVotingEnabled,
 			playerCount: 0,
 			totalScore: 0
 		})

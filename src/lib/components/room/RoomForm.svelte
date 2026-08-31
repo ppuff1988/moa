@@ -7,6 +7,7 @@
 	let roomName = '';
 	let roomPassword = '';
 	let autoAssignRolesAndColors = false;
+	let onlineVotingEnabled = false;
 	let error = '';
 	let isLoading = false;
 
@@ -48,7 +49,7 @@
 			const apiEndpoint = mode === 'create' ? '/api/room/create' : '/api/room/join';
 			const body =
 				mode === 'create'
-					? { password: roomPassword, autoAssignRolesAndColors }
+					? { password: roomPassword, autoAssignRolesAndColors, onlineVotingEnabled }
 					: { roomName: roomName.trim(), password: roomPassword };
 
 			const response = await fetch(apiEndpoint, {
@@ -115,6 +116,14 @@
 					<span>
 						<strong>自動分派角色與顏色</strong>
 						<small>所有玩家準備後，系統會在遊戲開始時隨機分派。</small>
+					</span>
+				</label>
+
+				<label class="checkbox-field">
+					<input type="checkbox" bind:checked={onlineVotingEnabled} disabled={isLoading} />
+					<span>
+						<strong>線上投票</strong>
+						<small>每位玩家自行分配籌碼；未使用可累積，第三輪必須全部投出。</small>
 					</span>
 				</label>
 			{/if}
