@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "===================================="
 echo "   🚀 MOA Production 部署"
@@ -42,9 +42,30 @@ fi
 
 # 載入 .env 文件中的環境變數
 set -a
+# Production .env is uploaded immediately before deployment.
+# shellcheck disable=SC1091
 source .env
 set +a
 echo ""
+
+if [ -z "${APP_IMAGE:-}" ] || [ -z "${WORKER_IMAGE:-}" ]; then
+    echo "❌ APP_IMAGE 與 WORKER_IMAGE 必須指定不可變版本標籤"
+    exit 1
+fi
+
+PREVIOUS_APP_IMAGE=$(docker inspect --format '{{.Config.Image}}' moa_app_prod 2>/dev/null || true)
+PREVIOUS_WORKER_IMAGE=$(docker inspect --format '{{.Config.Image}}' moa_email_worker_prod 2>/dev/null || true)
+
+rollback() {
+    if [ -z "$PREVIOUS_APP_IMAGE" ] || [ -z "$PREVIOUS_WORKER_IMAGE" ]; then
+        echo "⚠️ 無先前版本可回復，保留目前容器狀態"
+        return 1
+    fi
+
+    echo "↩️ 回復舊版本：$PREVIOUS_APP_IMAGE / $PREVIOUS_WORKER_IMAGE"
+    APP_IMAGE="$PREVIOUS_APP_IMAGE" WORKER_IMAGE="$PREVIOUS_WORKER_IMAGE" \
+        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+}
 
 # 拉取最新鏡像
 echo "📥 [1/5] 拉取最新 Docker 鏡像..."
@@ -81,9 +102,8 @@ else
 fi
 echo ""
 
-# 停止舊的應用服務（保留資料庫）
-echo "🛑 [3/5] 停止舊應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml stop app email-worker 2>/dev/null || echo "   應用服務未運行（可能是首次部署）"
+# migrations 執行期間保留舊應用服務，避免 migration 失敗造成停機。
+echo "🛡️ [3/5] 保留舊應用服務直到新版本通過 migration..."
 echo ""
 
 # 執行資料庫 Migrations
@@ -102,13 +122,12 @@ else
         -v "$(pwd)/package.json:/app/package.json" \
         -e DATABASE_URL="${DATABASE_URL}" \
         -e NODE_ENV=production \
-        ${DOCKER_USERNAME}/moa:latest \
+        "${APP_IMAGE}" \
         npm run db:migrate; then
         echo "✅ Migrations 執行成功"
     else
         echo "❌ Migrations 執行失敗！"
-        echo "   嘗試重啟舊版本應用..."
-        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+        echo "   舊版本仍保持運行，不切換容器"
         exit 1
     fi
 fi
@@ -140,6 +159,7 @@ while [ "$attempt" -le "$max_attempts" ]; do
         echo "❌ 服務健康檢查失敗"
         echo "📋 最近的應用日誌："
         $DOCKER_COMPOSE -f docker-compose.prod.yml logs --tail=100 app || true
+        rollback || true
         exit 1
     fi
 

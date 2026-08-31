@@ -20,7 +20,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
-      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm install --global "npm@${NPM_VERSION}"
       - run: npm ci
       - run: npm run lint
       - run: npm run check
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
-      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm install --global "npm@${NPM_VERSION}"
       - run: npm ci
       - run: npm run test:unit -- --run
         env:
@@ -64,7 +64,7 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm install --global "npm@${NPM_VERSION}"
       - run: npm ci
 
       - name: 初始化測試資料庫
@@ -134,7 +134,7 @@ jobs:
     if: always() && (needs.lint.result == 'failure' || needs.test-unit.result == 'failure' || needs.test-api.result == 'failure')
     steps:
       - name: 📣 發送測試失敗通知
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}

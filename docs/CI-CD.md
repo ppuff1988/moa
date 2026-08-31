@@ -13,7 +13,7 @@
 
 ## 🔄 CI 流程
 
-當代碼推送到 `main` 或 `develop` 分支，或建立 Pull Request 時，會自動執行以下檢查：
+當 Pull Request 指向 `dev` 或 `main` 時，會自動執行以下檢查：
 
 ### 1. 程式碼檢查 (Lint)
 
@@ -32,11 +32,10 @@
 - 執行所有 API 端點測試
 - 驗證後端功能
 
-### 4. E2E 測試
+### 4. E2E Smoke 測試
 
-- 使用 Playwright 執行端到端測試
-- 測試完整的使用者流程
-- 生成測試報告並保存 30 天
+- 使用 Playwright 執行快速瀏覽器 smoke 測試
+- 完整 8 人三回合流程保留為本機／人工驗證，避免拖慢每個 PR
 
 ### 5. 建置檢查
 
@@ -45,19 +44,19 @@
 
 ## 🚀 CD 流程
 
-當代碼推送到 `main` 分支時，會自動執行部署流程：
+當版本化 Release／Hotfix PR 合併到 `main` 後，會依序執行發布與部署：
 
 ### 部署步驟
 
 1. **建置 Docker 映像**
    - 建立多架構支援的映像
    - 推送到 Docker Hub
-   - 標記為 `latest` 和 commit SHA
+   - 標記為 `latest`、`vX.Y.Z` 和完整 commit SHA
 
 2. **部署到伺服器**
    - 透過 SSH 連接到部署伺服器
-   - 拉取最新程式碼
-   - 更新 Docker 容器
+   - 驗證 tag、package 版本與 SHA 一致
+   - checkout 指定 SHA，拉取版本化 App／Worker image
    - 自動執行資料庫遷移
 
 3. **健康檢查**
@@ -66,7 +65,7 @@
    - 確保服務正常運行
 
 4. **通知**
-   - 發送部署結果到 Slack（可選）
+   - 發送部署結果到 Telegram
 
 ## 🔐 環境變數設定
 
@@ -348,6 +347,9 @@ DEPLOY_SSH_KEY       # SSH 私鑰（完整內容，包含 BEGIN 和 END）
                      # -----BEGIN OPENSSH PRIVATE KEY-----
                      # ...私鑰內容...
                      # -----END OPENSSH PRIVATE KEY-----
+
+DEPLOY_SSH_KNOWN_HOSTS # 部署主機的 known_hosts 記錄，啟用嚴格主機驗證
+                       # 在可信網路取得：ssh-keyscan -H <部署主機>
 
 DATABASE_URL         # 資料庫連線字串（包含密碼）
                      # 範例：postgres://user:pass@db:5432/dbname

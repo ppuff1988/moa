@@ -30,6 +30,26 @@ jobs:
     env:
       NPM_VERSION: '12.0.1'
     steps:
+      - name: 確認沒有進行中的版本 PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100
+            });
+            const activeVersionPulls = openPulls.filter(
+              (pull) =>
+                pull.head.ref.startsWith('release/v') || pull.head.ref.startsWith('hotfix/')
+            );
+            if (activeVersionPulls.length > 0) {
+              const numbers = activeVersionPulls.map((pull) => `#${pull.number}`).join(', ');
+              throw new Error(`已有進行中的 Release／Hotfix PR（${numbers}），完成後再建立 Release`);
+            }
+
       - uses: actions/checkout@v6
         with:
           ref: dev

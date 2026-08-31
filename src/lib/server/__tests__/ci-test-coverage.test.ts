@@ -19,7 +19,7 @@ describe('CI test coverage', () => {
 		expect(jobSections).toHaveLength(3);
 
 		for (const section of jobSections) {
-			const installVersion = section.indexOf('run: npm install --global npm@${NPM_VERSION}');
+			const installVersion = section.indexOf('run: npm install --global "npm@${NPM_VERSION}"');
 			const installDependencies = section.indexOf('run: npm ci');
 
 			expect(installVersion).toBeGreaterThan(-1);

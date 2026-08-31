@@ -35,22 +35,6 @@ jobs:
             console.log('🔍 開始檢查 main → dev 同步狀態...');
             console.log('');
 
-            async function enableMergeAutoMerge(pr) {
-              await github.graphql(`
-                mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
-                  enablePullRequestAutoMerge(input: {
-                    pullRequestId: $pullRequestId,
-                    mergeMethod: $mergeMethod
-                  }) {
-                    pullRequest { number }
-                  }
-                }
-              `, {
-                pullRequestId: pr.node_id,
-                mergeMethod: 'MERGE'
-              });
-            }
-
             // 從 main 的 package.json 讀取版本
             const { data: pkg } = await github.rest.repos.getContent({
               owner: context.repo.owner,
@@ -132,7 +116,6 @@ jobs:
               core.setOutput('result', 'exists');
               core.setOutput('pr_number', String(prs[0].number));
               core.setOutput('pr_url', prs[0].html_url);
-              await enableMergeAutoMerge(prs[0]);
               return;
             }
 
@@ -170,27 +153,7 @@ jobs:
             core.setOutput('pr_number', String(pr.number));
             core.setOutput('pr_url', pr.html_url);
 
-            // 嘗試啟用 GitHub Auto-merge（需要分支保護規則）
-            console.log('');
-            console.log('🔍 嘗試啟用 GitHub 內建 Auto-merge...');
-            try {
-              await enableMergeAutoMerge(pr);
-              console.log('✅ GitHub Auto-merge 已啟用（Merge commit 模式）');
-              console.log('ℹ️ PR 將在所有檢查通過後自動合併');
-            } catch (e) {
-              console.log('⚠️ 無法啟用 GitHub Auto-merge');
-              console.log(`   原因: ${e.message}`);
-              console.log('');
-              console.log('💡 要啟用 GitHub Auto-merge，需要：');
-              console.log('   1. Settings → General → Pull Requests');
-              console.log('      ☑ Allow auto-merge');
-              console.log('');
-              console.log('   2. Settings → Branches → Branch protection rule (dev)');
-              console.log('      ☑ Require status checks to pass before merging');
-              console.log('      ☑ 選擇必要的檢查項目（如：lint, test-api）');
-              console.log('');
-              throw e;
-            }
+            console.log('ℹ️ 等待 CI 與目前 commit 的 Codex Review 完成後，由 Auto Merge to Dev 合併');
   notify:
     name: TG 通知 - Sync Main→Dev
     runs-on: ubuntu-latest

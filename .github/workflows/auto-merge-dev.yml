@@ -17,26 +17,15 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      statuses: write
     outputs:
       has_conflicts: ${{ steps.merge.outputs.has_conflicts }}
       conflict_pr_numbers: ${{ steps.merge.outputs.conflict_pr_numbers }}
-    # 只在以下條件時執行：
-    # 1. CI Test 成功
-    # 2. 是 PR 事件（不是 push）
-    # 3. 分支符合 feature 類型（feat/**, fix/**, 等）
-    # 4. 不是 dev 或 main 分支
+    # 對所有成功的 PR CI run 啟動；script 再依 base=dev 過濾。
+    # 這也會替非慣例命名的 PR 建立 required codex-review status。
     if: |
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      (
-        startsWith(github.event.workflow_run.head_branch, 'feat/') ||
-        startsWith(github.event.workflow_run.head_branch, 'fix/') ||
-        startsWith(github.event.workflow_run.head_branch, 'refactor/') ||
-        startsWith(github.event.workflow_run.head_branch, 'chore/') ||
-        startsWith(github.event.workflow_run.head_branch, 'docs/') ||
-        startsWith(github.event.workflow_run.head_branch, 'style/') ||
-        startsWith(github.event.workflow_run.head_branch, 'test/')
-      )
+      github.event.workflow_run.event == 'pull_request'
 
     steps:
       - name: 等待 Codex Review 並自動合併
@@ -48,9 +37,22 @@ jobs:
             const CODEX_SUMMARY_MARKER = 'codex-pull-request-review-summary';
             const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+            async function setCodexStatus(sha, state, description) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state,
+                context: 'codex-review',
+                description,
+                target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/commit/${sha}`
+              });
+            }
+
             async function waitForCodexReview(pr) {
               const shortSha = pr.head.sha.slice(0, 7);
               const maxAttempts = 30;
+              await setCodexStatus(pr.head.sha, 'pending', `等待 Codex Review (${shortSha})`);
 
               for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
                 const [issueComments, reviews, reviewComments] = await Promise.all([
@@ -78,9 +80,6 @@ jobs:
                   (review) => review.user?.login === CODEX_BOT && review.commit_id === pr.head.sha
                 );
                 const currentReviewIds = new Set(currentReviews.map((review) => review.id));
-                const findingReviews = currentReviews.filter(
-                  (review) => review.state === 'COMMENTED' && (review.body || '').includes('Codex Review')
-                );
                 const findings = reviewComments.filter(
                   (comment) =>
                     comment.user?.login === CODEX_BOT &&
@@ -96,17 +95,22 @@ jobs:
                   );
                 });
 
-                if (findingReviews.length > 0 || findings.length > 0) {
+                if (findings.length > 0) {
+                  await setCodexStatus(pr.head.sha, 'failure', `Codex 發現 ${findings.length} 個問題`);
                   throw new Error(
                     `Codex Review 在目前 commit ${shortSha} 發現問題，停止自動合併`
                   );
                 }
-                if (completedSummary) return;
+                if (completedSummary) {
+                  await setCodexStatus(pr.head.sha, 'success', `Codex Review 通過 (${shortSha})`);
+                  return;
+                }
 
                 console.log(`等待 Codex Review (${attempt}/${maxAttempts})，commit ${shortSha}`);
                 if (attempt < maxAttempts) await sleep(20_000);
               }
 
+              await setCodexStatus(pr.head.sha, 'failure', `等待 Codex Review 逾時 (${shortSha})`);
               throw new Error(`等待 Codex Review 逾時，停止自動合併 commit ${shortSha}`);
             }
 
@@ -159,17 +163,18 @@ jobs:
 
               if (pr.mergeable_state === 'clean') {
                 // 可以直接 merge
+                const mergeMethod = sourceBranch === 'main' ? 'merge' : 'squash';
                 await github.rest.pulls.merge({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: pr.number,
-                  // 使用 squash 保持歷史簡潔，每個 PR 合併為一個 commit
-                  merge_method: 'squash',
+                  // main → dev 保留共同祖先；一般功能 PR 維持 squash。
+                  merge_method: mergeMethod,
                   commit_title: pr.title,
                   commit_message: `${pr.body || ''}\n\nPR #${pr.number} - ${sourceBranch}`
                 });
 
-                console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch} (squash merge)`);
+                console.log(`✅ PR #${pr.number} 已自動合併到 ${targetBranch} (${mergeMethod})`);
 
                 // 自動刪除源分支（排除保護分支）
                 const protectedBranches = ['main', 'dev', 'staging', 'production'];
