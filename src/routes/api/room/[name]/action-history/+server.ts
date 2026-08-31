@@ -2,7 +2,18 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gameRounds, gameActions, roles, gamePlayers } from '$lib/server/db/schema';
+import {
+	artifactVoteAllocations,
+	gameActions,
+	gameArtifacts,
+	gamePlayers,
+	gameRounds,
+	gameVoteSubmissions,
+	roles,
+	user
+} from '$lib/server/db/schema';
+import { buildRoundPlayerOrder } from '$lib/server/game-turn-order';
+import { buildRoundVotingHistory } from '$lib/server/game-voting';
 import { eq, and, asc } from 'drizzle-orm';
 
 // 獲取玩家的所有回合行動歷史
@@ -40,6 +51,48 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			.where(eq(gameRounds.gameId, game.id))
 			.orderBy(asc(gameRounds.round));
 
+		const roomPlayers = await db
+			.select({
+				id: gamePlayers.id,
+				nickname: user.nickname,
+				color: gamePlayers.color,
+				colorCode: gamePlayers.colorCode
+			})
+			.from(gamePlayers)
+			.innerJoin(user, eq(gamePlayers.userId, user.id))
+			.where(eq(gamePlayers.gameId, game.id));
+
+		const artifacts = await db
+			.select({
+				id: gameArtifacts.id,
+				round: gameArtifacts.round,
+				animal: gameArtifacts.animal,
+				votes: gameArtifacts.votes,
+				voteRank: gameArtifacts.voteRank,
+				isGenuine: gameArtifacts.isGenuine
+			})
+			.from(gameArtifacts)
+			.where(eq(gameArtifacts.gameId, game.id));
+
+		const voteAllocations = await db
+			.select({
+				roundId: gameVoteSubmissions.roundId,
+				artifactId: artifactVoteAllocations.artifactId,
+				playerId: gamePlayers.id,
+				nickname: user.nickname,
+				color: gamePlayers.color,
+				colorCode: gamePlayers.colorCode,
+				chips: artifactVoteAllocations.chipCount
+			})
+			.from(artifactVoteAllocations)
+			.innerJoin(
+				gameVoteSubmissions,
+				eq(artifactVoteAllocations.submissionId, gameVoteSubmissions.id)
+			)
+			.innerJoin(gamePlayers, eq(gameVoteSubmissions.playerId, gamePlayers.id))
+			.innerJoin(user, eq(gamePlayers.userId, user.id))
+			.where(eq(gameVoteSubmissions.gameId, game.id));
+
 		// 為每個回合獲取該玩家的行動記錄
 		const roundsWithActions = await Promise.all(
 			rounds.map(async (round) => {
@@ -76,6 +129,12 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				// 獲取該回合的行動順序（所有玩家）
 				const actionOrder = (round.actionOrder as number[]) || [];
 				const myOrderIndex = actionOrder.indexOf(player.id);
+				const playerOrder = buildRoundPlayerOrder(actionOrder, roomPlayers);
+				const votingResult = buildRoundVotingHistory(
+					round.round,
+					artifacts.filter((artifact) => artifact.round === round.round),
+					voteAllocations.filter((allocation) => allocation.roundId === round.id)
+				);
 
 				// actionOrder 是倒序的（最新行動的在前面），需要轉換為正序
 				// 例如：8人遊戲，第1個行動的玩家在 index 7，應該顯示為第 1 位
@@ -92,6 +151,8 @@ export const GET: RequestHandler = async ({ request, params }) => {
 					completedAt: round.completedAt,
 					myOrderIndex: myActualOrder, // 使用正確的正序位置
 					totalPlayers: actionOrder.length,
+					playerOrder,
+					votingResult,
 					actions: parsedActions,
 					isCompleted: round.completedAt !== null,
 					isAttacked: isAttacked // 新增：是否在此回合被攻擊

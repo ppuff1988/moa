@@ -19,6 +19,31 @@ interface RankedVotingArtifact {
 	isGenuine: boolean;
 }
 
+export interface VotingHistoryAllocation {
+	artifactId: number;
+	playerId: number;
+	nickname: string;
+	color: string | null;
+	colorCode: string | null;
+	chips: number;
+}
+
+export interface RoundVotingHistory extends PublishedVotingResult {
+	artifacts: Array<{
+		id: number;
+		animal: string;
+		votes: number;
+		rank: number | null;
+		colorBreakdown: Array<{
+			playerId: number;
+			nickname: string;
+			color: string;
+			colorCode: string;
+			chips: number;
+		}>;
+	}>;
+}
+
 export function buildPublishedVotingResult(
 	round: number,
 	rankedArtifacts: RankedVotingArtifact[]
@@ -45,6 +70,39 @@ export function buildPublishedVotingResult(
 			rank: 2,
 			isGenuine: secondPlace.isGenuine
 		}
+	};
+}
+
+export function buildRoundVotingHistory(
+	round: number,
+	artifacts: RankedVotingArtifact[],
+	allocations: VotingHistoryAllocation[]
+): RoundVotingHistory | null {
+	const baseResult = buildPublishedVotingResult(round, artifacts);
+	if (!baseResult) return null;
+
+	const sortedArtifacts = [...artifacts].sort(
+		(a, b) => ZODIAC_ORDER.indexOf(a.animal) - ZODIAC_ORDER.indexOf(b.animal)
+	);
+
+	return {
+		...baseResult,
+		artifacts: sortedArtifacts.map((artifact) => ({
+			id: artifact.id,
+			animal: artifact.animal,
+			votes: artifact.votes ?? 0,
+			rank: artifact.voteRank,
+			colorBreakdown: allocations
+				.filter((allocation) => allocation.artifactId === artifact.id)
+				.sort((a, b) => a.playerId - b.playerId)
+				.map((allocation) => ({
+					playerId: allocation.playerId,
+					nickname: allocation.nickname,
+					color: allocation.color ?? '未設定',
+					colorCode: allocation.colorCode ?? '#6B7280',
+					chips: allocation.chips
+				}))
+		}))
 	};
 }
 

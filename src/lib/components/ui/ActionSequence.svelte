@@ -1,4 +1,6 @@
 <script lang="ts">
+	import VotingChip from '$lib/components/ui/VotingChip.svelte';
+
 	export let roomName: string;
 	export let isOpen: boolean = false;
 
@@ -17,6 +19,36 @@
 		completedAt: Date | null;
 		myOrderIndex: number | null;
 		totalPlayers: number;
+		playerOrder: Array<{
+			playerId: number;
+			nickname: string;
+			color: string | null;
+			colorCode: string | null;
+			position: number;
+		}>;
+		votingResult: {
+			firstPlace: { id: number; animal: string; votes: number; rank: 1 };
+			secondPlace: {
+				id: number;
+				animal: string;
+				votes: number;
+				rank: 2;
+				isGenuine: boolean;
+			};
+			artifacts: Array<{
+				id: number;
+				animal: string;
+				votes: number;
+				rank: number | null;
+				colorBreakdown: Array<{
+					playerId: number;
+					nickname: string;
+					color: string;
+					colorCode: string;
+					chips: number;
+				}>;
+			}>;
+		} | null;
 		actions: Action[];
 		isCompleted: boolean;
 		isAttacked: boolean; // 新增：是否在此回合被攻擊
@@ -205,7 +237,7 @@
 			tabindex="0"
 		>
 			<div class="modal-header">
-				<h2>我的行動順序</h2>
+				<h2>回合歷史</h2>
 				<button class="close-btn" on:click={closeModal} aria-label="關閉">✕</button>
 			</div>
 
@@ -256,12 +288,113 @@
 									{/if}
 								</div>
 
+								{#if round.playerOrder.length > 0}
+									<section
+										class="round-summary-section"
+										aria-label={`第 ${round.roundNumber} 回合玩家順序`}
+									>
+										<h4>玩家行動順序</h4>
+										<ol class="player-order-list">
+											{#each round.playerOrder as orderedPlayer (orderedPlayer.playerId)}
+												<li class:is-me={orderedPlayer.playerId === actionHistory.playerInfo.id}>
+													<span class="order-number">{orderedPlayer.position}</span>
+													<span
+														class="player-color-dot"
+														style:background={orderedPlayer.colorCode ?? '#6B7280'}
+													></span>
+													<span class="ordered-player-name">{orderedPlayer.nickname}</span>
+													<span class="ordered-player-color"
+														>{orderedPlayer.color ?? '未設定'}色</span
+													>
+													{#if orderedPlayer.playerId === actionHistory.playerInfo.id}
+														<span class="me-label">你</span>
+													{/if}
+												</li>
+											{/each}
+										</ol>
+									</section>
+								{/if}
+
 								{#if round.myOrderIndex !== null}
 									<div class="order-info">
 										<span
 											>我的行動順序：第 {round.myOrderIndex} 位（共 {round.totalPlayers} 位玩家）</span
 										>
 									</div>
+								{/if}
+
+								{#if round.votingResult}
+									<section
+										class="round-summary-section voting-history"
+										aria-label={`第 ${round.roundNumber} 回合投票結果`}
+									>
+										<h4>投票結果</h4>
+										<div class="selected-artifacts">
+											<div class="selected-artifact first-place">
+												<span>🥇 第一名</span>
+												<strong>{round.votingResult.firstPlace.animal}首</strong>
+												<small>{round.votingResult.firstPlace.votes} 票 · 真偽未公開</small>
+											</div>
+											<div class="selected-artifact second-place">
+												<span>🥈 第二名</span>
+												<strong>{round.votingResult.secondPlace.animal}首</strong>
+												<small class:is-genuine={round.votingResult.secondPlace.isGenuine}>
+													{round.votingResult.secondPlace.votes} 票 · {round.votingResult
+														.secondPlace.isGenuine
+														? '真品'
+														: '贗品'}
+												</small>
+											</div>
+										</div>
+
+										<div class="artifact-vote-grid">
+											{#each round.votingResult.artifacts as artifact (artifact.id)}
+												<article
+													class="history-artifact"
+													class:first-place={artifact.rank === 1}
+													class:second-place={artifact.rank === 2}
+												>
+													<header>
+														<div>
+															{#if artifact.rank === 1}
+																<span class="artifact-rank">🥇 入選</span>
+															{:else if artifact.rank === 2}
+																<span class="artifact-rank">🥈 入選</span>
+															{:else}
+																<span class="artifact-rank">未入選</span>
+															{/if}
+															<strong>{artifact.animal}首</strong>
+														</div>
+														<span class="artifact-vote-total"
+															>{artifact.votes}<small>票</small></span
+														>
+													</header>
+
+													<div class="history-chip-breakdown">
+														{#if artifact.colorBreakdown.length === 0}
+															<span class="no-chip-detail">無玩家籌碼明細</span>
+														{:else}
+															{#each artifact.colorBreakdown as chip (`${artifact.id}-${chip.playerId}`)}
+																<div class="history-chip-row">
+																	<VotingChip
+																		colorCode={chip.colorCode}
+																		layers={chip.chips}
+																		size="small"
+																		label={`${chip.nickname}的${chip.color}色籌碼 ${chip.chips} 枚`}
+																	/>
+																	<span>
+																		<strong>{chip.nickname}</strong>
+																		<small>{chip.color}色</small>
+																	</span>
+																	<b>×{chip.chips}</b>
+																</div>
+															{/each}
+														{/if}
+													</div>
+												</article>
+											{/each}
+										</div>
+									</section>
 								{/if}
 
 								<!-- 新增：顯示被攻擊狀態（只有在輪到玩家後才顯示） -->
@@ -544,6 +677,244 @@
 		font-weight: 500;
 	}
 
+	.round-summary-section {
+		margin-bottom: 1rem;
+		padding: 1rem;
+		border: 1px solid rgba(214, 188, 118, 0.2);
+		border-radius: 10px;
+		background: rgba(15, 12, 9, 0.22);
+	}
+
+	.round-summary-section h4 {
+		margin: 0 0 0.75rem;
+		color: #d6bc76;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+	}
+
+	.player-order-list {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.player-order-list li {
+		display: grid;
+		grid-template-columns: auto auto auto auto;
+		align-items: center;
+		gap: 0.375rem;
+		min-height: 2.25rem;
+		padding: 0.375rem 0.625rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.045);
+		color: #f4eee3;
+	}
+
+	.player-order-list li.is-me {
+		border-color: rgba(214, 188, 118, 0.52);
+		background: rgba(214, 188, 118, 0.1);
+	}
+
+	.order-number {
+		display: grid;
+		place-items: center;
+		width: 1.35rem;
+		height: 1.35rem;
+		border-radius: 50%;
+		background: rgba(214, 188, 118, 0.16);
+		color: #e8d39a;
+		font-size: 0.7rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.player-color-dot {
+		width: 0.75rem;
+		height: 0.75rem;
+		border: 1px solid rgba(255, 255, 255, 0.65);
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.42);
+	}
+
+	.ordered-player-name {
+		font-size: 0.82rem;
+		font-weight: 650;
+	}
+
+	.ordered-player-color,
+	.me-label {
+		color: #a99f91;
+		font-size: 0.68rem;
+	}
+
+	.me-label {
+		grid-column: 3 / -1;
+		color: #d6bc76;
+	}
+
+	.selected-artifacts {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.625rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.selected-artifact {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		align-items: baseline;
+		gap: 0.25rem 0.75rem;
+		padding: 0.75rem;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.045);
+	}
+
+	.selected-artifact > span {
+		color: #c5b9aa;
+		font-size: 0.72rem;
+		font-weight: 700;
+	}
+
+	.selected-artifact strong {
+		grid-row: 1 / 3;
+		grid-column: 2;
+		color: #f4eee3;
+		font-size: 1.15rem;
+	}
+
+	.selected-artifact small {
+		color: #efb0a7;
+		font-size: 0.72rem;
+	}
+
+	.selected-artifact small.is-genuine {
+		color: #86d5a1;
+	}
+
+	.selected-artifact.first-place {
+		border-color: rgba(251, 191, 36, 0.5);
+		background: rgba(251, 191, 36, 0.08);
+	}
+
+	.selected-artifact.second-place {
+		border-color: rgba(203, 213, 225, 0.4);
+	}
+
+	.artifact-vote-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.625rem;
+	}
+
+	.history-artifact {
+		min-width: 0;
+		padding: 0.75rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.14);
+	}
+
+	.history-artifact.first-place {
+		border-color: rgba(251, 191, 36, 0.34);
+	}
+
+	.history-artifact.second-place {
+		border-color: rgba(203, 213, 225, 0.3);
+	}
+
+	.history-artifact header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 0.625rem;
+	}
+
+	.history-artifact header > div {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.history-artifact header strong {
+		color: #f4eee3;
+		font-size: 1rem;
+	}
+
+	.artifact-rank {
+		color: #968c80;
+		font-size: 0.65rem;
+		font-weight: 700;
+	}
+
+	.artifact-vote-total {
+		color: #e4c55f;
+		font-size: 1.35rem;
+		font-weight: 750;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+
+	.artifact-vote-total small {
+		margin-left: 0.2rem;
+		color: #a99f91;
+		font-size: 0.68rem;
+	}
+
+	.history-chip-breakdown {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.history-chip-row {
+		display: grid;
+		grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		padding: 0.375rem 0.5rem;
+		border-radius: 7px;
+		background: rgba(255, 255, 255, 0.045);
+	}
+
+	.history-chip-row > span {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.history-chip-row strong {
+		overflow: hidden;
+		color: #eee6da;
+		font-size: 0.75rem;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.history-chip-row small {
+		color: #968c80;
+		font-size: 0.65rem;
+	}
+
+	.history-chip-row b {
+		color: #f4eee3;
+		font-size: 0.78rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.no-chip-detail {
+		color: #7f776e;
+		font-size: 0.7rem;
+	}
+
 	.actions-list h4 {
 		color: #cbd5e1;
 		font-size: 0.95rem;
@@ -639,5 +1010,21 @@
 	.attacked-warning span {
 		font-size: 0.9rem;
 		font-weight: 500;
+	}
+
+	@media (max-width: 640px) {
+		.selected-artifacts,
+		.artifact-vote-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.player-order-list {
+			align-items: stretch;
+			flex-direction: column;
+		}
+
+		.player-order-list li {
+			width: 100%;
+		}
 	}
 </style>

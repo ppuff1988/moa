@@ -165,6 +165,14 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			const room = await createVotingGame(true);
 			const endpoint = `${API_BASE}/api/room/${encodeURIComponent(room.roomName)}`;
 			const [mouse, ox] = room.artifacts;
+			const orderedPlayers = await db
+				.select({ id: gamePlayers.id })
+				.from(gamePlayers)
+				.where(eq(gamePlayers.gameId, room.gameId));
+			await db
+				.update(gameRounds)
+				.set({ actionOrder: [...orderedPlayers.map((player) => player.id)].reverse() })
+				.where(eq(gameRounds.gameId, room.gameId));
 
 			const hostResponse = await fetch(`${endpoint}/online-voting`, {
 				method: 'POST',
@@ -217,6 +225,31 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			}).then((response) => response.json());
 			expect(roundStatus.phase).toBe('result');
 			expect(roundStatus.votingResult).toEqual(completed.votingResult);
+
+			const history = await fetch(`${endpoint}/action-history`, {
+				headers: { Authorization: `Bearer ${testUsers[0].token}` }
+			}).then((response) => response.json());
+			const roundHistory = history.rounds[0];
+			expect(roundHistory.playerOrder.map((item: { playerId: number }) => item.playerId)).toEqual(
+				orderedPlayers.map((player) => player.id)
+			);
+			expect(roundHistory.votingResult).toMatchObject({
+				firstPlace: { id: mouse.id, animal: '鼠', rank: 1 },
+				secondPlace: { id: ox.id, animal: '牛', rank: 2, isGenuine: false }
+			});
+			expect(roundHistory.votingResult.firstPlace).not.toHaveProperty('isGenuine');
+			expect(roundHistory.votingResult.artifacts).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						id: mouse.id,
+						votes: 2,
+						colorBreakdown: expect.arrayContaining([
+							expect.objectContaining({ color: '紅', colorCode: '#EF4444', chips: 1 }),
+							expect.objectContaining({ color: '藍', colorCode: '#3B82F6', chips: 1 })
+						])
+					})
+				])
+			);
 		});
 
 		it('未使用籌碼逐輪累積且第三輪必須全部投完', async () => {
