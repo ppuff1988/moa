@@ -215,29 +215,31 @@ docker-compose down
 
 ### 持續整合（CI）
 
-當程式碼推送到 `main` 或 `develop` 分支時，會自動執行：
+當 Pull Request 指向 `dev` 或 `main` 時，會自動執行：
 
 - ✅ **程式碼檢查**：ESLint + Prettier + TypeScript 類型檢查
 - ✅ **API 測試**：完整的後端 API 測試
 - ✅ **建置檢查**：確保應用程式可以成功建置
-- ✅ **Docker 映像建置**：自動建置並推送到 Docker Hub（僅 main 分支）
+- ✅ **E2E Smoke**：執行快速 Playwright 瀏覽器測試（完整 8 人三回合不在 CI 執行）
 
 ### 持續部署（CD）
 
-當 CI 測試通過後，會自動觸發部署流程：
+當版本化 `release/v*` 或 `hotfix/*` PR 合併到 `main` 後，會依序觸發發布與部署：
 
-- 🚀 **自動部署**：拉取最新 Docker 映像並部署到生產伺服器
+- 🚀 **固定版本部署**：部署 Git tag、commit SHA 與 Docker image 完全一致的版本
 - 🏥 **健康檢查**：自動驗證服務是否正常運行
-- 💬 **Slack 通知**：即時通知部署結果（可選）
+- 💬 **Telegram 通知**：即時通知發布與部署結果
+
+repository owner 從 `main` 手動執行 `Prepare Release` 時，選擇的版本增量會先保存成綁定原始 workflow run 的 `release-request` Issue，再由單一版本協調器依序處理。Release PR 與完成標記會綁定精確 commit SHA；即使 GitHub Actions 取代同 concurrency group 的 pending run，發布請求仍可安全地從 repository state 恢復。
 
 ### 工作流程
 
 ```
-Push to main
+Versioned PR merged to main
     ↓
-🔍 CI: 測試 + 檢查 + 建置 Docker 映像
+📦 CI Release: 建置不可變 Docker 映像與 tag
     ↓
-✅ CI 通過
+✅ 映像與 tag 驗證完成
     ↓
 🚀 CD: 自動部署到生產環境
     ↓
@@ -248,7 +250,7 @@ Push to main
 
 ### 手動部署
 
-除了自動部署，也可以在 GitHub Actions 頁面手動觸發部署。
+除了自動部署，也可以在 GitHub Actions 的 `CD` 頁面從 `main` 手動選擇已發布版本部署。
 
 詳細設定請參考：📖 **[CI/CD 設定指南](docs/CI-CD.md)**
 

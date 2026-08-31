@@ -45,6 +45,8 @@ nano .env
 ```env
 # Docker Hub 用戶名
 DOCKER_USERNAME=your-dockerhub-username
+APP_IMAGE=your-dockerhub-username/moa:v1.2.3
+WORKER_IMAGE=your-dockerhub-username/moa:worker-v1.2.3
 
 # Database
 POSTGRES_USER=moa_user

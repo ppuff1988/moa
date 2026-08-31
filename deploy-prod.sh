@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "===================================="
 echo "   🚀 MOA Production 部署"
@@ -42,9 +42,96 @@ fi
 
 # 載入 .env 文件中的環境變數
 set -a
+# Production .env is uploaded immediately before deployment.
+# shellcheck disable=SC1091
 source .env
 set +a
 echo ""
+
+if [ -z "${APP_IMAGE:-}" ] || [ -z "${WORKER_IMAGE:-}" ]; then
+    echo "❌ APP_IMAGE 與 WORKER_IMAGE 必須指定不可變版本標籤"
+    exit 1
+fi
+
+# 先用正在運行容器的 immutable image ID 建立本機 rollback tag。
+# 舊版 compose 可能只記錄 moa:latest；若直接保存名稱，pull 後它會指向新版本，無法回復。
+PREVIOUS_APP_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_app_prod 2>/dev/null || true)
+PREVIOUS_WORKER_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_email_worker_prod 2>/dev/null || true)
+PREVIOUS_APP_IMAGE=""
+PREVIOUS_WORKER_IMAGE=""
+DEPLOYMENT_SUCCEEDED=false
+SWITCHOVER_STARTED=false
+ROLLBACK_ATTEMPTED=false
+
+cleanup_rollback_tags() {
+    if [ -n "$PREVIOUS_APP_IMAGE" ]; then
+        docker image rm "$PREVIOUS_APP_IMAGE" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
+        docker image rm "$PREVIOUS_WORKER_IMAGE" >/dev/null 2>&1 || true
+    fi
+}
+
+persist_env_value() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^${key}=" .env; then
+        sed -i "s|^${key}=.*$|${key}=${value}|" .env
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
+persist_image_selection() {
+    persist_env_value APP_IMAGE "$PREVIOUS_APP_IMAGE"
+    persist_env_value WORKER_IMAGE "$PREVIOUS_WORKER_IMAGE"
+    echo "🛟 已持久化 rollback image 選擇，後續 compose up 會維持舊版本"
+}
+
+finalize_deployment() {
+    local status=$?
+    trap - EXIT
+    set +e
+    if [ "$DEPLOYMENT_SUCCEEDED" = "true" ]; then
+        cleanup_rollback_tags
+    else
+        if [ "$SWITCHOVER_STARTED" = "true" ] && [ "$ROLLBACK_ATTEMPTED" != "true" ]; then
+            echo "⚠️ 部署切換期間發生錯誤，立即嘗試回復舊版本"
+            rollback || true
+        fi
+
+        if [ -n "$PREVIOUS_APP_IMAGE" ] && [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
+            # 任何失敗（包含 pull／migration／health check）都把持久設定還原到舊映像。
+            persist_image_selection
+        else
+            cleanup_rollback_tags
+        fi
+    fi
+    exit "$status"
+}
+trap finalize_deployment EXIT
+
+if [ -n "$PREVIOUS_APP_IMAGE_ID" ] && [ -n "$PREVIOUS_WORKER_IMAGE_ID" ]; then
+    docker image tag "$PREVIOUS_APP_IMAGE_ID" "moa-rollback:app"
+    PREVIOUS_APP_IMAGE="moa-rollback:app"
+    docker image tag "$PREVIOUS_WORKER_IMAGE_ID" "moa-rollback:worker"
+    PREVIOUS_WORKER_IMAGE="moa-rollback:worker"
+    echo "🛟 已固定目前運行映像，供部署失敗時回復"
+else
+    echo "ℹ️ 找不到完整的既有 App／Worker 容器，這次部署沒有可用 rollback 映像"
+fi
+
+rollback() {
+    ROLLBACK_ATTEMPTED=true
+    if [ -z "$PREVIOUS_APP_IMAGE" ] || [ -z "$PREVIOUS_WORKER_IMAGE" ]; then
+        echo "⚠️ 無先前版本可回復，保留目前容器狀態"
+        return 1
+    fi
+
+    echo "↩️ 回復舊版本：$PREVIOUS_APP_IMAGE / $PREVIOUS_WORKER_IMAGE"
+    APP_IMAGE="$PREVIOUS_APP_IMAGE" WORKER_IMAGE="$PREVIOUS_WORKER_IMAGE" \
+        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+}
 
 # 拉取最新鏡像
 echo "📥 [1/5] 拉取最新 Docker 鏡像..."
@@ -81,9 +168,8 @@ else
 fi
 echo ""
 
-# 停止舊的應用服務（保留資料庫）
-echo "🛑 [3/5] 停止舊應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml stop app email-worker 2>/dev/null || echo "   應用服務未運行（可能是首次部署）"
+# migrations 執行期間保留舊應用服務，避免 migration 失敗造成停機。
+echo "🛡️ [3/5] 保留舊應用服務直到新版本通過 migration..."
 echo ""
 
 # 執行資料庫 Migrations
@@ -102,13 +188,12 @@ else
         -v "$(pwd)/package.json:/app/package.json" \
         -e DATABASE_URL="${DATABASE_URL}" \
         -e NODE_ENV=production \
-        ${DOCKER_USERNAME}/moa:latest \
+        "${APP_IMAGE}" \
         npm run db:migrate; then
         echo "✅ Migrations 執行成功"
     else
         echo "❌ Migrations 執行失敗！"
-        echo "   嘗試重啟舊版本應用..."
-        $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+        echo "   舊版本仍保持運行，不切換容器"
         exit 1
     fi
 fi
@@ -116,7 +201,12 @@ echo ""
 
 # 啟動應用服務
 echo "🚀 [5/5] 啟動應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+SWITCHOVER_STARTED=true
+if ! $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker; then
+    echo "❌ 應用服務切換失敗，立即回復舊版本"
+    rollback || true
+    exit 1
+fi
 echo "✅ 應用服務和 Email Worker 已啟動"
 echo ""
 
@@ -140,6 +230,7 @@ while [ "$attempt" -le "$max_attempts" ]; do
         echo "❌ 服務健康檢查失敗"
         echo "📋 最近的應用日誌："
         $DOCKER_COMPOSE -f docker-compose.prod.yml logs --tail=100 app || true
+        rollback || true
         exit 1
     fi
 
@@ -147,6 +238,8 @@ while [ "$attempt" -le "$max_attempts" ]; do
     sleep 2
     attempt=$((attempt + 1))
 done
+
+DEPLOYMENT_SUCCEEDED=true
 
 echo ""
 echo "===================================="

@@ -1,135 +1,891 @@
 name: Auto Version Bump
+run-name: Reconcile release and hotfix version queue
 
 on:
-  pull_request:
-    types: [closed]
+  # This job receives a write-capable PAT. For PR lifecycle events, always load
+  # the workflow definition from the trusted base branch, never from the PR.
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, closed]
     branches: [main]
-  workflow_run:
-    workflows: ['Auto Merge Hotfix']
-    types: [completed]
+  push:
+    branches: [main, dev]
+  issues:
+    types: [labeled, reopened]
+  workflow_dispatch:
+
+concurrency:
+  # Pending runs may be replaced by GitHub. All release intent lives in Issues and
+  # all hotfix intent lives in PRs, so every surviving run can rebuild the queue.
+  group: version-preparation
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
-  check-and-bump:
+  reconcile-version:
+    name: 推進 Release／Hotfix 版本佇列
     runs-on: ubuntu-latest
-    # 對於 PR 關閉事件：只在已合併到 main 時執行
-    # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
     if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
-    permissions:
-      contents: write
-    outputs:
-      version_changed: ${{ steps.bump.outputs.version_changed }}
-      new_version: ${{ steps.bump.outputs.new_version }}
-      old_version: ${{ steps.bump.outputs.old_version }}
-      bump_type: ${{ steps.bump.outputs.bump_type }}
-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'issues' &&
+       contains(github.event.issue.labels.*.name, 'release-request')) ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.author_association == 'OWNER' &&
+       github.event.pull_request.user.login == github.repository_owner &&
+       (startsWith(github.event.pull_request.head.ref, 'hotfix/') ||
+        startsWith(github.event.pull_request.head.ref, 'release/v')))
+    env:
+      NPM_VERSION: '12.0.1'
     steps:
-      - uses: actions/checkout@v6
+      - name: 從 repository state 選取佇列首項
+        id: queue
+        uses: actions/github-script@v8
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
+          github-token: ${{ secrets.PAT }}
+          script: |
+            function parseVersion(version) {
+              const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+              if (!match) throw new Error(`不支援的版本格式: ${version}`);
+              return match.slice(1).map(Number);
+            }
 
+            function compareVersions(left, right) {
+              for (let index = 0; index < left.length; index += 1) {
+                if (left[index] !== right[index]) return left[index] - right[index];
+              }
+              return 0;
+            }
+
+            async function getPackageVersion(ref) {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'package.json',
+                ref
+              });
+              return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')).version;
+            }
+
+            async function authenticateReleaseRequest(issue) {
+              const match = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=(\d+) -->/.exec(
+                issue.body || ''
+              );
+              if (
+                issue.pull_request ||
+                issue.author_association !== 'OWNER' ||
+                issue.user?.login !== context.repo.owner ||
+                !match
+              ) {
+                return null;
+              }
+
+              try {
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: Number(match[2])
+                });
+                const trustedRun =
+                  run.path === '.github/workflows/prepare-release.yml' &&
+                  run.event === 'workflow_dispatch' &&
+                  run.head_branch === 'main' &&
+                  run.actor?.login === context.repo.owner;
+                if (!trustedRun) return null;
+                return { issue, match };
+              } catch (error) {
+                core.warning(`忽略無法驗證 workflow run 的 Release request #${issue.number}`);
+                return null;
+              }
+            }
+
+            async function preemptReleaseForHotfix(pull, hotfix) {
+              const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pull.body || '')?.[1]);
+              if (!Number.isSafeInteger(requestNumber) || requestNumber <= 0) {
+                throw new Error(`Release PR #${pull.number} 缺少有效的 release request，無法安全搶占`);
+              }
+
+              const [{ data: issue }, comments, { data: releaseRef }] = await Promise.all([
+                github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber
+                }),
+                github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  per_page: 100
+                }),
+                github.rest.git.getRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${pull.head.ref}`
+                })
+              ]);
+              const authenticatedRequest = await authenticateReleaseRequest(issue);
+              const hasRequestLabel = issue.labels.some(
+                (label) => (label.name || label) === 'release-request'
+              );
+              const expectedPreparation = `Release commit \`${pull.head.sha}\` 已準備`;
+              const trustedComments = comments.filter(
+                (comment) => comment.author_association === 'OWNER'
+              );
+              const prepared = trustedComments.some((comment) =>
+                (comment.body || '').includes(expectedPreparation)
+              );
+              if (!authenticatedRequest || !hasRequestLabel || !prepared) {
+                throw new Error(`Release PR #${pull.number} 未通過信任鏈驗證，拒絕自動搶占`);
+              }
+              if (releaseRef.object.sha !== pull.head.sha) {
+                throw new Error(`Release PR #${pull.number} 的 branch 已在搶占期間改變`);
+              }
+
+              const preemptedMarker =
+                `Release PR #${pull.number} 已由 Hotfix #${hotfix.number} 搶占；原 Release request 已重新排入佇列。`;
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                state: 'open'
+              });
+              if (!trustedComments.some((comment) => (comment.body || '').includes(preemptedMarker))) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  body: preemptedMarker
+                });
+              }
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${pull.head.ref}`
+              });
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pull.number,
+                state: 'closed'
+              });
+              core.notice(`Hotfix #${hotfix.number} 搶占 Release PR #${pull.number}`);
+            }
+
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              sort: 'created',
+              direction: 'asc',
+              per_page: 100
+            });
+            const sameRepository = (pull) =>
+              pull.head.repo?.full_name === context.payload.repository.full_name;
+            const trustedReleasePull = (pull) =>
+              pull.head.ref.startsWith('release/v') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
+            const trustedHotfixPull = (pull) =>
+              !pull.draft &&
+              pull.head.ref.startsWith('hotfix/') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
+            const releasePulls = openPulls.filter(
+              (pull) => trustedReleasePull(pull)
+            );
+
+            // Ready Hotfix 永遠優先；若 Release 已建立，先安全回復其 durable request，
+            // 再關閉並移除舊版本分支，避免緊急修復卡在失敗的 Release 後方。
+            const hotfixPulls = openPulls
+              .filter((pull) => trustedHotfixPull(pull))
+              .sort((left, right) => left.number - right.number);
+            if (hotfixPulls.length > 0) {
+              const selectedPr = hotfixPulls[0];
+              for (const releasePull of releasePulls) {
+                await preemptReleaseForHotfix(releasePull, selectedPr);
+              }
+
+              const [{ data: mainBranch }, headVersion] = await Promise.all([
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'main'
+                }),
+                getPackageVersion(selectedPr.head.sha)
+              ]);
+              const baseVersion = await getPackageVersion(mainBranch.commit.sha);
+              const [major, minor, patch] = parseVersion(baseVersion);
+              const expectedVersion = `${major}.${minor}.${patch + 1}`;
+              const headIsOlderOrEqual =
+                compareVersions(parseVersion(headVersion), parseVersion(baseVersion)) <= 0;
+              if (headVersion !== expectedVersion && !headIsOlderOrEqual) {
+                throw new Error(
+                  `Hotfix PR #${selectedPr.number} 的版本 v${headVersion} 無法由 main v${baseVersion} 推進`
+                );
+              }
+
+              // Merge main on GitHub without checking PR contents out on this
+              // privileged runner. A created merge commit triggers a fresh
+              // reconcile against the new, immutable Hotfix head SHA.
+              const mergeResult = await github.rest.repos.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: selectedPr.head.ref,
+                head: mainBranch.commit.sha,
+                commit_message: `chore(hotfix): merge main into ${selectedPr.head.ref}`
+              });
+              if (mergeResult.status === 201) {
+                core.notice(`Hotfix PR #${selectedPr.number} 已在 GitHub 合併最新 main；等待新 SHA`);
+                core.setOutput('has_work', 'false');
+                return;
+              }
+
+              core.setOutput('has_work', 'true');
+              core.setOutput('kind', 'hotfix');
+              core.setOutput('checkout_ref', selectedPr.head.sha);
+              core.setOutput('checkout_sha', selectedPr.head.sha);
+              core.setOutput('branch', selectedPr.head.ref);
+              core.setOutput('number', String(selectedPr.number));
+              core.setOutput('base_version', baseVersion);
+              core.setOutput('expected_version', expectedVersion);
+              core.setOutput('main_sha', mainBranch.commit.sha);
+              core.notice(
+                `Hotfix 佇列目前處理 PR #${selectedPr.number}: ${selectedPr.head.ref} → v${expectedVersion}`
+              );
+              return;
+            }
+
+            const [requestIssues, { data: recentClosedPulls }] = await Promise.all([
+              github.paginate(github.rest.issues.listForRepo, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: 'release-request',
+                sort: 'created',
+                direction: 'asc',
+                per_page: 100
+              }),
+              github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'closed',
+                base: 'main',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100
+              })
+            ]);
+            const validRequests = [];
+            for (const issue of requestIssues) {
+              const authenticated = await authenticateReleaseRequest(issue);
+              if (authenticated) validRequests.push(authenticated);
+            }
+            const requestByNumber = new Map(
+              validRequests.map((request) => [request.issue.number, request.issue])
+            );
+            const completedRequests = new Set();
+            const preemptedPullNumbers = new Set();
+            for (const pull of [...releasePulls, ...recentClosedPulls]) {
+              if (!trustedReleasePull(pull)) continue;
+              const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pull.body || '')?.[1]);
+              if (!requestByNumber.has(requestNumber) || completedRequests.has(requestNumber)) continue;
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                per_page: 100
+              });
+              const wasPreempted = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(`Release PR #${pull.number} 已由 Hotfix #`)
+              );
+              if (wasPreempted) {
+                try {
+                  const { data: releaseRef } = await github.rest.git.getRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `heads/${pull.head.ref}`
+                  });
+                  if (releaseRef.object.sha !== pull.head.sha && pull.state === 'open') {
+                    throw new Error(`Release PR #${pull.number} 的 branch 已在恢復搶占時改變`);
+                  }
+                  if (releaseRef.object.sha === pull.head.sha) {
+                    await github.rest.git.deleteRef({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: `heads/${pull.head.ref}`
+                    });
+                  }
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pull.number,
+                  state: 'closed'
+                });
+                preemptedPullNumbers.add(pull.number);
+                core.notice(`完成先前中斷的 Release PR #${pull.number} 搶占清理`);
+                continue;
+              }
+              const expectedPreparation = `Release commit \`${pull.head.sha}\` 已準備`;
+              const hasPreparation = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedPreparation)
+              );
+              if (!hasPreparation) {
+                core.warning(`Release PR #${pull.number} 缺少可信的 commit 準備標記，略過恢復`);
+                continue;
+              }
+              const expectedCompletion =
+                `Release PR #${pull.number} 已建立：${pull.html_url}（commit \`${pull.head.sha}\`）`;
+              const hasCompletion = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedCompletion)
+              );
+              if (!hasCompletion) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  body: expectedCompletion
+                });
+              }
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                state: 'closed'
+              });
+              completedRequests.add(requestNumber);
+              core.notice(`Release request #${requestNumber} 已由 PR #${pull.number} 完成`);
+            }
+
+            const activeReleasePulls = releasePulls.filter(
+              (pull) => !preemptedPullNumbers.has(pull.number)
+            );
+            if (activeReleasePulls.length > 0) {
+              const numbers = activeReleasePulls.map((pull) => `#${pull.number}`).join(', ');
+              core.notice(`等待 Release PR（${numbers}）完成後再推進版本佇列`);
+              core.setOutput('has_work', 'false');
+              return;
+            }
+
+            const requests = validRequests.filter(
+              (request) => !completedRequests.has(request.issue.number)
+            );
+            if (requests.length === 0) {
+              core.notice('目前沒有等待中的 Release／Hotfix');
+              core.setOutput('has_work', 'false');
+              return;
+            }
+
+            const request = requests[0];
+            const [{ data: dev }, { data: main }] = await Promise.all([
+              github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'dev'
+              }),
+              github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main'
+              })
+            ]);
+            core.setOutput('has_work', 'true');
+            core.setOutput('kind', 'release');
+            core.setOutput('checkout_ref', dev.commit.sha);
+            core.setOutput('checkout_sha', dev.commit.sha);
+            core.setOutput('main_sha', main.commit.sha);
+            core.setOutput('issue_number', String(request.issue.number));
+            core.setOutput('requested_bump', request.match[1]);
+            core.notice(`Release request #${request.issue.number} 是目前版本佇列首項`);
+
+      # Hotfix 永不 checkout；只有受保護的 dev Release 來源會進入 runner。
+      # 先在 checkout 外準備固定工具鏈，避免 repository 內的 .npmrc 改寫
+      # registry、cache 或 lifecycle script 行為。
       - uses: actions/setup-node@v6
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          node-version: 24
 
-      - name: 配置 Git
+      - name: 使用固定且隔離的 npm
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
+        working-directory: ${{ runner.temp }}
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+        run: >-
+          npm install --global "npm@${NPM_VERSION}"
+          --ignore-scripts --registry=https://registry.npmjs.org
+
+      - uses: actions/checkout@v6
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
+        with:
+          ref: ${{ steps.queue.outputs.checkout_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - name: 計算並寫入版本
+        id: version
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
+        env:
+          REQUESTED_BUMP: ${{ steps.queue.outputs.requested_bump }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main:refs/remotes/origin/main
 
-      - name: 分析 Commits 並自動升級版本
-        id: bump
-        run: |
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo 'dev 尚未包含最新 main；等待 main → dev 同步完成後再處理此請求'
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "📦 當前版本: $CURRENT_VERSION"
+          BUMP_TYPE="$REQUESTED_BUMP"
+          if [ "$BUMP_TYPE" = "auto" ]; then
+            LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+            if [ -n "$LAST_TAG" ]; then
+              COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:'%s%n%b' --no-merges)
+            else
+              COMMITS=$(git log --pretty=format:'%s%n%b' --no-merges)
+            fi
 
-          LAST_COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          if echo "$LAST_COMMIT_MSG" | grep -q "chore(release): bump version"; then
-            echo "⏭️ 跳過版本升級 commit，避免無限循環"
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            exit 0
+            if printf '%s\n' "$COMMITS" | grep -qiE 'BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
+              BUMP_TYPE="major"
+            elif printf '%s\n' "$COMMITS" | grep -qiE '^feat(\(.+\))?:'; then
+              BUMP_TYPE="minor"
+            else
+              BUMP_TYPE="patch"
+            fi
           fi
 
-          LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          NEW_VERSION=$(npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts | sed 's/^v//')
+          {
+            echo "ready=true"
+            echo "old_version=$CURRENT_VERSION"
+            echo "new_version=$NEW_VERSION"
+            echo "bump_type=$BUMP_TYPE"
+            echo "branch=release/v${NEW_VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
-          # 如果沒有 tag，使用所有提交記錄（適用於新倉庫）
-          if [ -z "$LAST_TAG" ]; then
-            # 獲取第一個提交的 hash
-            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-            COMMITS=$(git log ${FIRST_COMMIT}..HEAD --pretty=format:"%s" --no-merges)
-          else
-            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" --no-merges)
-          fi
-
-          if [ -z "$COMMITS" ]; then
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ 沒有新的 commits"
-            exit 0
-          fi
-
-          echo "$COMMITS"
-
-          BUMP_TYPE="none"
-          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|!:"; then
-            BUMP_TYPE="major"
-          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
-            BUMP_TYPE="minor"
-          elif echo "$COMMITS" | grep -qiE "^(fix|chore|refactor|perf|test|build|ci|docs|style)(\(.+\))?:"; then
-            BUMP_TYPE="patch"
-          fi
-
-          if [ "$BUMP_TYPE" = "none" ]; then
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          NEW_VERSION=$(npm version $BUMP_TYPE --no-git-tag-version | sed 's/v//')
-          echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
-          echo "version_changed=true" >> $GITHUB_OUTPUT
-          echo "✅ 版本升級為: $NEW_VERSION"
-
-      - name: 提交與推送變更
-        if: steps.bump.outputs.version_changed == 'true'
-        run: |
-          NEW_VERSION=${{ steps.bump.outputs.new_version }}
-          BUMP_TYPE=${{ steps.bump.outputs.bump_type }}
-
-          git add package.json package-lock.json || true
-          git commit -m "chore(release): bump version to v${NEW_VERSION}" -m "Type: ${BUMP_TYPE}"
-
-          echo "🔄 確保 main 最新..."
-          git pull --rebase origin main || true
-
-          echo "📤 推送到 main..."
-          git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
-
-          echo "✅ 版本升級完成，tag 將由 CI Release workflow 創建"
-          echo "ℹ️ Sync Main to Dev workflow 將自動建立同步 PR"
-
-  notify:
-    name: 版本升級通知
-    runs-on: ubuntu-latest
-    needs: check-and-bump
-    if: needs.check-and-bump.outputs.version_changed == 'true'
-    steps:
-      - name: 📣 發送版本升級通知
-        uses: appleboy/telegram-action@master
+      - name: 確認佇列首項與來源 SHA 未改變
+        id: confirm
+        if: >-
+          steps.queue.outputs.has_work == 'true' &&
+          (steps.queue.outputs.kind == 'hotfix' || steps.version.outputs.ready == 'true')
+        uses: actions/github-script@v8
+        env:
+          KIND: ${{ steps.queue.outputs.kind }}
+          SELECTED_NUMBER: ${{ steps.queue.outputs.number }}
+          SELECTED_SHA: ${{ steps.queue.outputs.checkout_sha }}
+          SELECTED_MAIN_SHA: ${{ steps.queue.outputs.main_sha }}
+          REQUEST_ISSUE: ${{ steps.queue.outputs.issue_number }}
+          REQUESTED_BUMP: ${{ steps.queue.outputs.requested_bump }}
         with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: markdown
-          message: |
-            🚀 *版本自動升級*
-            *專案:* `${{ github.repository }}`
-            *版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
-            *類型:* `${{ needs.check-and-bump.outputs.bump_type }}`
-            *合併者:* `${{ github.actor }}`
-            [查看 Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          github-token: ${{ secrets.PAT }}
+          script: |
+            async function authenticateReleaseRequest(issue) {
+              const match = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=(\d+) -->/.exec(
+                issue.body || ''
+              );
+              if (
+                issue.pull_request ||
+                issue.author_association !== 'OWNER' ||
+                issue.user?.login !== context.repo.owner ||
+                !match
+              ) {
+                return null;
+              }
+
+              try {
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: Number(match[2])
+                });
+                const trustedRun =
+                  run.path === '.github/workflows/prepare-release.yml' &&
+                  run.event === 'workflow_dispatch' &&
+                  run.head_branch === 'main' &&
+                  run.actor?.login === context.repo.owner;
+                return trustedRun ? { issue, match } : null;
+              } catch (error) {
+                core.warning(`忽略無法驗證 workflow run 的 Release request #${issue.number}`);
+                return null;
+              }
+            }
+
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              sort: 'created',
+              direction: 'asc',
+              per_page: 100
+            });
+            const sameRepository = (pull) =>
+              pull.head.repo?.full_name === context.payload.repository.full_name;
+            const trustedReleasePull = (pull) =>
+              pull.head.ref.startsWith('release/v') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
+            const trustedHotfixPull = (pull) =>
+              !pull.draft &&
+              pull.head.ref.startsWith('hotfix/') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
+            const releasePulls = openPulls.filter((pull) => trustedReleasePull(pull));
+            const hotfixPulls = openPulls
+              .filter((pull) => trustedHotfixPull(pull))
+              .sort((left, right) => left.number - right.number);
+
+            let current = false;
+            if (process.env.KIND === 'hotfix') {
+              const { data: main } = await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main'
+              });
+              const queueHead = hotfixPulls[0];
+              current =
+                releasePulls.length === 0 &&
+                queueHead &&
+                String(queueHead.number) === process.env.SELECTED_NUMBER &&
+                queueHead.head.sha === process.env.SELECTED_SHA &&
+                main.commit.sha === process.env.SELECTED_MAIN_SHA;
+            } else {
+              const [{ data: dev }, { data: main }, { data: issue }, requestIssues] = await Promise.all([
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'dev'
+                }),
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'main'
+                }),
+                github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: Number(process.env.REQUEST_ISSUE)
+                }),
+                github.paginate(github.rest.issues.listForRepo, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  labels: 'release-request',
+                  sort: 'created',
+                  direction: 'asc',
+                  per_page: 100
+                })
+              ]);
+              const authenticatedRequests = [];
+              for (const candidate of requestIssues) {
+                const authenticated = await authenticateReleaseRequest(candidate);
+                if (authenticated) authenticatedRequests.push(authenticated);
+              }
+              const queueHead = authenticatedRequests[0];
+              const authenticatedIssue = await authenticateReleaseRequest(issue);
+              current =
+                releasePulls.length === 0 &&
+                hotfixPulls.length === 0 &&
+                String(queueHead?.issue.number) === process.env.REQUEST_ISSUE &&
+                authenticatedIssue?.match[1] === process.env.REQUESTED_BUMP &&
+                issue.state === 'open' &&
+                issue.labels.some((label) => (label.name || label) === 'release-request') &&
+                dev.commit.sha === process.env.SELECTED_SHA &&
+                main.commit.sha === process.env.SELECTED_MAIN_SHA;
+            }
+
+            if (!current) {
+              core.notice('目前工作已不是版本佇列首項；保留 repository state，交給下一次 reconcile');
+              core.setOutput('proceed', 'false');
+              return;
+            }
+            core.setOutput('proceed', 'true');
+
+      - name: 提交並推送 Hotfix 版本
+        if: steps.confirm.outputs.proceed == 'true' && steps.queue.outputs.kind == 'hotfix'
+        uses: actions/github-script@v8
+        env:
+          EXPECTED_VERSION: ${{ steps.queue.outputs.expected_version }}
+          BASE_VERSION: ${{ steps.queue.outputs.base_version }}
+          HEAD_BRANCH: ${{ steps.queue.outputs.branch }}
+          SELECTED_SHA: ${{ steps.queue.outputs.checkout_sha }}
+          SELECTED_MAIN_SHA: ${{ steps.queue.outputs.main_sha }}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            function decodeJsonFile(file, path) {
+              if (Array.isArray(file) || file.type !== 'file' || !file.content) {
+                throw new Error(`${path} 不是可讀取的 repository file`);
+              }
+              const source = Buffer.from(file.content, 'base64').toString('utf8');
+              return { source, value: JSON.parse(source) };
+            }
+
+            function encodeJson({ source, value }) {
+              const indent = source.match(/\n([ \t]+)"/)?.[1] || '\t';
+              const trailingNewline = source.endsWith('\n') ? '\n' : '';
+              return `${JSON.stringify(value, null, indent)}${trailingNewline}`;
+            }
+
+            const branch = process.env.HEAD_BRANCH;
+            const selectedSha = process.env.SELECTED_SHA;
+            const selectedMainSha = process.env.SELECTED_MAIN_SHA;
+            const expectedVersion = process.env.EXPECTED_VERSION;
+            const baseVersion = process.env.BASE_VERSION;
+            const [
+              { data: branchRef },
+              { data: mainBranch },
+              { data: comparison },
+              { data: sourceCommit },
+              packageFile,
+              lockFile
+            ] = await Promise.all([
+                github.rest.git.getRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`
+                }),
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'main'
+                }),
+                github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${selectedMainSha}...${selectedSha}`
+                }),
+                github.rest.git.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: selectedSha
+                }),
+                github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'package.json',
+                  ref: selectedSha
+                }),
+                github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'package-lock.json',
+                  ref: selectedSha
+                })
+              ]);
+
+            if (
+              branchRef.object.sha !== selectedSha ||
+              mainBranch.commit.sha !== selectedMainSha ||
+              !['ahead', 'identical'].includes(comparison.status)
+            ) {
+              throw new Error(`Hotfix branch ${branch} 或 main 已在版本 commit 前改變`);
+            }
+
+            const packageJson = decodeJsonFile(packageFile.data, 'package.json');
+            const packageLock = decodeJsonFile(lockFile.data, 'package-lock.json');
+            const currentVersions = [
+              packageJson.value.version,
+              packageLock.value.version,
+              packageLock.value.packages?.['']?.version
+            ];
+            if (
+              currentVersions.some((version) => version !== currentVersions[0]) ||
+              (currentVersions[0] !== baseVersion && currentVersions[0] !== expectedVersion)
+            ) {
+              throw new Error(`Hotfix 版本檔不一致或不是預期版本: ${currentVersions.join(', ')}`);
+            }
+            if (currentVersions[0] === expectedVersion) {
+              core.notice(`Hotfix branch ${branch} 已是 v${expectedVersion}`);
+              return;
+            }
+
+            packageJson.value.version = expectedVersion;
+            packageLock.value.version = expectedVersion;
+            packageLock.value.packages[''].version = expectedVersion;
+            const [{ data: packageBlob }, { data: lockBlob }] = await Promise.all([
+              github.rest.git.createBlob({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                content: encodeJson(packageJson),
+                encoding: 'utf-8'
+              }),
+              github.rest.git.createBlob({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                content: encodeJson(packageLock),
+                encoding: 'utf-8'
+              })
+            ]);
+            const { data: tree } = await github.rest.git.createTree({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base_tree: sourceCommit.tree.sha,
+              tree: [
+                { path: 'package.json', mode: '100644', type: 'blob', sha: packageBlob.sha },
+                { path: 'package-lock.json', mode: '100644', type: 'blob', sha: lockBlob.sha }
+              ]
+            });
+            const { data: versionCommit } = await github.rest.git.createCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              message: `chore(release): bump hotfix version to v${expectedVersion}`,
+              tree: tree.sha,
+              parents: [selectedSha]
+            });
+
+            const { data: currentRef } = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${branch}`
+            });
+            if (currentRef.object.sha !== selectedSha) {
+              throw new Error(`Hotfix branch ${branch} 已在 ref update 前改變`);
+            }
+            await github.rest.git.updateRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${branch}`,
+              sha: versionCommit.sha,
+              force: false
+            });
+            core.notice(`Hotfix branch ${branch} 已更新到 v${expectedVersion}`);
+
+      - name: 提交到 Release 分支
+        id: push_release
+        if: steps.confirm.outputs.proceed == 'true' && steps.queue.outputs.kind == 'release'
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
+          SOURCE_SHA: ${{ steps.queue.outputs.checkout_sha }}
+        run: |
+          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
+            git fetch origin "${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
+            REMOTE_VERSION=$(git show "origin/${RELEASE_BRANCH}:package.json" | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version));")
+            if [ "$REMOTE_VERSION" != "$NEW_VERSION" ] ||
+              ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/${RELEASE_BRANCH}" ||
+              ! git diff --quiet "origin/${RELEASE_BRANCH}" -- .; then
+              echo "既有 ${RELEASE_BRANCH} 並非目前請求建立的 Release 分支"
+              exit 1
+            fi
+            RELEASE_SHA=$(git rev-parse "origin/${RELEASE_BRANCH}")
+            echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Release 分支 ${RELEASE_BRANCH} 已正確存在，繼續恢復 PR 建立流程"
+            exit 0
+          fi
+
+          git switch -c "$RELEASE_BRANCH"
+          git add package.json package-lock.json
+          git commit -m "chore(release): bump version to v${NEW_VERSION}"
+          git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 建立 Release PR 並完成請求
+        if: steps.push_release.outcome == 'success'
+        uses: actions/github-script@v8
+        env:
+          OLD_VERSION: ${{ steps.version.outputs.old_version }}
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          BUMP_TYPE: ${{ steps.version.outputs.bump_type }}
+          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
+          REQUEST_ISSUE: ${{ steps.queue.outputs.issue_number }}
+          RELEASE_SHA: ${{ steps.push_release.outputs.release_sha }}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            const requestNumber = Number(process.env.REQUEST_ISSUE);
+            const requestComments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: requestNumber,
+              per_page: 100
+            });
+            const expectedPreparation = `Release commit \`${process.env.RELEASE_SHA}\` 已準備`;
+            const hasPreparation = requestComments.some(
+              (comment) =>
+                comment.author_association === 'OWNER' &&
+                (comment.body || '').includes(expectedPreparation)
+            );
+            if (!hasPreparation) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                body: expectedPreparation
+              });
+            }
+
+            const existingPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              head: `${context.repo.owner}:${process.env.RELEASE_BRANCH}`,
+              per_page: 100
+            });
+            let pr = existingPulls[0];
+            if (
+              pr &&
+              (pr.author_association !== 'OWNER' || pr.user?.login !== context.repo.owner)
+            ) {
+              throw new Error(`既有 Release PR #${pr.number} 並非由 repository owner 建立`);
+            }
+            if (!pr) {
+              ({ data: pr } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `chore(release): promote dev to main v${process.env.NEW_VERSION}`,
+                head: process.env.RELEASE_BRANCH,
+                base: 'main',
+                body: [
+                  '## Release',
+                  '',
+                  `- Source: \`dev\``,
+                  `- Version: \`v${process.env.OLD_VERSION}\` → \`v${process.env.NEW_VERSION}\``,
+                  `- Bump: \`${process.env.BUMP_TYPE}\``,
+                  `- Request: #${process.env.REQUEST_ISSUE}`,
+                  '',
+                  'This PR will merge after all required checks and reviews pass.'
+                ].join('\n')
+              }));
+            }
+            if (pr.head.sha !== process.env.RELEASE_SHA) {
+              throw new Error(`Release PR #${pr.number} 的 commit 與已準備版本不一致`);
+            }
+
+            const expectedCompletion =
+              `Release PR #${pr.number} 已建立：${pr.html_url}（commit \`${process.env.RELEASE_SHA}\`）`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: requestNumber,
+              body: expectedCompletion
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: requestNumber,
+              state: 'closed'
+            });
+            core.notice(`Release PR #${pr.number}: ${pr.html_url}`);
