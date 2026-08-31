@@ -461,12 +461,16 @@ exit 0
 		const prepareRelease = readWorkflow('prepare-release.yml');
 		const autoVersion = readWorkflow('auto-version.yml');
 		const autoMergeDev = readWorkflow('auto-merge-dev.yml');
+		const autoMergeRelease = readWorkflow('auto-merge-release.yml');
+		const autoMergeHotfix = readWorkflow('auto-merge-hotfix.yml');
 		const syncMainToDev = readWorkflow('sync-main-to-dev.yml');
 
 		expect(prepareRelease).toContain('github-token: ${{ secrets.PAT }}');
 		expect(prepareRelease).toContain('github.rest.actions.createWorkflowDispatch');
 		expect(autoVersion).toContain('token: ${{ secrets.PAT }}');
 		expect(autoMergeDev).toContain('github-token: ${{ secrets.PAT }}');
+		expect(autoMergeRelease).toContain('github-token: ${{ secrets.PAT }}');
+		expect(autoMergeHotfix).toContain('github-token: ${{ secrets.PAT }}');
 		expect(syncMainToDev).toContain('github-token: ${{ secrets.PAT }}');
 	});
 

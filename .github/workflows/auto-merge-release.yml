@@ -26,6 +26,9 @@ jobs:
       - name: 等待 Codex Review 並啟用 Release 自動合併
         uses: actions/github-script@v8
         with:
+          # PAT 讓 Release merge 產生的 main push／PR closed 能觸發
+          # CI Release、main → dev 同步與下一輪版本協調。
+          github-token: ${{ secrets.PAT }}
           script: |
             const CODEX_BOT = 'chatgpt-codex-connector[bot]';
             const CODEX_SUMMARY_MARKER = 'codex-pull-request-review-summary';
