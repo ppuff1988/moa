@@ -85,12 +85,16 @@ describe('release workflow contracts', () => {
 
 		expect(workflow).toContain('pull_request_target:');
 		expect(workflow).not.toMatch(/^ {2}pull_request:$/m);
+		expect(workflow).toContain("github.event.pull_request.author_association == 'OWNER'");
+		expect(workflow).toContain('github.event.pull_request.user.login == github.repository_owner');
 		expect(workflow).toContain('types: [opened, reopened, synchronize, ready_for_review, closed]');
 		expect(workflow).toContain('push:');
 		expect(workflow).toContain('branches: [main, dev]');
 		expect(workflow).toContain('group: version-preparation');
 		expect(workflow).toContain('github.paginate(github.rest.pulls.list');
 		expect(workflow).toContain("pull.head.ref.startsWith('release/v')");
+		expect(workflow.match(/const trustedHotfixPull = \(pull\) =>/g)).toHaveLength(2);
+		expect(workflow.match(/filter\(\(pull\) => trustedHotfixPull\(pull\)\)/g)).toHaveLength(2);
 		expect(workflow).toContain('等待 Release PR');
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
@@ -113,15 +117,29 @@ describe('release workflow contracts', () => {
 		expect(workflow.indexOf('uses: actions/setup-node@v6')).toBeLessThan(
 			workflow.indexOf('uses: actions/checkout@v6')
 		);
+		expect(
+			workflow.match(
+				/if: steps\.queue\.outputs\.has_work == 'true' && steps\.queue\.outputs\.kind == 'release'/g
+			)
+		).toHaveLength(4);
 		expect(workflow).toContain('working-directory: ${{ runner.temp }}');
 		expect(workflow).toContain('--ignore-scripts --registry=https://registry.npmjs.org');
 		expect(workflow).not.toContain('cache: npm');
-		expect(workflow).toContain('git merge --no-edit origin/main');
+		expect(workflow).not.toContain('git merge --no-edit origin/main');
+		expect(workflow).toContain('github.rest.repos.merge');
+		expect(workflow).toContain("core.setOutput('main_sha', mainBranch.commit.sha)");
+		expect(workflow).toContain('github.rest.repos.compareCommitsWithBasehead');
+		expect(workflow).toContain('mainBranch.commit.sha !== selectedMainSha');
 		expect(workflow).not.toContain('reservedVersions');
-		expect(workflow).toContain(
+		expect(workflow).not.toContain(
 			'npm version "$EXPECTED_VERSION" --no-git-tag-version --ignore-scripts'
 		);
-		expect(workflow).toContain('git push origin "HEAD:${HEAD_BRANCH}"');
+		expect(workflow).not.toContain('git push origin "HEAD:${HEAD_BRANCH}"');
+		expect(workflow).toContain('github.rest.git.createBlob');
+		expect(workflow).toContain('github.rest.git.createTree');
+		expect(workflow).toContain('github.rest.git.createCommit');
+		expect(workflow).toContain('github.rest.git.updateRef');
+		expect(workflow).toContain('force: false');
 		expect(workflow).not.toContain('git push origin main');
 		expect(workflow).not.toContain('git push origin dev');
 	});
@@ -307,6 +325,10 @@ exit 0
 		expect(workflow).toContain('headVersion === baseVersion');
 		expect(workflow).toContain('const queueHead = hotfixPulls[0];');
 		expect(workflow).toContain('queueHead.number !== pr.number');
+		expect(workflow.match(/pull\.author_association === 'OWNER'/g)).toHaveLength(1);
+		expect(workflow.match(/pull\.user\?\.login === context\.repo\.owner/g)).toHaveLength(1);
+		expect(workflow).toContain("pr.author_association !== 'OWNER'");
+		expect(workflow).toContain('pr.user?.login !== context.repo.owner');
 		expect(workflow).toContain('enablePullRequestAutoMerge');
 		expect(workflow).toContain("mergeMethod: 'MERGE'");
 		expect(workflow).not.toContain("merge_method: 'squash'");

@@ -35,6 +35,8 @@ jobs:
        contains(github.event.issue.labels.*.name, 'release-request')) ||
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.author_association == 'OWNER' &&
+       github.event.pull_request.user.login == github.repository_owner &&
        (startsWith(github.event.pull_request.head.ref, 'hotfix/') ||
         startsWith(github.event.pull_request.head.ref, 'release/v')))
     env:
@@ -189,6 +191,12 @@ jobs:
               sameRepository(pull) &&
               pull.author_association === 'OWNER' &&
               pull.user?.login === context.repo.owner;
+            const trustedHotfixPull = (pull) =>
+              !pull.draft &&
+              pull.head.ref.startsWith('hotfix/') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
             const releasePulls = openPulls.filter(
               (pull) => trustedReleasePull(pull)
             );
@@ -196,10 +204,7 @@ jobs:
             // Ready Hotfix 永遠優先；若 Release 已建立，先安全回復其 durable request，
             // 再關閉並移除舊版本分支，避免緊急修復卡在失敗的 Release 後方。
             const hotfixPulls = openPulls
-              .filter(
-                (pull) =>
-                  !pull.draft && pull.head.ref.startsWith('hotfix/') && sameRepository(pull)
-              )
+              .filter((pull) => trustedHotfixPull(pull))
               .sort((left, right) => left.number - right.number);
             if (hotfixPulls.length > 0) {
               const selectedPr = hotfixPulls[0];
@@ -207,10 +212,15 @@ jobs:
                 await preemptReleaseForHotfix(releasePull, selectedPr);
               }
 
-              const [baseVersion, headVersion] = await Promise.all([
-                getPackageVersion('main'),
+              const [{ data: mainBranch }, headVersion] = await Promise.all([
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'main'
+                }),
                 getPackageVersion(selectedPr.head.sha)
               ]);
+              const baseVersion = await getPackageVersion(mainBranch.commit.sha);
               const [major, minor, patch] = parseVersion(baseVersion);
               const expectedVersion = `${major}.${minor}.${patch + 1}`;
               const headIsOlderOrEqual =
@@ -221,6 +231,22 @@ jobs:
                 );
               }
 
+              // Merge main on GitHub without checking PR contents out on this
+              // privileged runner. A created merge commit triggers a fresh
+              // reconcile against the new, immutable Hotfix head SHA.
+              const mergeResult = await github.rest.repos.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: selectedPr.head.ref,
+                head: mainBranch.commit.sha,
+                commit_message: `chore(hotfix): merge main into ${selectedPr.head.ref}`
+              });
+              if (mergeResult.status === 201) {
+                core.notice(`Hotfix PR #${selectedPr.number} 已在 GitHub 合併最新 main；等待新 SHA`);
+                core.setOutput('has_work', 'false');
+                return;
+              }
+
               core.setOutput('has_work', 'true');
               core.setOutput('kind', 'hotfix');
               core.setOutput('checkout_ref', selectedPr.head.sha);
@@ -229,6 +255,7 @@ jobs:
               core.setOutput('number', String(selectedPr.number));
               core.setOutput('base_version', baseVersion);
               core.setOutput('expected_version', expectedVersion);
+              core.setOutput('main_sha', mainBranch.commit.sha);
               core.notice(
                 `Hotfix 佇列目前處理 PR #${selectedPr.number}: ${selectedPr.head.ref} → v${expectedVersion}`
               );
@@ -387,15 +414,16 @@ jobs:
             core.setOutput('requested_bump', request.match[1]);
             core.notice(`Release request #${request.issue.number} 是目前版本佇列首項`);
 
-      # 先在未進入 Hotfix checkout 的目錄準備固定工具鏈，避免分支內的
-      # .npmrc 改寫 registry、cache 或 lifecycle script 行為。
+      # Hotfix 永不 checkout；只有受保護的 dev Release 來源會進入 runner。
+      # 先在 checkout 外準備固定工具鏈，避免 repository 內的 .npmrc 改寫
+      # registry、cache 或 lifecycle script 行為。
       - uses: actions/setup-node@v6
-        if: steps.queue.outputs.has_work == 'true'
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
         with:
           node-version: 24
 
       - name: 使用固定且隔離的 npm
-        if: steps.queue.outputs.has_work == 'true'
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
         working-directory: ${{ runner.temp }}
         env:
           NPM_CONFIG_USERCONFIG: /dev/null
@@ -404,7 +432,7 @@ jobs:
           --ignore-scripts --registry=https://registry.npmjs.org
 
       - uses: actions/checkout@v6
-        if: steps.queue.outputs.has_work == 'true'
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
         with:
           ref: ${{ steps.queue.outputs.checkout_ref }}
           fetch-depth: 0
@@ -412,37 +440,13 @@ jobs:
 
       - name: 計算並寫入版本
         id: version
-        if: steps.queue.outputs.has_work == 'true'
+        if: steps.queue.outputs.has_work == 'true' && steps.queue.outputs.kind == 'release'
         env:
-          KIND: ${{ steps.queue.outputs.kind }}
-          BASE_VERSION: ${{ steps.queue.outputs.base_version }}
-          EXPECTED_VERSION: ${{ steps.queue.outputs.expected_version }}
           REQUESTED_BUMP: ${{ steps.queue.outputs.requested_bump }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main:refs/remotes/origin/main
-
-          if [ "$KIND" = "hotfix" ]; then
-            if ! git merge-base --is-ancestor origin/main HEAD; then
-              git merge --no-edit origin/main
-            fi
-
-            CURRENT_VERSION=$(node -p "require('./package.json').version")
-            if [ "$CURRENT_VERSION" != "$BASE_VERSION" ] && [ "$CURRENT_VERSION" != "$EXPECTED_VERSION" ]; then
-              echo "main 或 Hotfix 在版本計算期間已有變更，交給下一次 reconcile"
-              echo "ready=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [ "$CURRENT_VERSION" = "$BASE_VERSION" ]; then
-              npm version "$EXPECTED_VERSION" --no-git-tag-version --ignore-scripts
-            fi
-            {
-              echo "ready=true"
-              echo "new_version=$EXPECTED_VERSION"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           if ! git merge-base --is-ancestor origin/main HEAD; then
             echo 'dev 尚未包含最新 main；等待 main → dev 同步完成後再處理此請求'
@@ -480,7 +484,9 @@ jobs:
 
       - name: 確認佇列首項與來源 SHA 未改變
         id: confirm
-        if: steps.version.outputs.ready == 'true'
+        if: >-
+          steps.queue.outputs.has_work == 'true' &&
+          (steps.queue.outputs.kind == 'hotfix' || steps.version.outputs.ready == 'true')
         uses: actions/github-script@v8
         env:
           KIND: ${{ steps.queue.outputs.kind }}
@@ -539,22 +545,31 @@ jobs:
               sameRepository(pull) &&
               pull.author_association === 'OWNER' &&
               pull.user?.login === context.repo.owner;
+            const trustedHotfixPull = (pull) =>
+              !pull.draft &&
+              pull.head.ref.startsWith('hotfix/') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
             const releasePulls = openPulls.filter((pull) => trustedReleasePull(pull));
             const hotfixPulls = openPulls
-              .filter(
-                (pull) =>
-                  !pull.draft && pull.head.ref.startsWith('hotfix/') && sameRepository(pull)
-              )
+              .filter((pull) => trustedHotfixPull(pull))
               .sort((left, right) => left.number - right.number);
 
             let current = false;
             if (process.env.KIND === 'hotfix') {
+              const { data: main } = await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main'
+              });
               const queueHead = hotfixPulls[0];
               current =
                 releasePulls.length === 0 &&
                 queueHead &&
                 String(queueHead.number) === process.env.SELECTED_NUMBER &&
-                queueHead.head.sha === process.env.SELECTED_SHA;
+                queueHead.head.sha === process.env.SELECTED_SHA &&
+                main.commit.sha === process.env.SELECTED_MAIN_SHA;
             } else {
               const [{ data: dev }, { data: main }, { data: issue }, requestIssues] = await Promise.all([
                 github.rest.repos.getBranch({
@@ -609,15 +624,153 @@ jobs:
 
       - name: 提交並推送 Hotfix 版本
         if: steps.confirm.outputs.proceed == 'true' && steps.queue.outputs.kind == 'hotfix'
+        uses: actions/github-script@v8
         env:
           EXPECTED_VERSION: ${{ steps.queue.outputs.expected_version }}
+          BASE_VERSION: ${{ steps.queue.outputs.base_version }}
           HEAD_BRANCH: ${{ steps.queue.outputs.branch }}
-        run: |
-          git add package.json package-lock.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(release): bump hotfix version to v${EXPECTED_VERSION}"
-          fi
-          git push origin "HEAD:${HEAD_BRANCH}"
+          SELECTED_SHA: ${{ steps.queue.outputs.checkout_sha }}
+          SELECTED_MAIN_SHA: ${{ steps.queue.outputs.main_sha }}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            function decodeJsonFile(file, path) {
+              if (Array.isArray(file) || file.type !== 'file' || !file.content) {
+                throw new Error(`${path} 不是可讀取的 repository file`);
+              }
+              const source = Buffer.from(file.content, 'base64').toString('utf8');
+              return { source, value: JSON.parse(source) };
+            }
+
+            function encodeJson({ source, value }) {
+              const indent = source.match(/\n([ \t]+)"/)?.[1] || '\t';
+              const trailingNewline = source.endsWith('\n') ? '\n' : '';
+              return `${JSON.stringify(value, null, indent)}${trailingNewline}`;
+            }
+
+            const branch = process.env.HEAD_BRANCH;
+            const selectedSha = process.env.SELECTED_SHA;
+            const selectedMainSha = process.env.SELECTED_MAIN_SHA;
+            const expectedVersion = process.env.EXPECTED_VERSION;
+            const baseVersion = process.env.BASE_VERSION;
+            const [
+              { data: branchRef },
+              { data: mainBranch },
+              { data: comparison },
+              { data: sourceCommit },
+              packageFile,
+              lockFile
+            ] = await Promise.all([
+                github.rest.git.getRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`
+                }),
+                github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: 'main'
+                }),
+                github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${selectedMainSha}...${selectedSha}`
+                }),
+                github.rest.git.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: selectedSha
+                }),
+                github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'package.json',
+                  ref: selectedSha
+                }),
+                github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'package-lock.json',
+                  ref: selectedSha
+                })
+              ]);
+
+            if (
+              branchRef.object.sha !== selectedSha ||
+              mainBranch.commit.sha !== selectedMainSha ||
+              !['ahead', 'identical'].includes(comparison.status)
+            ) {
+              throw new Error(`Hotfix branch ${branch} 或 main 已在版本 commit 前改變`);
+            }
+
+            const packageJson = decodeJsonFile(packageFile.data, 'package.json');
+            const packageLock = decodeJsonFile(lockFile.data, 'package-lock.json');
+            const currentVersions = [
+              packageJson.value.version,
+              packageLock.value.version,
+              packageLock.value.packages?.['']?.version
+            ];
+            if (
+              currentVersions.some((version) => version !== currentVersions[0]) ||
+              (currentVersions[0] !== baseVersion && currentVersions[0] !== expectedVersion)
+            ) {
+              throw new Error(`Hotfix 版本檔不一致或不是預期版本: ${currentVersions.join(', ')}`);
+            }
+            if (currentVersions[0] === expectedVersion) {
+              core.notice(`Hotfix branch ${branch} 已是 v${expectedVersion}`);
+              return;
+            }
+
+            packageJson.value.version = expectedVersion;
+            packageLock.value.version = expectedVersion;
+            packageLock.value.packages[''].version = expectedVersion;
+            const [{ data: packageBlob }, { data: lockBlob }] = await Promise.all([
+              github.rest.git.createBlob({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                content: encodeJson(packageJson),
+                encoding: 'utf-8'
+              }),
+              github.rest.git.createBlob({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                content: encodeJson(packageLock),
+                encoding: 'utf-8'
+              })
+            ]);
+            const { data: tree } = await github.rest.git.createTree({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base_tree: sourceCommit.tree.sha,
+              tree: [
+                { path: 'package.json', mode: '100644', type: 'blob', sha: packageBlob.sha },
+                { path: 'package-lock.json', mode: '100644', type: 'blob', sha: lockBlob.sha }
+              ]
+            });
+            const { data: versionCommit } = await github.rest.git.createCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              message: `chore(release): bump hotfix version to v${expectedVersion}`,
+              tree: tree.sha,
+              parents: [selectedSha]
+            });
+
+            const { data: currentRef } = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${branch}`
+            });
+            if (currentRef.object.sha !== selectedSha) {
+              throw new Error(`Hotfix branch ${branch} 已在 ref update 前改變`);
+            }
+            await github.rest.git.updateRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${branch}`,
+              sha: versionCommit.sha,
+              force: false
+            });
+            core.notice(`Hotfix branch ${branch} 已更新到 v${expectedVersion}`);
 
       - name: 提交到 Release 分支
         id: push_release

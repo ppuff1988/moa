@@ -128,7 +128,9 @@ jobs:
                   (pull) =>
                     !pull.draft &&
                     pull.head.ref.startsWith('hotfix/') &&
-                    pull.head.repo?.full_name === context.payload.repository.full_name
+                    pull.head.repo?.full_name === context.payload.repository.full_name &&
+                    pull.author_association === 'OWNER' &&
+                    pull.user?.login === context.repo.owner
                 )
                 .sort((left, right) => left.number - right.number);
             }
@@ -141,7 +143,13 @@ jobs:
                 pull_number: associatedPR.number
               });
 
-              if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) continue;
+              if (
+                !pr.head.ref.startsWith('hotfix/') ||
+                pr.base.ref !== 'main' ||
+                pr.draft ||
+                pr.author_association !== 'OWNER' ||
+                pr.user?.login !== context.repo.owner
+              ) continue;
 
               if (pr.head.sha !== context.payload.workflow_run.head_sha) {
                 throw new Error(
