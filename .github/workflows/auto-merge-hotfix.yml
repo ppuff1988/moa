@@ -115,6 +115,27 @@ jobs:
                 );
               }
 
+              const openPulls = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                base: 'main',
+                per_page: 100
+              });
+              const hotfixPulls = openPulls
+                .filter(
+                  (pull) =>
+                    !pull.draft &&
+                    pull.head.ref.startsWith('hotfix/') &&
+                    pull.head.repo?.full_name === context.payload.repository.full_name
+                )
+                .sort((left, right) => left.number - right.number);
+              const queueHead = hotfixPulls[0];
+              if (!queueHead || queueHead.number !== pr.number) {
+                core.notice(`Hotfix PR #${pr.number} 尚未輪到，等待前面的 Hotfix 完成`);
+                continue;
+              }
+
               const [baseVersion, headVersion] = await Promise.all([
                 getPackageVersion(pr.base.sha),
                 getPackageVersion(pr.head.sha)

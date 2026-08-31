@@ -24,14 +24,17 @@ describe('release workflow contracts', () => {
 		expect(autoMerge).toContain("mergeMethod: 'MERGE'");
 	});
 
-	it('bumps hotfix PRs on their source branch instead of protected branches', () => {
+	it('serializes hotfixes by repository state and advances the queue after main changes', () => {
 		const workflow = readWorkflow('auto-version.yml');
 
+		expect(workflow).toContain('types: [opened, reopened, synchronize, ready_for_review, closed]');
+		expect(workflow).toContain('push:');
 		expect(workflow).toContain('branches: [main]');
-		expect(workflow).toContain("startsWith(github.head_ref, 'hotfix/')");
 		expect(workflow).toContain('group: hotfix-version-all');
 		expect(workflow).toContain('github.paginate(github.rest.pulls.list');
-		expect(workflow).toContain('reservedVersions');
+		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
+		expect(workflow).toContain('git merge --no-edit origin/main');
+		expect(workflow).not.toContain('reservedVersions');
 		expect(workflow).toContain('npm version "$EXPECTED_VERSION" --no-git-tag-version');
 		expect(workflow).toContain('git push origin "HEAD:${HEAD_BRANCH}"');
 		expect(workflow).not.toContain('git push origin main');
@@ -58,6 +61,10 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'hotfix/')");
 		expect(workflow).toContain('github.event.pull_request.merged == true');
+		expect(workflow).toContain('github.event.pull_request.merge_commit_sha');
+		expect(workflow).toContain('ref: ${{ env.RELEASE_SHA }}');
+		expect(workflow).toContain('moa:${{ env.RELEASE_SHA }}');
+		expect(workflow).not.toContain('ref: main');
 		expect(workflow).not.toContain("workflows: ['Auto Version Bump']");
 	});
 
@@ -69,6 +76,8 @@ describe('release workflow contracts', () => {
 		);
 		expect(workflow).toContain('cancel-in-progress: true');
 		expect(workflow).toContain('headVersion === baseVersion');
+		expect(workflow).toContain('const queueHead = hotfixPulls[0];');
+		expect(workflow).toContain('queueHead.number !== pr.number');
 		expect(workflow).toContain('enablePullRequestAutoMerge');
 		expect(workflow).toContain("mergeMethod: 'MERGE'");
 		expect(workflow).not.toContain("merge_method: 'squash'");

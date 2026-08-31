@@ -10,6 +10,10 @@ concurrency:
   group: production-release
   cancel-in-progress: false
 
+env:
+  # PR release 固定使用該次 merge commit；手動觸發才使用 dispatch 當下的 SHA。
+  RELEASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+
 jobs:
   build-docker:
     runs-on: ubuntu-latest
@@ -41,7 +45,7 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6
@@ -72,7 +76,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/moa:latest
             ${{ secrets.DOCKER_USERNAME }}/moa:v${{ steps.get_version.outputs.version }}
-            ${{ secrets.DOCKER_USERNAME }}/moa:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/moa:${{ env.RELEASE_SHA }}
           build-args: |
             DATABASE_URL=postgres://dummy:dummy@localhost:5432/dummy
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:latest
@@ -88,7 +92,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/moa:worker
             ${{ secrets.DOCKER_USERNAME }}/moa:worker-v${{ steps.get_version.outputs.version }}
-            ${{ secrets.DOCKER_USERNAME }}/moa:worker-${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/moa:worker-${{ env.RELEASE_SHA }}
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:worker
           cache-to: type=inline
           platforms: linux/amd64,linux/arm64
@@ -116,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
           token: ${{ secrets.PAT }}
           persist-credentials: true
@@ -146,7 +150,7 @@ jobs:
         run: |
           VERSION="${{ needs.build-docker.outputs.version }}"
           TAG="v${VERSION}"
-          SHORT_SHA=${GITHUB_SHA::7}
+          SHORT_SHA=${RELEASE_SHA::7}
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -191,7 +195,8 @@ jobs:
           script: |
             const version = '${{ needs.build-docker.outputs.version }}';
             const tag = 'v' + version;
-            const shortSha = '${{ github.sha }}'.substring(0, 7);
+            const releaseSha = '${{ env.RELEASE_SHA }}';
+            const shortSha = releaseSha.substring(0, 7);
             const prevTag = '${{ steps.release_notes.outputs.prev_tag }}';
             const commits = `${{ steps.release_notes.outputs.commits }}`;
 
@@ -222,7 +227,7 @@ jobs:
             body += `> 💡 Worker image 是輕量化版本，只包含郵件隊列處理所需的文件，體積減少約 50%\n\n`;
 
             body += `### 🔗 相關連結\n`;
-            body += `- [查看 Commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\n`;
+            body += `- [查看 Commit](https://github.com/${{ github.repository }}/commit/${releaseSha})\n`;
             body += `- [查看 Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n`;
 
             try {

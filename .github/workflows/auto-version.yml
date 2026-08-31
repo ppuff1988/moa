@@ -1,13 +1,16 @@
 name: Auto Version Bump
-run-name: Prepare hotfix version for #${{ github.event.pull_request.number }}
+run-name: Reconcile hotfix version queue
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, closed]
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  # 版本號是 repository-wide 資源；所有 hotfix 必須依序配置。
+  # 每次都重新掃描完整 PR 狀態；被取代的 pending event 不會遺失特定 Hotfix。
   group: hotfix-version-all
   cancel-in-progress: false
 
@@ -16,43 +19,33 @@ permissions:
   pull-requests: read
 
 jobs:
-  bump-hotfix:
-    name: 在 Hotfix PR 分支寫入 patch 版本
+  reconcile-hotfix:
+    name: 推進 Hotfix 版本佇列
     runs-on: ubuntu-latest
     if: >-
-      !github.event.pull_request.draft &&
-      startsWith(github.head_ref, 'hotfix/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name != 'pull_request' ||
+      (startsWith(github.event.pull_request.head.ref, 'hotfix/') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     env:
       NPM_VERSION: '12.0.1'
-      HEAD_BRANCH: ${{ github.head_ref }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-          token: ${{ secrets.PAT }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - name: 使用專案指定的 npm
-        run: npm install --global "npm@${NPM_VERSION}"
-
-      - name: 保留不重複的 Hotfix patch 版本
-        id: version
+      - name: 選取下一個 Hotfix
+        id: queue
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.PAT }}
           script: |
-            const fs = require('fs');
-
             function parseVersion(version) {
               const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
               if (!match) throw new Error(`不支援的版本格式: ${version}`);
               return match.slice(1).map(Number);
+            }
+
+            function compareVersions(left, right) {
+              for (let index = 0; index < left.length; index += 1) {
+                if (left[index] !== right[index]) return left[index] - right[index];
+              }
+              return 0;
             }
 
             async function getPackageVersion(ref) {
@@ -65,70 +58,99 @@ jobs:
               return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')).version;
             }
 
-            const currentPr = context.payload.pull_request;
-            const baseVersion = await getPackageVersion(currentPr.base.sha);
-            const currentVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
-            const [baseMajor, baseMinor, basePatch] = parseVersion(baseVersion);
-
             const openPulls = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               base: 'main',
+              sort: 'created',
+              direction: 'asc',
               per_page: 100
             });
 
-            const reservedVersions = [];
-            for (const pull of openPulls) {
-              if (
-                pull.number === currentPr.number ||
-                !pull.head.ref.startsWith('hotfix/') ||
-                pull.head.repo?.full_name !== context.payload.repository.full_name
-              ) continue;
+            const hotfixPulls = openPulls
+              .filter(
+                (pull) =>
+                  !pull.draft &&
+                  pull.head.ref.startsWith('hotfix/') &&
+                  pull.head.repo?.full_name === context.payload.repository.full_name
+              )
+              .sort((left, right) => left.number - right.number);
 
-              const version = await getPackageVersion(pull.head.sha);
-              const [major, minor, patch] = parseVersion(version);
-              if (major === baseMajor && minor === baseMinor && patch > basePatch) {
-                reservedVersions.push(version);
-              }
-            }
-
-            if (currentVersion !== baseVersion) {
-              const [major, minor, patch] = parseVersion(currentVersion);
-              const isValidReservation =
-                major === baseMajor && minor === baseMinor && patch > basePatch;
-              if (!isValidReservation || reservedVersions.includes(currentVersion)) {
-                throw new Error(
-                  `Hotfix 版本 v${currentVersion} 無效或已被其他開啟中的 PR 保留`
-                );
-              }
-
-              core.setOutput('expected_version', currentVersion);
-              core.setOutput('changed', 'false');
-              core.notice(`Hotfix 已保留版本 v${currentVersion}`);
+            if (hotfixPulls.length === 0) {
+              core.notice('目前沒有等待中的 Hotfix PR');
+              core.setOutput('has_hotfix', 'false');
               return;
             }
 
-            const reservedPatches = reservedVersions.map((version) => parseVersion(version)[2]);
-            const nextPatch = Math.max(basePatch, ...reservedPatches) + 1;
-            const expectedVersion = `${baseMajor}.${baseMinor}.${nextPatch}`;
+            // 只處理佇列最前面的 PR；後續 PR 保持 main 版本，避免版本檔互相衝突。
+            const selectedPr = hotfixPulls[0];
+            const [baseVersion, headVersion] = await Promise.all([
+              getPackageVersion('main'),
+              getPackageVersion(selectedPr.head.sha)
+            ]);
+            const [major, minor, patch] = parseVersion(baseVersion);
+            const expectedVersion = `${major}.${minor}.${patch + 1}`;
+            const headIsOlderOrEqual =
+              compareVersions(parseVersion(headVersion), parseVersion(baseVersion)) <= 0;
+
+            if (headVersion !== expectedVersion && !headIsOlderOrEqual) {
+              throw new Error(
+                `Hotfix PR #${selectedPr.number} 的版本 v${headVersion} 無法由 main v${baseVersion} 推進`
+              );
+            }
+
+            core.setOutput('has_hotfix', 'true');
+            core.setOutput('branch', selectedPr.head.ref);
+            core.setOutput('number', String(selectedPr.number));
+            core.setOutput('base_version', baseVersion);
             core.setOutput('expected_version', expectedVersion);
-            core.setOutput('changed', 'true');
-            core.notice(`為 PR #${currentPr.number} 保留版本 v${expectedVersion}`);
+            core.notice(
+              `Hotfix 佇列目前處理 PR #${selectedPr.number}: ${selectedPr.head.ref} → v${expectedVersion}`
+            );
 
-      - name: 寫入保留的 Hotfix 版本
-        if: steps.version.outputs.changed == 'true'
-        env:
-          EXPECTED_VERSION: ${{ steps.version.outputs.expected_version }}
-        run: npm version "$EXPECTED_VERSION" --no-git-tag-version
+      - uses: actions/checkout@v6
+        if: steps.queue.outputs.has_hotfix == 'true'
+        with:
+          ref: ${{ steps.queue.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
 
-      - name: 提交版本更新到 Hotfix 分支
-        if: steps.version.outputs.changed == 'true'
+      - uses: actions/setup-node@v6
+        if: steps.queue.outputs.has_hotfix == 'true'
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: 使用專案指定的 npm
+        if: steps.queue.outputs.has_hotfix == 'true'
+        run: npm install --global "npm@${NPM_VERSION}"
+
+      - name: 合入最新 main 並寫入下一個 patch 版本
+        if: steps.queue.outputs.has_hotfix == 'true'
         env:
-          EXPECTED_VERSION: ${{ steps.version.outputs.expected_version }}
+          BASE_VERSION: ${{ steps.queue.outputs.base_version }}
+          EXPECTED_VERSION: ${{ steps.queue.outputs.expected_version }}
+          HEAD_BRANCH: ${{ steps.queue.outputs.branch }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore(release): bump hotfix version to v${EXPECTED_VERSION}"
+          git fetch origin main:refs/remotes/origin/main
+
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            git merge --no-edit origin/main
+          fi
+
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          if [ "$CURRENT_VERSION" != "$BASE_VERSION" ] && [ "$CURRENT_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "合入 main 後版本應為 v${BASE_VERSION} 或 v${EXPECTED_VERSION}，目前為 v${CURRENT_VERSION}"
+            exit 1
+          fi
+
+          if [ "$CURRENT_VERSION" = "$BASE_VERSION" ]; then
+            npm version "$EXPECTED_VERSION" --no-git-tag-version
+            git add package.json package-lock.json
+            git commit -m "chore(release): bump hotfix version to v${EXPECTED_VERSION}"
+          fi
+
           git push origin "HEAD:${HEAD_BRANCH}"
