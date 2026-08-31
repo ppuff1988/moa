@@ -2,11 +2,27 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 function readWorkflow(name: string): string {
 	const path = resolve(process.cwd(), '.github/workflows', name);
 	return existsSync(path) ? readFileSync(path, 'utf8') : '';
+}
+
+function readGithubScript(name: string, stepId: string): string {
+	const lines = readWorkflow(name).split('\n');
+	const idIndex = lines.findIndex((line) => line.trim() === `id: ${stepId}`);
+	const scriptIndex = lines.findIndex(
+		(line, index) => index > idIndex && line.trim() === 'script: |'
+	);
+	if (idIndex < 0 || scriptIndex < 0) return '';
+
+	const script: string[] = [];
+	for (const line of lines.slice(scriptIndex + 1)) {
+		if (line && !line.startsWith('            ')) break;
+		script.push(line.startsWith('            ') ? line.slice(12) : '');
+	}
+	return script.join('\n');
 }
 
 describe('release workflow contracts', () => {
@@ -174,9 +190,18 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('github.rest.repos.listReleases');
 		expect(workflow).toContain('latestPublishedVersion');
 		expect(workflow).toContain('compareVersions(version, latestPublishedVersion) <= 0');
+		expect(workflow).toContain('const pendingReleases = [];');
+		expect(workflow).toContain('pendingReleases.push({ pull, version });');
+		expect(workflow).toContain('pendingReleases.findLastIndex');
+		expect(workflow).toContain('github.rest.repos.compareCommitsWithBasehead');
+		expect(workflow).toContain("!['ahead', 'identical'].includes(comparison.status)");
+		expect(workflow).toContain('const selectedRelease = pendingReleases[selectedIndex];');
 		expect(workflow).toContain('async function resolveTagCommit(version)');
 		expect(workflow).toContain('既有 tag v${version}');
 		expect(workflow).toContain('ref: ${{ needs.select-release.outputs.release_sha }}');
+		expect(
+			workflow.match(/ref: \$\{\{ needs\.select-release\.outputs\.release_sha \}\}/g)
+		).toHaveLength(2);
 		expect(workflow).toContain("workflow_id: 'ci-release.yml'");
 		expect(workflow).toContain('uses: ./.github/workflows/cd.yml');
 		expect(workflow).toContain("needs.deploy-production.result == 'success'");
@@ -187,6 +212,92 @@ describe('release workflow contracts', () => {
 		);
 		expect(workflow).not.toContain('ref: main');
 		expect(workflow).not.toContain("workflows: ['Auto Version Bump']");
+	});
+
+	it('lets a later descendant hotfix supersede a failed release', async () => {
+		const selector = readGithubScript('ci-release.yml', 'release');
+		const pullsList = vi.fn();
+		const releasesList = vi.fn();
+		const mergedPulls = [
+			{
+				number: 120,
+				merged_at: '2026-08-30T10:00:00Z',
+				merge_commit_sha: 'release-sha',
+				head: { ref: 'release/v1.2.0', repo: { full_name: 'ppuff1988/moa' } }
+			},
+			{
+				number: 121,
+				merged_at: '2026-08-30T11:00:00Z',
+				merge_commit_sha: 'hotfix-sha',
+				head: { ref: 'hotfix/production', repo: { full_name: 'ppuff1988/moa' } }
+			}
+		];
+		const versionBySha = new Map([
+			['release-sha', '1.2.0'],
+			['hotfix-sha', '1.2.1']
+		]);
+		const github = {
+			paginate: vi.fn(async (endpoint: unknown) => (endpoint === pullsList ? mergedPulls : [])),
+			rest: {
+				pulls: { list: pullsList },
+				repos: {
+					listReleases: releasesList,
+					getContent: vi.fn(async ({ ref }: { ref: string }) => ({
+						data: {
+							content: Buffer.from(JSON.stringify({ version: versionBySha.get(ref) })).toString(
+								'base64'
+							)
+						}
+					})),
+					compareCommitsWithBasehead: vi.fn(async () => ({ data: { status: 'ahead' } }))
+				},
+				git: {
+					getRef: vi.fn(async () => {
+						throw Object.assign(new Error('not found'), { status: 404 });
+					}),
+					getTag: vi.fn()
+				}
+			}
+		};
+		const core = {
+			info: vi.fn(),
+			notice: vi.fn(),
+			warning: vi.fn(),
+			setOutput: vi.fn()
+		};
+		const context = {
+			eventName: 'schedule',
+			ref: 'refs/heads/main',
+			repo: { owner: 'ppuff1988', repo: 'moa' },
+			payload: { repository: { full_name: 'ppuff1988/moa' } }
+		};
+		const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+		await new AsyncFunction('github', 'context', 'core', 'Buffer', selector)(
+			github,
+			context,
+			core,
+			Buffer
+		);
+
+		expect(github.rest.repos.compareCommitsWithBasehead).toHaveBeenCalledWith(
+			expect.objectContaining({ basehead: 'release-sha...hotfix-sha' })
+		);
+		expect(core.setOutput).toHaveBeenCalledWith('has_release', 'true');
+		expect(core.setOutput).toHaveBeenCalledWith('release_sha', 'hotfix-sha');
+		expect(core.setOutput).toHaveBeenCalledWith('version', '1.2.1');
+
+		github.rest.repos.compareCommitsWithBasehead.mockResolvedValueOnce({
+			data: { status: 'diverged' }
+		});
+		await expect(
+			new AsyncFunction('github', 'context', 'core', 'Buffer', selector)(
+				github,
+				context,
+				core,
+				Buffer
+			)
+		).rejects.toThrow('無法安全 supersede');
 	});
 
 	it('deploys one immutable published version without duplicate event triggers', () => {

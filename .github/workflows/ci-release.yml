@@ -123,6 +123,7 @@ jobs:
               .sort((left, right) => new Date(left.merged_at) - new Date(right.merged_at));
 
             const seenVersions = new Map();
+            const pendingReleases = [];
             for (const pull of mergedVersionPulls) {
               const version = await getPackageVersion(pull.merge_commit_sha);
               if (pull.head.ref.startsWith('release/v') && pull.head.ref !== `release/v${version}`) {
@@ -143,24 +144,66 @@ jobs:
               }
               seenVersions.set(version, pull.number);
 
-              const tagCommit = await resolveTagCommit(version);
-              if (tagCommit && tagCommit !== pull.merge_commit_sha) {
-                throw new Error(
-                  `既有 tag v${version} 指向 ${tagCommit}，不能以 PR #${pull.number} 的 ${pull.merge_commit_sha} 覆寫 image`
-                );
-              }
+              pendingReleases.push({ pull, version });
+            }
 
-              core.setOutput('has_release', 'true');
-              core.setOutput('release_sha', pull.merge_commit_sha);
-              core.setOutput('version', version);
-              core.setOutput('pull_number', String(pull.number));
-              core.setOutput('source_branch', pull.head.ref);
-              core.notice(`下一個發布項目: PR #${pull.number} v${version} (${pull.merge_commit_sha})`);
+            if (pendingReleases.length === 0) {
+              core.setOutput('has_release', 'false');
+              core.notice('main 目前沒有尚未完成發布的版本化 PR');
               return;
             }
 
-            core.setOutput('has_release', 'false');
-            core.notice('main 目前沒有尚未完成發布的版本化 PR');
+            // A later Hotfix contains every earlier main merge and must be able
+            // to recover production even when an older Release/Hotfix cannot
+            // finish. Only skip entries after GitHub proves commit ancestry and
+            // the Hotfix version strictly advances each superseded candidate.
+            const latestHotfixIndex = pendingReleases.findLastIndex(({ pull }) =>
+              pull.head.ref.startsWith('hotfix/')
+            );
+            let selectedIndex = 0;
+            if (latestHotfixIndex > 0) {
+              const selectedHotfix = pendingReleases[latestHotfixIndex];
+              for (const superseded of pendingReleases.slice(0, latestHotfixIndex)) {
+                const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${superseded.pull.merge_commit_sha}...${selectedHotfix.pull.merge_commit_sha}`
+                });
+                if (
+                  !['ahead', 'identical'].includes(comparison.status) ||
+                  compareVersions(selectedHotfix.version, superseded.version) <= 0
+                ) {
+                  throw new Error(
+                    `Hotfix PR #${selectedHotfix.pull.number} 無法安全 supersede PR #${superseded.pull.number}`
+                  );
+                }
+              }
+              selectedIndex = latestHotfixIndex;
+              const skipped = pendingReleases
+                .slice(0, latestHotfixIndex)
+                .map(({ pull, version }) => `#${pull.number} v${version}`)
+                .join(', ');
+              core.warning(
+                `Hotfix PR #${selectedHotfix.pull.number} v${selectedHotfix.version} supersede: ${skipped}`
+              );
+            }
+
+            const selectedRelease = pendingReleases[selectedIndex];
+            const { pull, version } = selectedRelease;
+
+            const tagCommit = await resolveTagCommit(version);
+            if (tagCommit && tagCommit !== pull.merge_commit_sha) {
+              throw new Error(
+                `既有 tag v${version} 指向 ${tagCommit}，不能以 PR #${pull.number} 的 ${pull.merge_commit_sha} 覆寫 image`
+              );
+            }
+
+            core.setOutput('has_release', 'true');
+            core.setOutput('release_sha', pull.merge_commit_sha);
+            core.setOutput('version', version);
+            core.setOutput('pull_number', String(pull.number));
+            core.setOutput('source_branch', pull.head.ref);
+            core.notice(`下一個發布項目: PR #${pull.number} v${version} (${pull.merge_commit_sha})`);
 
   build-docker:
     name: 建置不可變 Docker 映像
