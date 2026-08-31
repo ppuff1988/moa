@@ -194,16 +194,13 @@ jobs:
             // Ready Hotfix 永遠優先；若 Release 已建立，先安全回復其 durable request，
             // 再關閉並移除舊版本分支，避免緊急修復卡在失敗的 Release 後方。
             const hotfixPulls = openPulls
-              .filter((pull) => pull.head.ref.startsWith('hotfix/') && sameRepository(pull))
+              .filter(
+                (pull) =>
+                  !pull.draft && pull.head.ref.startsWith('hotfix/') && sameRepository(pull)
+              )
               .sort((left, right) => left.number - right.number);
             if (hotfixPulls.length > 0) {
               const selectedPr = hotfixPulls[0];
-              if (selectedPr.draft) {
-                core.notice(`Hotfix PR #${selectedPr.number} 尚為草稿，版本佇列暫停`);
-                core.setOutput('has_work', 'false');
-                return;
-              }
-
               for (const releasePull of releasePulls) {
                 await preemptReleaseForHotfix(releasePull, selectedPr);
               }
@@ -542,7 +539,10 @@ jobs:
               pull.user?.login === context.repo.owner;
             const releasePulls = openPulls.filter((pull) => trustedReleasePull(pull));
             const hotfixPulls = openPulls
-              .filter((pull) => pull.head.ref.startsWith('hotfix/') && sameRepository(pull))
+              .filter(
+                (pull) =>
+                  !pull.draft && pull.head.ref.startsWith('hotfix/') && sameRepository(pull)
+              )
               .sort((left, right) => left.number - right.number);
 
             let current = false;
@@ -551,7 +551,6 @@ jobs:
               current =
                 releasePulls.length === 0 &&
                 queueHead &&
-                !queueHead.draft &&
                 String(queueHead.number) === process.env.SELECTED_NUMBER &&
                 queueHead.head.sha === process.env.SELECTED_SHA;
             } else {

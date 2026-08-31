@@ -92,6 +92,8 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('等待 Release PR');
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
+		expect(workflow.match(/!pull\.draft/g)).toHaveLength(2);
+		expect(workflow).not.toContain('if (selectedPr.draft)');
 		expect(workflow.indexOf('const selectedPr = hotfixPulls[0];')).toBeLessThan(
 			workflow.indexOf('等待 Release PR')
 		);
