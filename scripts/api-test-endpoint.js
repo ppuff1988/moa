@@ -40,6 +40,9 @@ export function resolveApiTestEndpoint({ apiBaseUrl, testServerPort } = {}) {
 	if (!loopbackHosts.has(url.hostname)) {
 		throw new Error('API_BASE_URL must target a loopback host');
 	}
+	if (url.pathname !== '/' || url.search || url.hash) {
+		throw new Error('API_BASE_URL must not include a path, query, or fragment');
+	}
 
 	const urlPort = parsePort(url.port || '80', 'API_BASE_URL port');
 	if (explicitPort !== undefined && explicitPort !== urlPort) {
@@ -47,7 +50,7 @@ export function resolveApiTestEndpoint({ apiBaseUrl, testServerPort } = {}) {
 	}
 
 	return {
-		apiBaseUrl,
+		apiBaseUrl: url.origin,
 		serverPort: urlPort
 	};
 }

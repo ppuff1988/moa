@@ -39,6 +39,7 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('- name: 再次確認沒有版本 PR');
 		expect(workflow).toContain('git merge-base --is-ancestor origin/main HEAD');
 		expect(workflow).toContain('head -n 1 || true');
+		expect(workflow).toContain('npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts');
 		expect(workflow).toContain('group: version-preparation');
 		expect(readWorkflow('auto-version.yml')).toContain('group: version-preparation');
 		expect(autoMerge).toContain("startsWith(github.event.workflow_run.head_branch, 'release/v')");
@@ -60,7 +61,9 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
 		expect(workflow).toContain('git merge --no-edit origin/main');
 		expect(workflow).not.toContain('reservedVersions');
-		expect(workflow).toContain('npm version "$EXPECTED_VERSION" --no-git-tag-version');
+		expect(workflow).toContain(
+			'npm version "$EXPECTED_VERSION" --no-git-tag-version --ignore-scripts'
+		);
 		expect(workflow).toContain('git push origin "HEAD:${HEAD_BRANCH}"');
 		expect(workflow).not.toContain('git push origin main');
 		expect(workflow).not.toContain('git push origin dev');

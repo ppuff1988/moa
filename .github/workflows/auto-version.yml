@@ -162,7 +162,7 @@ jobs:
           fi
 
           if [ "$CURRENT_VERSION" = "$BASE_VERSION" ]; then
-            npm version "$EXPECTED_VERSION" --no-git-tag-version
+            npm version "$EXPECTED_VERSION" --no-git-tag-version --ignore-scripts
             git add package.json package-lock.json
             git commit -m "chore(release): bump hotfix version to v${EXPECTED_VERSION}"
           fi

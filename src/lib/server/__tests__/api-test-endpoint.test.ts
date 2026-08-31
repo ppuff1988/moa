@@ -17,6 +17,13 @@ describe('API test endpoint configuration', () => {
 		});
 	});
 
+	it('normalizes an explicit loopback URL to its origin', () => {
+		expect(resolveApiTestEndpoint({ apiBaseUrl: 'http://localhost:55417/' })).toEqual({
+			apiBaseUrl: 'http://localhost:55417',
+			serverPort: 55417
+		});
+	});
+
 	it('builds the API URL from an explicit test server port', () => {
 		expect(resolveApiTestEndpoint({ testServerPort: '55174' })).toEqual({
 			apiBaseUrl: 'http://localhost:55174',
@@ -42,6 +49,16 @@ describe('API test endpoint configuration', () => {
 	it('rejects HTTPS because the spawned development server uses plain HTTP', () => {
 		expect(() => resolveApiTestEndpoint({ apiBaseUrl: 'https://localhost:5174' })).toThrow(
 			'API_BASE_URL must use http'
+		);
+	});
+
+	it.each([
+		'http://localhost:5174/api',
+		'http://localhost:5174/?target=api',
+		'http://localhost:5174/#api'
+	])('rejects non-origin API URLs: %s', (apiBaseUrl) => {
+		expect(() => resolveApiTestEndpoint({ apiBaseUrl })).toThrow(
+			'API_BASE_URL must not include a path, query, or fragment'
 		);
 	});
 });

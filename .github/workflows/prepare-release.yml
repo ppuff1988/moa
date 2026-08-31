@@ -97,7 +97,7 @@ jobs:
             fi
           fi
 
-          NEW_VERSION=$(npm version "$BUMP_TYPE" --no-git-tag-version | sed 's/^v//')
+          NEW_VERSION=$(npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts | sed 's/^v//')
           RELEASE_BRANCH="release/v${NEW_VERSION}"
 
           {
