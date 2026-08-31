@@ -29,6 +29,9 @@ describe('release workflow contracts', () => {
 
 		expect(workflow).toContain('branches: [main]');
 		expect(workflow).toContain("startsWith(github.head_ref, 'hotfix/')");
+		expect(workflow).toContain('group: hotfix-version-all');
+		expect(workflow).toContain('github.paginate(github.rest.pulls.list');
+		expect(workflow).toContain('reservedVersions');
 		expect(workflow).toContain('npm version "$EXPECTED_VERSION" --no-git-tag-version');
 		expect(workflow).toContain('git push origin "HEAD:${HEAD_BRANCH}"');
 		expect(workflow).not.toContain('git push origin main');
@@ -84,10 +87,11 @@ describe('release workflow contracts', () => {
 	});
 
 	it.each(['auto-merge-dev.yml', 'auto-merge-release.yml', 'auto-merge-hotfix.yml'])(
-		'waits for a finding-free Codex review before merging in %s',
+		'binds CI and a finding-free Codex review to the current head in %s',
 		(workflowName) => {
 			const workflow = readWorkflow(workflowName);
 
+			expect(workflow).toContain('pr.head.sha !== context.payload.workflow_run.head_sha');
 			expect(workflow).toContain('等待 Codex Review');
 			expect(workflow).toContain('chatgpt-codex-connector[bot]');
 			expect(workflow).toContain('codex-pull-request-review-summary');

@@ -7,11 +7,13 @@ on:
     branches: [main]
 
 concurrency:
-  group: hotfix-version-${{ github.event.pull_request.number }}
+  # 版本號是 repository-wide 資源；所有 hotfix 必須依序配置。
+  group: hotfix-version-all
   cancel-in-progress: false
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   bump-hotfix:
@@ -39,31 +41,86 @@ jobs:
       - name: 使用專案指定的 npm
         run: npm install --global "npm@${NPM_VERSION}"
 
-      - name: 計算 main 的下一個 patch 版本
+      - name: 保留不重複的 Hotfix patch 版本
         id: version
-        run: |
-          git fetch origin main:refs/remotes/origin/main
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            const fs = require('fs');
 
-          BASE_VERSION=$(git show origin/main:package.json | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version));")
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED_VERSION=$(node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); console.log([major, minor, patch + 1].join('.'));" "$BASE_VERSION")
+            function parseVersion(version) {
+              const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+              if (!match) throw new Error(`不支援的版本格式: ${version}`);
+              return match.slice(1).map(Number);
+            }
 
-          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "expected_version=$EXPECTED_VERSION" >> "$GITHUB_OUTPUT"
+            async function getPackageVersion(ref) {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'package.json',
+                ref
+              });
+              return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')).version;
+            }
 
-          if [ "$CURRENT_VERSION" = "$EXPECTED_VERSION" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Hotfix 已使用預期版本 v${EXPECTED_VERSION}"
-            exit 0
-          fi
+            const currentPr = context.payload.pull_request;
+            const baseVersion = await getPackageVersion(currentPr.base.sha);
+            const currentVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+            const [baseMajor, baseMinor, basePatch] = parseVersion(baseVersion);
 
-          if [ "$CURRENT_VERSION" != "$BASE_VERSION" ]; then
-            echo "Hotfix 版本 v${CURRENT_VERSION} 不是 main v${BASE_VERSION} 或預期 v${EXPECTED_VERSION}"
-            exit 1
-          fi
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100
+            });
 
-          npm version "$EXPECTED_VERSION" --no-git-tag-version
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+            const reservedVersions = [];
+            for (const pull of openPulls) {
+              if (
+                pull.number === currentPr.number ||
+                !pull.head.ref.startsWith('hotfix/') ||
+                pull.head.repo?.full_name !== context.payload.repository.full_name
+              ) continue;
+
+              const version = await getPackageVersion(pull.head.sha);
+              const [major, minor, patch] = parseVersion(version);
+              if (major === baseMajor && minor === baseMinor && patch > basePatch) {
+                reservedVersions.push(version);
+              }
+            }
+
+            if (currentVersion !== baseVersion) {
+              const [major, minor, patch] = parseVersion(currentVersion);
+              const isValidReservation =
+                major === baseMajor && minor === baseMinor && patch > basePatch;
+              if (!isValidReservation || reservedVersions.includes(currentVersion)) {
+                throw new Error(
+                  `Hotfix 版本 v${currentVersion} 無效或已被其他開啟中的 PR 保留`
+                );
+              }
+
+              core.setOutput('expected_version', currentVersion);
+              core.setOutput('changed', 'false');
+              core.notice(`Hotfix 已保留版本 v${currentVersion}`);
+              return;
+            }
+
+            const reservedPatches = reservedVersions.map((version) => parseVersion(version)[2]);
+            const nextPatch = Math.max(basePatch, ...reservedPatches) + 1;
+            const expectedVersion = `${baseMajor}.${baseMinor}.${nextPatch}`;
+            core.setOutput('expected_version', expectedVersion);
+            core.setOutput('changed', 'true');
+            core.notice(`為 PR #${currentPr.number} 保留版本 v${expectedVersion}`);
+
+      - name: 寫入保留的 Hotfix 版本
+        if: steps.version.outputs.changed == 'true'
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.expected_version }}
+        run: npm version "$EXPECTED_VERSION" --no-git-tag-version
 
       - name: 提交版本更新到 Hotfix 分支
         if: steps.version.outputs.changed == 'true'

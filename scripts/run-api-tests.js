@@ -2,12 +2,16 @@ import dotenvFlow from 'dotenv-flow';
 import dotenvExpand from 'dotenv-expand';
 import { spawn } from 'child_process';
 
+// 只接受呼叫者在載入 dotenv 前明確指定的 API URL，避免 .env.test
+// 將測試 client 指回 5173，而 spawned server 使用 TEST_SERVER_PORT。
+const runtimeApiBaseUrl = process.env.API_BASE_URL;
+
 // 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
 const DEV_SERVER_PORT = Number(process.env.TEST_SERVER_PORT || 5174);
-const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${DEV_SERVER_PORT}`;
+const API_BASE_URL = runtimeApiBaseUrl || `http://localhost:${DEV_SERVER_PORT}`;
 const MAX_WAIT_TIME = 60000; // 60秒
 const CHECK_INTERVAL = 1000; // 每秒檢查一次
 

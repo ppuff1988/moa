@@ -133,6 +133,12 @@ jobs:
                 continue;
               }
 
+              if (pr.head.sha !== context.payload.workflow_run.head_sha) {
+                throw new Error(
+                  `PR #${pr.number} 的目前 commit 並非觸發此流程的 CI commit，等待新 CI`
+                );
+              }
+
               const sourceBranch = pr.head.ref;
               const targetBranch = pr.base.ref;
 

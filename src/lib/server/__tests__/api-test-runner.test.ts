@@ -13,11 +13,15 @@ describe('local API test runner', () => {
 	it('uses a dedicated configurable port for both the server and API tests', () => {
 		const source = readFileSync(resolve(process.cwd(), 'scripts/run-api-tests.js'), 'utf8');
 
+		expect(source).toContain('const runtimeApiBaseUrl = process.env.API_BASE_URL;');
 		expect(source).toContain(
 			'const DEV_SERVER_PORT = Number(process.env.TEST_SERVER_PORT || 5174);'
 		);
 		expect(source).toContain(
-			'const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${DEV_SERVER_PORT}`;'
+			'const API_BASE_URL = runtimeApiBaseUrl || `http://localhost:${DEV_SERVER_PORT}`;'
+		);
+		expect(source.indexOf('const runtimeApiBaseUrl')).toBeLessThan(
+			source.indexOf('dotenvFlow.config()')
 		);
 		expect(source).toContain('PORT: String(DEV_SERVER_PORT)');
 		expect(source).toContain('API_BASE_URL');
