@@ -6,8 +6,8 @@ import { spawn } from 'child_process';
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
-const DEV_SERVER_PORT = 5173;
-const API_BASE_URL = `http://localhost:${DEV_SERVER_PORT}`;
+const DEV_SERVER_PORT = Number(process.env.TEST_SERVER_PORT || 5174);
+const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${DEV_SERVER_PORT}`;
 const MAX_WAIT_TIME = 60000; // 60秒
 const CHECK_INTERVAL = 1000; // 每秒檢查一次
 
@@ -54,7 +54,9 @@ function startDevServer() {
 			shell: isWindows,
 			env: {
 				...process.env,
-				NODE_ENV: 'test'
+				NODE_ENV: 'test',
+				PORT: String(DEV_SERVER_PORT),
+				API_BASE_URL
 			}
 		});
 
@@ -86,7 +88,11 @@ function runTests() {
 
 		const testProcess = spawn(npmCommand, ['run', 'test:api'], {
 			stdio: 'inherit',
-			shell: isWindows
+			shell: isWindows,
+			env: {
+				...process.env,
+				API_BASE_URL
+			}
 		});
 
 		testProcess.on('close', (code) => {

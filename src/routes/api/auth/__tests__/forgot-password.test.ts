@@ -4,6 +4,8 @@ import { user, passwordResetToken } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { hashPassword } from '$lib/server/password';
 
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5173';
+
 describe('Forgot Password API', () => {
 	let testUserId: number;
 	const testEmail = 'forgot-password-test@example.com';
@@ -33,7 +35,7 @@ describe('Forgot Password API', () => {
 
 	describe('POST /api/auth/forgot-password', () => {
 		it('應該為已註冊的 Email 發送重置郵件', async () => {
-			const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
+			const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -58,7 +60,7 @@ describe('Forgot Password API', () => {
 		});
 
 		it('應該為不存在的 Email 返回成功（安全考量）', async () => {
-			const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
+			const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -72,7 +74,7 @@ describe('Forgot Password API', () => {
 		});
 
 		it('應該拒絕空的 Email', async () => {
-			const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
+			const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -99,7 +101,7 @@ describe('Forgot Password API', () => {
 				.returning();
 
 			try {
-				const response = await fetch('http://localhost:5173/api/auth/forgot-password', {
+				const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
@@ -137,7 +139,7 @@ describe('Forgot Password API', () => {
 		it('應該成功重置密碼', async () => {
 			const newPassword = 'newpassword123';
 
-			const response = await fetch('http://localhost:5173/api/auth/reset-password', {
+			const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -161,7 +163,7 @@ describe('Forgot Password API', () => {
 			expect(tokens[0].usedAt).toBeInstanceOf(Date);
 
 			// 驗證新密碼可以登入
-			const loginResponse = await fetch('http://localhost:5173/api/auth/login', {
+			const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -176,7 +178,7 @@ describe('Forgot Password API', () => {
 		});
 
 		it('應該拒絕無效的 token', async () => {
-			const response = await fetch('http://localhost:5173/api/auth/reset-password', {
+			const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -193,7 +195,7 @@ describe('Forgot Password API', () => {
 		});
 
 		it('應該拒絕已使用的 token', async () => {
-			const response = await fetch('http://localhost:5173/api/auth/reset-password', {
+			const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -220,7 +222,7 @@ describe('Forgot Password API', () => {
 				expiresAt: expiredAt
 			});
 
-			const response = await fetch('http://localhost:5173/api/auth/reset-password', {
+			const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -245,7 +247,7 @@ describe('Forgot Password API', () => {
 				expiresAt: new Date(Date.now() + 60 * 60 * 1000)
 			});
 
-			const response = await fetch('http://localhost:5173/api/auth/reset-password', {
+			const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
