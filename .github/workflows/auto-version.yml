@@ -99,6 +99,78 @@ jobs:
               }
             }
 
+            async function preemptReleaseForHotfix(pull, hotfix) {
+              const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pull.body || '')?.[1]);
+              if (!Number.isSafeInteger(requestNumber) || requestNumber <= 0) {
+                throw new Error(`Release PR #${pull.number} 缺少有效的 release request，無法安全搶占`);
+              }
+
+              const [{ data: issue }, comments, { data: releaseRef }] = await Promise.all([
+                github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber
+                }),
+                github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  per_page: 100
+                }),
+                github.rest.git.getRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${pull.head.ref}`
+                })
+              ]);
+              const authenticatedRequest = await authenticateReleaseRequest(issue);
+              const hasRequestLabel = issue.labels.some(
+                (label) => (label.name || label) === 'release-request'
+              );
+              const expectedPreparation = `Release commit \`${pull.head.sha}\` 已準備`;
+              const trustedComments = comments.filter(
+                (comment) => comment.author_association === 'OWNER'
+              );
+              const prepared = trustedComments.some((comment) =>
+                (comment.body || '').includes(expectedPreparation)
+              );
+              if (!authenticatedRequest || !hasRequestLabel || !prepared) {
+                throw new Error(`Release PR #${pull.number} 未通過信任鏈驗證，拒絕自動搶占`);
+              }
+              if (releaseRef.object.sha !== pull.head.sha) {
+                throw new Error(`Release PR #${pull.number} 的 branch 已在搶占期間改變`);
+              }
+
+              const preemptedMarker =
+                `Release PR #${pull.number} 已由 Hotfix #${hotfix.number} 搶占；原 Release request 已重新排入佇列。`;
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                state: 'open'
+              });
+              if (!trustedComments.some((comment) => (comment.body || '').includes(preemptedMarker))) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  body: preemptedMarker
+                });
+              }
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${pull.head.ref}`
+              });
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pull.number,
+                state: 'closed'
+              });
+              core.notice(`Hotfix #${hotfix.number} 搶占 Release PR #${pull.number}`);
+            }
+
             const openPulls = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -118,6 +190,51 @@ jobs:
             const releasePulls = openPulls.filter(
               (pull) => trustedReleasePull(pull)
             );
+
+            // Ready Hotfix 永遠優先；若 Release 已建立，先安全回復其 durable request，
+            // 再關閉並移除舊版本分支，避免緊急修復卡在失敗的 Release 後方。
+            const hotfixPulls = openPulls
+              .filter((pull) => pull.head.ref.startsWith('hotfix/') && sameRepository(pull))
+              .sort((left, right) => left.number - right.number);
+            if (hotfixPulls.length > 0) {
+              const selectedPr = hotfixPulls[0];
+              if (selectedPr.draft) {
+                core.notice(`Hotfix PR #${selectedPr.number} 尚為草稿，版本佇列暫停`);
+                core.setOutput('has_work', 'false');
+                return;
+              }
+
+              for (const releasePull of releasePulls) {
+                await preemptReleaseForHotfix(releasePull, selectedPr);
+              }
+
+              const [baseVersion, headVersion] = await Promise.all([
+                getPackageVersion('main'),
+                getPackageVersion(selectedPr.head.sha)
+              ]);
+              const [major, minor, patch] = parseVersion(baseVersion);
+              const expectedVersion = `${major}.${minor}.${patch + 1}`;
+              const headIsOlderOrEqual =
+                compareVersions(parseVersion(headVersion), parseVersion(baseVersion)) <= 0;
+              if (headVersion !== expectedVersion && !headIsOlderOrEqual) {
+                throw new Error(
+                  `Hotfix PR #${selectedPr.number} 的版本 v${headVersion} 無法由 main v${baseVersion} 推進`
+                );
+              }
+
+              core.setOutput('has_work', 'true');
+              core.setOutput('kind', 'hotfix');
+              core.setOutput('checkout_ref', selectedPr.head.sha);
+              core.setOutput('checkout_sha', selectedPr.head.sha);
+              core.setOutput('branch', selectedPr.head.ref);
+              core.setOutput('number', String(selectedPr.number));
+              core.setOutput('base_version', baseVersion);
+              core.setOutput('expected_version', expectedVersion);
+              core.notice(
+                `Hotfix 佇列目前處理 PR #${selectedPr.number}: ${selectedPr.head.ref} → v${expectedVersion}`
+              );
+              return;
+            }
 
             const [requestIssues, { data: recentClosedPulls }] = await Promise.all([
               github.paginate(github.rest.issues.listForRepo, {
@@ -148,6 +265,7 @@ jobs:
               validRequests.map((request) => [request.issue.number, request.issue])
             );
             const completedRequests = new Set();
+            const preemptedPullNumbers = new Set();
             for (const pull of [...releasePulls, ...recentClosedPulls]) {
               if (!trustedReleasePull(pull)) continue;
               const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pull.body || '')?.[1]);
@@ -159,6 +277,41 @@ jobs:
                 issue_number: requestNumber,
                 per_page: 100
               });
+              const wasPreempted = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(`Release PR #${pull.number} 已由 Hotfix #`)
+              );
+              if (wasPreempted) {
+                try {
+                  const { data: releaseRef } = await github.rest.git.getRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `heads/${pull.head.ref}`
+                  });
+                  if (releaseRef.object.sha !== pull.head.sha && pull.state === 'open') {
+                    throw new Error(`Release PR #${pull.number} 的 branch 已在恢復搶占時改變`);
+                  }
+                  if (releaseRef.object.sha === pull.head.sha) {
+                    await github.rest.git.deleteRef({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: `heads/${pull.head.ref}`
+                    });
+                  }
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pull.number,
+                  state: 'closed'
+                });
+                preemptedPullNumbers.add(pull.number);
+                core.notice(`完成先前中斷的 Release PR #${pull.number} 搶占清理`);
+                continue;
+              }
               const expectedPreparation = `Release commit \`${pull.head.sha}\` 已準備`;
               const hasPreparation = comments.some(
                 (comment) =>
@@ -194,50 +347,13 @@ jobs:
               core.notice(`Release request #${requestNumber} 已由 PR #${pull.number} 完成`);
             }
 
-            if (releasePulls.length > 0) {
-              const numbers = releasePulls.map((pull) => `#${pull.number}`).join(', ');
+            const activeReleasePulls = releasePulls.filter(
+              (pull) => !preemptedPullNumbers.has(pull.number)
+            );
+            if (activeReleasePulls.length > 0) {
+              const numbers = activeReleasePulls.map((pull) => `#${pull.number}`).join(', ');
               core.notice(`等待 Release PR（${numbers}）完成後再推進版本佇列`);
               core.setOutput('has_work', 'false');
-              return;
-            }
-
-            // Hotfix 優先於手動 Release，避免 Release 越過已開啟的緊急修復。
-            const hotfixPulls = openPulls
-              .filter((pull) => pull.head.ref.startsWith('hotfix/') && sameRepository(pull))
-              .sort((left, right) => left.number - right.number);
-            if (hotfixPulls.length > 0) {
-              const selectedPr = hotfixPulls[0];
-              if (selectedPr.draft) {
-                core.notice(`Hotfix PR #${selectedPr.number} 尚為草稿，版本佇列暫停`);
-                core.setOutput('has_work', 'false');
-                return;
-              }
-
-              const [baseVersion, headVersion] = await Promise.all([
-                getPackageVersion('main'),
-                getPackageVersion(selectedPr.head.sha)
-              ]);
-              const [major, minor, patch] = parseVersion(baseVersion);
-              const expectedVersion = `${major}.${minor}.${patch + 1}`;
-              const headIsOlderOrEqual =
-                compareVersions(parseVersion(headVersion), parseVersion(baseVersion)) <= 0;
-              if (headVersion !== expectedVersion && !headIsOlderOrEqual) {
-                throw new Error(
-                  `Hotfix PR #${selectedPr.number} 的版本 v${headVersion} 無法由 main v${baseVersion} 推進`
-                );
-              }
-
-              core.setOutput('has_work', 'true');
-              core.setOutput('kind', 'hotfix');
-              core.setOutput('checkout_ref', selectedPr.head.sha);
-              core.setOutput('checkout_sha', selectedPr.head.sha);
-              core.setOutput('branch', selectedPr.head.ref);
-              core.setOutput('number', String(selectedPr.number));
-              core.setOutput('base_version', baseVersion);
-              core.setOutput('expected_version', expectedVersion);
-              core.notice(
-                `Hotfix 佇列目前處理 PR #${selectedPr.number}: ${selectedPr.head.ref} → v${expectedVersion}`
-              );
               return;
             }
 

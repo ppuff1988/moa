@@ -60,6 +60,8 @@ PREVIOUS_WORKER_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_email_worker
 PREVIOUS_APP_IMAGE=""
 PREVIOUS_WORKER_IMAGE=""
 DEPLOYMENT_SUCCEEDED=false
+SWITCHOVER_STARTED=false
+ROLLBACK_ATTEMPTED=false
 
 cleanup_rollback_tags() {
     if [ -n "$PREVIOUS_APP_IMAGE" ]; then
@@ -89,13 +91,21 @@ persist_image_selection() {
 finalize_deployment() {
     local status=$?
     trap - EXIT
+    set +e
     if [ "$DEPLOYMENT_SUCCEEDED" = "true" ]; then
         cleanup_rollback_tags
-    elif [ -n "$PREVIOUS_APP_IMAGE" ] && [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
-        # 任何失敗（包含 pull／migration／health check）都把持久設定還原到舊映像。
-        persist_image_selection
     else
-        cleanup_rollback_tags
+        if [ "$SWITCHOVER_STARTED" = "true" ] && [ "$ROLLBACK_ATTEMPTED" != "true" ]; then
+            echo "⚠️ 部署切換期間發生錯誤，立即嘗試回復舊版本"
+            rollback || true
+        fi
+
+        if [ -n "$PREVIOUS_APP_IMAGE" ] && [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
+            # 任何失敗（包含 pull／migration／health check）都把持久設定還原到舊映像。
+            persist_image_selection
+        else
+            cleanup_rollback_tags
+        fi
     fi
     exit "$status"
 }
@@ -112,6 +122,7 @@ else
 fi
 
 rollback() {
+    ROLLBACK_ATTEMPTED=true
     if [ -z "$PREVIOUS_APP_IMAGE" ] || [ -z "$PREVIOUS_WORKER_IMAGE" ]; then
         echo "⚠️ 無先前版本可回復，保留目前容器狀態"
         return 1
@@ -190,7 +201,12 @@ echo ""
 
 # 啟動應用服務
 echo "🚀 [5/5] 啟動應用服務..."
-$DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker
+SWITCHOVER_STARTED=true
+if ! $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker; then
+    echo "❌ 應用服務切換失敗，立即回復舊版本"
+    rollback || true
+    exit 1
+fi
 echo "✅ 應用服務和 Email Worker 已啟動"
 echo ""
 

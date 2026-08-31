@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 function readWorkflow(name: string): string {
@@ -58,7 +60,7 @@ describe('release workflow contracts', () => {
 		expect(autoVersion).toContain("issue.author_association !== 'OWNER'");
 		expect(autoVersion).toContain("pull.author_association === 'OWNER'");
 		expect(autoVersion).toContain('await authenticateReleaseRequest(issue)');
-		expect(autoVersion.match(/authenticateReleaseRequest\(issue\)/g)).toHaveLength(4);
+		expect(autoVersion.match(/authenticateReleaseRequest\(issue\)/g)).toHaveLength(5);
 		expect(autoVersion).toContain('expectedCompletion');
 		expect(autoVersion).toContain('expectedPreparation');
 		expect(autoVersion).toContain('release_sha=');
@@ -90,6 +92,17 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('等待 Release PR');
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
+		expect(workflow.indexOf('const selectedPr = hotfixPulls[0];')).toBeLessThan(
+			workflow.indexOf('等待 Release PR')
+		);
+		expect(workflow).toContain("state: 'open'");
+		expect(workflow).toContain('github.rest.git.getRef');
+		expect(workflow).toContain('releaseRef.object.sha !== pull.head.sha');
+		expect(workflow).toContain('github.rest.git.deleteRef');
+		expect(workflow).toContain('搶占 Release PR');
+		expect(workflow).toContain('preemptedPullNumbers');
+		expect(workflow).toContain('activeReleasePulls');
+		expect(workflow).toContain('完成先前中斷的 Release PR');
 		expect(workflow).toContain("core.setOutput('kind', 'release')");
 		expect(workflow).toContain("core.setOutput('kind', 'hotfix')");
 		expect(workflow).toContain('目前工作已不是版本佇列首項');
@@ -189,10 +202,94 @@ describe('release workflow contracts', () => {
 		expect(deploy).not.toContain("docker inspect --format '{{.Config.Image}}'");
 		expect(deploy).toContain('persist_image_selection');
 		expect(deploy).toContain('trap finalize_deployment EXIT');
+		expect(deploy).toContain('SWITCHOVER_STARTED=false');
+		expect(deploy).toContain('ROLLBACK_ATTEMPTED=false');
+		expect(deploy).toContain('if [ "$SWITCHOVER_STARTED" = "true" ]');
+		expect(deploy).toContain(
+			'if ! $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker'
+		);
 		expect(deploy).toContain('DEPLOYMENT_SUCCEEDED=true');
 		expect(deploy).toContain('已持久化 rollback image 選擇');
 		expect(deploy).toContain('回復舊版本');
 		expect(deploy).not.toContain('stop app email-worker');
+	});
+
+	it('actively restores both previous images when service replacement fails', () => {
+		const fixture = mkdtempSync(resolve(tmpdir(), 'moa-deploy-rollback-'));
+		const composeLog = resolve(fixture, 'compose.log');
+
+		try {
+			writeFileSync(resolve(fixture, 'package.json'), '{"version":"1.1.14"}\n');
+			writeFileSync(
+				resolve(fixture, '.env'),
+				[
+					'APP_IMAGE=registry.example/moa:v2',
+					'WORKER_IMAGE=registry.example/moa:worker-v2',
+					'DATABASE_URL=postgresql://example'
+				].join('\n') + '\n'
+			);
+			writeFileSync(resolve(fixture, 'docker-compose.prod.yml'), 'services: {}\n');
+			writeFileSync(resolve(fixture, 'deploy-prod.sh'), readFileSync('deploy-prod.sh', 'utf8'));
+			writeFileSync(
+				resolve(fixture, 'docker'),
+				`#!/bin/sh
+case "$1" in
+  inspect)
+    case "$*" in
+      *moa_app_prod*) echo 'sha256:old-app' ;;
+      *moa_email_worker_prod*) echo 'sha256:old-worker' ;;
+    esac
+    ;;
+  ps) echo 'moa_postgres_prod healthy' ;;
+  image|run) exit 0 ;;
+esac
+exit 0
+`
+			);
+			writeFileSync(
+				resolve(fixture, 'docker-compose'),
+				`#!/bin/sh
+printf '%s|%s|%s\\n' "\${APP_IMAGE:-}" "\${WORKER_IMAGE:-}" "$*" >> "$MOA_COMPOSE_LOG"
+case "$*" in
+  *pull*) exit 0 ;;
+  *"up -d app email-worker"*)
+    if [ "\${APP_IMAGE:-}" = 'moa-rollback:app' ] && [ "\${WORKER_IMAGE:-}" = 'moa-rollback:worker' ]; then
+      exit 0
+    fi
+    exit 42
+    ;;
+esac
+exit 0
+`
+			);
+			for (const executable of ['deploy-prod.sh', 'docker', 'docker-compose']) {
+				chmodSync(resolve(fixture, executable), 0o755);
+			}
+			// Keep the fixture command directory explicit so the host Docker daemon is never touched.
+			const result = spawnSync('bash', ['deploy-prod.sh'], {
+				cwd: fixture,
+				env: {
+					...process.env,
+					PATH: `${fixture}:${process.env.PATH}`,
+					MOA_COMPOSE_LOG: composeLog
+				},
+				encoding: 'utf8'
+			});
+
+			expect(result.status).toBe(1);
+			const composeCalls = readFileSync(composeLog, 'utf8');
+			expect(composeCalls).toContain(
+				'registry.example/moa:v2|registry.example/moa:worker-v2|-f docker-compose.prod.yml up -d app email-worker'
+			);
+			expect(composeCalls).toContain(
+				'moa-rollback:app|moa-rollback:worker|-f docker-compose.prod.yml up -d app email-worker'
+			);
+			const persistedEnvironment = readFileSync(resolve(fixture, '.env'), 'utf8');
+			expect(persistedEnvironment).toContain('APP_IMAGE=moa-rollback:app');
+			expect(persistedEnvironment).toContain('WORKER_IMAGE=moa-rollback:worker');
+		} finally {
+			rmSync(fixture, { recursive: true, force: true });
+		}
 	});
 
 	it('waits for the hotfix version bump and uses native merge auto-merge', () => {
