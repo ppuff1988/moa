@@ -72,6 +72,12 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain("core.setOutput('kind', 'release')");
 		expect(workflow).toContain("core.setOutput('kind', 'hotfix')");
 		expect(workflow).toContain('目前工作已不是版本佇列首項');
+		expect(workflow.indexOf('uses: actions/setup-node@v6')).toBeLessThan(
+			workflow.indexOf('uses: actions/checkout@v6')
+		);
+		expect(workflow).toContain('working-directory: ${{ runner.temp }}');
+		expect(workflow).toContain('--ignore-scripts --registry=https://registry.npmjs.org');
+		expect(workflow).not.toContain('cache: npm');
 		expect(workflow).toContain('git merge --no-edit origin/main');
 		expect(workflow).not.toContain('reservedVersions');
 		expect(workflow).toContain(

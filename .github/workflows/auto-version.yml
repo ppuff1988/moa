@@ -201,22 +201,28 @@ jobs:
             core.setOutput('requested_bump', request.match[1]);
             core.notice(`Release request #${request.issue.number} 是目前版本佇列首項`);
 
+      # 先在未進入 Hotfix checkout 的目錄準備固定工具鏈，避免分支內的
+      # .npmrc 改寫 registry、cache 或 lifecycle script 行為。
+      - uses: actions/setup-node@v6
+        if: steps.queue.outputs.has_work == 'true'
+        with:
+          node-version: 24
+
+      - name: 使用固定且隔離的 npm
+        if: steps.queue.outputs.has_work == 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          NPM_CONFIG_USERCONFIG: /dev/null
+        run: >-
+          npm install --global "npm@${NPM_VERSION}"
+          --ignore-scripts --registry=https://registry.npmjs.org
+
       - uses: actions/checkout@v6
         if: steps.queue.outputs.has_work == 'true'
         with:
           ref: ${{ steps.queue.outputs.checkout_ref }}
           fetch-depth: 0
           token: ${{ secrets.PAT }}
-
-      - uses: actions/setup-node@v6
-        if: steps.queue.outputs.has_work == 'true'
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - name: 使用專案指定的 npm
-        if: steps.queue.outputs.has_work == 'true'
-        run: npm install --global "npm@${NPM_VERSION}"
 
       - name: 計算並寫入版本
         id: version
