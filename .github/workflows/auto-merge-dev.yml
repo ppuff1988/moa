@@ -32,6 +32,9 @@ jobs:
         uses: actions/github-script@v8
         id: merge
         with:
+          # PAT 讓 main → dev merge 產生的 dev push 能喚醒版本佇列；
+          # GITHUB_TOKEN 產生的 push 會被 GitHub workflow recursion protection 忽略。
+          github-token: ${{ secrets.PAT }}
           script: |
             const CODEX_BOT = 'chatgpt-codex-connector[bot]';
             const CODEX_SUMMARY_MARKER = 'codex-pull-request-review-summary';
@@ -178,7 +181,9 @@ jobs:
 
                 // 自動刪除源分支（排除保護分支）
                 const protectedBranches = ['main', 'dev', 'staging', 'production'];
-                const shouldDelete = !protectedBranches.includes(sourceBranch);
+                const shouldDelete =
+                  pr.head.repo?.full_name === context.payload.repository.full_name &&
+                  !protectedBranches.includes(sourceBranch);
 
                 if (shouldDelete) {
                   try {

@@ -153,6 +153,10 @@ describe('release workflow contracts', () => {
 		expect(deploy).toContain('docker run --rm');
 		expect(deploy).toContain('"${APP_IMAGE}"');
 		expect(deploy).toContain('PREVIOUS_APP_IMAGE');
+		expect(deploy).toContain("docker inspect --format '{{.Image}}' moa_app_prod");
+		expect(deploy).toContain('docker image tag "$PREVIOUS_APP_IMAGE_ID"');
+		expect(deploy).toContain('docker image tag "$PREVIOUS_WORKER_IMAGE_ID"');
+		expect(deploy).not.toContain("docker inspect --format '{{.Config.Image}}'");
 		expect(deploy).toContain('回復舊版本');
 		expect(deploy).not.toContain('stop app email-worker');
 	});
@@ -176,11 +180,13 @@ describe('release workflow contracts', () => {
 	it('uses the automation PAT when bot changes must trigger another workflow', () => {
 		const prepareRelease = readWorkflow('prepare-release.yml');
 		const autoVersion = readWorkflow('auto-version.yml');
+		const autoMergeDev = readWorkflow('auto-merge-dev.yml');
 		const syncMainToDev = readWorkflow('sync-main-to-dev.yml');
 
 		expect(prepareRelease).toContain('github-token: ${{ secrets.PAT }}');
 		expect(prepareRelease).toContain('github.rest.actions.createWorkflowDispatch');
 		expect(autoVersion).toContain('token: ${{ secrets.PAT }}');
+		expect(autoMergeDev).toContain('github-token: ${{ secrets.PAT }}');
 		expect(syncMainToDev).toContain('github-token: ${{ secrets.PAT }}');
 	});
 

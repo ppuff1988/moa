@@ -53,8 +53,33 @@ if [ -z "${APP_IMAGE:-}" ] || [ -z "${WORKER_IMAGE:-}" ]; then
     exit 1
 fi
 
-PREVIOUS_APP_IMAGE=$(docker inspect --format '{{.Config.Image}}' moa_app_prod 2>/dev/null || true)
-PREVIOUS_WORKER_IMAGE=$(docker inspect --format '{{.Config.Image}}' moa_email_worker_prod 2>/dev/null || true)
+# 先用正在運行容器的 immutable image ID 建立本機 rollback tag。
+# 舊版 compose 可能只記錄 moa:latest；若直接保存名稱，pull 後它會指向新版本，無法回復。
+PREVIOUS_APP_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_app_prod 2>/dev/null || true)
+PREVIOUS_WORKER_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_email_worker_prod 2>/dev/null || true)
+ROLLBACK_TAG_SUFFIX="$(date +%s)-$$"
+PREVIOUS_APP_IMAGE=""
+PREVIOUS_WORKER_IMAGE=""
+
+cleanup_rollback_tags() {
+    if [ -n "$PREVIOUS_APP_IMAGE" ]; then
+        docker image rm "$PREVIOUS_APP_IMAGE" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
+        docker image rm "$PREVIOUS_WORKER_IMAGE" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_rollback_tags EXIT
+
+if [ -n "$PREVIOUS_APP_IMAGE_ID" ] && [ -n "$PREVIOUS_WORKER_IMAGE_ID" ]; then
+    PREVIOUS_APP_IMAGE="moa-rollback:app-${ROLLBACK_TAG_SUFFIX}"
+    PREVIOUS_WORKER_IMAGE="moa-rollback:worker-${ROLLBACK_TAG_SUFFIX}"
+    docker image tag "$PREVIOUS_APP_IMAGE_ID" "$PREVIOUS_APP_IMAGE"
+    docker image tag "$PREVIOUS_WORKER_IMAGE_ID" "$PREVIOUS_WORKER_IMAGE"
+    echo "🛟 已固定目前運行映像，供部署失敗時回復"
+else
+    echo "ℹ️ 找不到完整的既有 App／Worker 容器，這次部署沒有可用 rollback 映像"
+fi
 
 rollback() {
     if [ -z "$PREVIOUS_APP_IMAGE" ] || [ -z "$PREVIOUS_WORKER_IMAGE" ]; then
