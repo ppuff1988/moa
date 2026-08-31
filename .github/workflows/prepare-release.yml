@@ -56,6 +56,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
 
+      - name: 確認 dev 已包含最新 main
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo 'dev 尚未包含最新 main；請先完成 main → dev 同步 PR'
+            exit 1
+          fi
+
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'

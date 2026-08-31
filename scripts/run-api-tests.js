@@ -1,17 +1,21 @@
 import dotenvFlow from 'dotenv-flow';
 import dotenvExpand from 'dotenv-expand';
 import { spawn } from 'child_process';
+import { resolveApiTestEndpoint } from './api-test-endpoint.js';
 
-// 只接受呼叫者在載入 dotenv 前明確指定的 API URL，避免 .env.test
-// 將測試 client 指回 5173，而 spawned server 使用 TEST_SERVER_PORT。
+// 只接受呼叫者在載入 dotenv 前明確指定的 endpoint，避免 .env.test
+// 將測試 client 指回 5173。URL 與 spawned server 永遠由同一個 port 推導。
 const runtimeApiBaseUrl = process.env.API_BASE_URL;
+const runtimeTestServerPort = process.env.TEST_SERVER_PORT;
 
 // 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
-const DEV_SERVER_PORT = Number(process.env.TEST_SERVER_PORT || 5174);
-const API_BASE_URL = runtimeApiBaseUrl || `http://localhost:${DEV_SERVER_PORT}`;
+const { serverPort: DEV_SERVER_PORT, apiBaseUrl: API_BASE_URL } = resolveApiTestEndpoint({
+	apiBaseUrl: runtimeApiBaseUrl,
+	testServerPort: runtimeTestServerPort
+});
 const MAX_WAIT_TIME = 60000; // 60秒
 const CHECK_INTERVAL = 1000; // 每秒檢查一次
 

@@ -36,7 +36,9 @@ describe('release workflow contracts', () => {
 		expect(workflow).not.toContain('git push origin main');
 		expect(workflow).not.toContain('git push origin dev');
 		expect(workflow).toContain('已有進行中的 Release／Hotfix PR');
+		expect(workflow).toContain('git merge-base --is-ancestor origin/main HEAD');
 		expect(autoMerge).toContain("startsWith(github.event.workflow_run.head_branch, 'release/v')");
+		expect(autoMerge).toContain('compareVersions(headVersion, baseVersion) <= 0');
 		expect(autoMerge).toContain("mergeMethod: 'MERGE'");
 	});
 

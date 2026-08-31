@@ -14,12 +14,11 @@ describe('local API test runner', () => {
 		const source = readFileSync(resolve(process.cwd(), 'scripts/run-api-tests.js'), 'utf8');
 
 		expect(source).toContain('const runtimeApiBaseUrl = process.env.API_BASE_URL;');
-		expect(source).toContain(
-			'const DEV_SERVER_PORT = Number(process.env.TEST_SERVER_PORT || 5174);'
-		);
-		expect(source).toContain(
-			'const API_BASE_URL = runtimeApiBaseUrl || `http://localhost:${DEV_SERVER_PORT}`;'
-		);
+		expect(source).toContain('const runtimeTestServerPort = process.env.TEST_SERVER_PORT;');
+		expect(source).toContain("import { resolveApiTestEndpoint } from './api-test-endpoint.js';");
+		expect(source).toContain('serverPort: DEV_SERVER_PORT');
+		expect(source).toContain('apiBaseUrl: runtimeApiBaseUrl');
+		expect(source).toContain('testServerPort: runtimeTestServerPort');
 		expect(source.indexOf('const runtimeApiBaseUrl')).toBeLessThan(
 			source.indexOf('dotenvFlow.config()')
 		);
