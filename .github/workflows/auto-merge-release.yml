@@ -6,7 +6,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: auto-merge-release-${{ github.event.workflow_run.head_branch }}
+  group: auto-merge-release-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
   cancel-in-progress: true
 
 jobs:
@@ -232,6 +232,14 @@ jobs:
                   `Release PR #${pr.number} 的目前 commit 並非觸發此流程的 CI commit`
                 );
               }
+              if (
+                pr.base.sha !== associatedPR.base.sha ||
+                pr.base.ref !== associatedPR.base.ref
+              ) {
+                throw new Error(
+                  `Release PR #${pr.number} 的 base 已在 CI 後改變，必須以新 base 重新執行 CI`
+                );
+              }
 
               const [baseVersion, headVersion] = await Promise.all([
                 getPackageVersion(pr.base.sha),
@@ -245,6 +253,8 @@ jobs:
               }
 
               const reviewedSha = pr.head.sha;
+              const reviewedBaseSha = pr.base.sha;
+              const reviewedBaseRef = pr.base.ref;
               await waitForCodexReview(pr);
 
               ({ data: pr } = await github.rest.pulls.get({
@@ -256,6 +266,13 @@ jobs:
               if (pr.head.sha !== reviewedSha) {
                 throw new Error('PR 在 Codex Review 期間有新 commit，必須重新執行 CI 與 Review');
               }
+              if (pr.state !== 'open' || pr.draft) {
+                throw new Error('PR 在 Codex Review 期間已關閉或轉為 draft，停止自動合併');
+              }
+              if (pr.base.sha !== reviewedBaseSha || pr.base.ref !== reviewedBaseRef) {
+                throw new Error('PR 在 Codex Review 期間 base 已改變，必須重新執行 CI 與 Review');
+              }
+              await validateReleaseRequest(pr);
               if (pr.mergeable_state === 'dirty') {
                 throw new Error(`Release PR #${pr.number} 有合併衝突`);
               }

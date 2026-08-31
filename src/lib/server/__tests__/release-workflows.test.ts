@@ -298,8 +298,9 @@ exit 0
 		const workflow = readWorkflow('auto-merge-hotfix.yml');
 
 		expect(workflow).toContain(
-			'group: auto-merge-hotfix-${{ github.event.workflow_run.head_branch }}'
+			'group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}'
 		);
+		expect(workflow.match(/await getHotfixQueue\(\)/g)).toHaveLength(2);
 		expect(workflow).toContain('cancel-in-progress: true');
 		expect(workflow).toContain('headVersion === baseVersion');
 		expect(workflow).toContain('const queueHead = hotfixPulls[0];');
@@ -340,6 +341,16 @@ exit 0
 			const workflow = readWorkflow(workflowName);
 
 			expect(workflow).toContain('pr.head.sha !== context.payload.workflow_run.head_sha');
+			expect(workflow).toContain('pr.base.sha !== associatedPR.base.sha');
+			expect(workflow).toContain('pr.base.ref !== associatedPR.base.ref');
+			expect(workflow).toContain('const reviewedBaseSha = pr.base.sha');
+			expect(workflow).toContain('const reviewedBaseRef = pr.base.ref');
+			expect(workflow).toContain('pr.base.sha !== reviewedBaseSha');
+			expect(workflow).toContain('pr.base.ref !== reviewedBaseRef');
+			expect(workflow).toContain("pr.state !== 'open' || pr.draft");
+			expect(workflow).toContain(
+				'${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}'
+			);
 			expect(workflow).toContain('statuses: write');
 			expect(workflow).toContain('github.rest.repos.createCommitStatus');
 			expect(workflow).toContain("context: 'codex-review'");
@@ -356,4 +367,10 @@ exit 0
 			expect(workflow).not.toContain("pr.mergeable_state === 'unstable'");
 		}
 	);
+
+	it('passes the reviewed head SHA to the direct dev merge API', () => {
+		const workflow = readWorkflow('auto-merge-dev.yml');
+
+		expect(workflow).toContain('sha: reviewedSha');
+	});
 });
