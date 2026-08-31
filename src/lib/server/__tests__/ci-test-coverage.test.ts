@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('CI test coverage', () => {
 	const root = process.cwd();
 	const workflow = readFileSync(resolve(root, '.github/workflows/ci-test.yml'), 'utf8');
+	const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
 	const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
 		engines: { npm: string };
 		scripts: Record<string, string>;
@@ -24,6 +25,12 @@ describe('CI test coverage', () => {
 			expect(installVersion).toBeGreaterThan(-1);
 			expect(installVersion).toBeLessThan(installDependencies);
 		}
+	});
+
+	it('README CI badge 指向現有的 CI Test workflow', () => {
+		expect(readme).toContain('actions/workflows/ci-test.yml/badge.svg');
+		expect(readme).toContain('actions/workflows/ci-test.yml)');
+		expect(readme).not.toContain('actions/workflows/ci.yml');
 	});
 
 	it('以不連資料庫的獨立設定執行 unit tests', () => {

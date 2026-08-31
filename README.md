@@ -1,6 +1,6 @@
 # 古董局中局｜非官方桌遊輔助網站（MOA）
 
-[![CI](https://github.com/ppuff1988/moa/actions/workflows/ci.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/ci.yml)
+[![CI](https://github.com/ppuff1988/moa/actions/workflows/ci-test.yml/badge.svg?event=pull_request)](https://github.com/ppuff1988/moa/actions/workflows/ci-test.yml)
 [![CD](https://github.com/ppuff1988/moa/actions/workflows/cd.yml/badge.svg)](https://github.com/ppuff1988/moa/actions/workflows/cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen)](https://nodejs.org/)
