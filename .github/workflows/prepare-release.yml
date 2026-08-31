@@ -1,5 +1,5 @@
 name: Prepare Release
-run-name: Prepare ${{ inputs.bump }} release from dev by @${{ github.actor }}
+run-name: Queue ${{ inputs.bump }} release from dev by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -15,160 +15,80 @@ on:
           - minor
           - major
 
-concurrency:
-  group: version-preparation
-  cancel-in-progress: false
-
 permissions:
-  contents: write
-  pull-requests: write
+  actions: write
+  issues: write
 
 jobs:
-  prepare:
-    name: 建立版本化 Release PR
+  enqueue:
+    name: 記錄 Release 請求
     runs-on: ubuntu-latest
-    env:
-      NPM_VERSION: '12.0.1'
     steps:
-      - name: 確認沒有進行中的版本 PR
+      - name: 保存請求並喚醒版本協調器
         uses: actions/github-script@v8
-        with:
-          script: |
-            const openPulls = await github.paginate(github.rest.pulls.list, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              base: 'main',
-              per_page: 100
-            });
-            const activeVersionPulls = openPulls.filter(
-              (pull) =>
-                pull.head.ref.startsWith('release/v') || pull.head.ref.startsWith('hotfix/')
-            );
-            if (activeVersionPulls.length > 0) {
-              const numbers = activeVersionPulls.map((pull) => `#${pull.number}`).join(', ');
-              throw new Error(`已有進行中的 Release／Hotfix PR（${numbers}），完成後再建立 Release`);
-            }
-
-      - uses: actions/checkout@v6
-        with:
-          ref: dev
-          fetch-depth: 0
-          token: ${{ secrets.PAT }}
-
-      - name: 確認 dev 已包含最新 main
-        run: |
-          git fetch origin main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor origin/main HEAD; then
-            echo 'dev 尚未包含最新 main；請先完成 main → dev 同步 PR'
-            exit 1
-          fi
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - name: 使用專案指定的 npm
-        run: npm install --global "npm@${NPM_VERSION}"
-
-      - name: 計算並寫入版本
-        id: version
         env:
           REQUESTED_BUMP: ${{ inputs.bump }}
-        run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          BUMP_TYPE="$REQUESTED_BUMP"
-
-          if [ "$BUMP_TYPE" = "auto" ]; then
-            LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
-            if [ -n "$LAST_TAG" ]; then
-              COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:'%s%n%b' --no-merges)
-            else
-              COMMITS=$(git log --pretty=format:'%s%n%b' --no-merges)
-            fi
-
-            if printf '%s\n' "$COMMITS" | grep -qiE 'BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
-              BUMP_TYPE="major"
-            elif printf '%s\n' "$COMMITS" | grep -qiE '^feat(\(.+\))?:'; then
-              BUMP_TYPE="minor"
-            else
-              BUMP_TYPE="patch"
-            fi
-          fi
-
-          NEW_VERSION=$(npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts | sed 's/^v//')
-          RELEASE_BRANCH="release/v${NEW_VERSION}"
-
-          {
-            echo "old_version=$CURRENT_VERSION"
-            echo "new_version=$NEW_VERSION"
-            echo "bump_type=$BUMP_TYPE"
-            echo "branch=$RELEASE_BRANCH"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: 再次確認沒有版本 PR
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const openPulls = await github.paginate(github.rest.pulls.list, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              base: 'main',
-              per_page: 100
-            });
-            const activeVersionPulls = openPulls.filter(
-              (pull) =>
-                pull.head.ref.startsWith('release/v') || pull.head.ref.startsWith('hotfix/')
-            );
-            if (activeVersionPulls.length > 0) {
-              const numbers = activeVersionPulls.map((pull) => `#${pull.number}`).join(', ');
-              throw new Error(`版本計算期間出現 Release／Hotfix PR（${numbers}），停止建立 Release`);
-            }
-
-      - name: 提交到 Release 分支
-        env:
-          NEW_VERSION: ${{ steps.version.outputs.new_version }}
-          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
-        run: |
-          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
-            echo "Release 分支 ${RELEASE_BRANCH} 已存在，停止重複建立"
-            exit 1
-          fi
-
-          git switch -c "$RELEASE_BRANCH"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore(release): bump version to v${NEW_VERSION}"
-          git push origin "$RELEASE_BRANCH"
-
-      - name: 建立 Release PR
-        uses: actions/github-script@v8
-        env:
-          OLD_VERSION: ${{ steps.version.outputs.old_version }}
-          NEW_VERSION: ${{ steps.version.outputs.new_version }}
-          BUMP_TYPE: ${{ steps.version.outputs.bump_type }}
-          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
         with:
           github-token: ${{ secrets.PAT }}
           script: |
-            const { data: pr } = await github.rest.pulls.create({
+            const allowedBumps = new Set(['auto', 'patch', 'minor', 'major']);
+            const bump = process.env.REQUESTED_BUMP;
+            if (!allowedBumps.has(bump)) throw new Error(`不支援的版本增量: ${bump}`);
+
+            const label = 'release-request';
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+                color: 'b68b2c',
+                description: 'Durable request for the release version coordinator'
+              });
+            }
+
+            const marker = `<!-- moa-release-request bump=${bump} run_id=${context.runId} -->`;
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `chore(release): promote dev to main v${process.env.NEW_VERSION}`,
-              head: process.env.RELEASE_BRANCH,
-              base: 'main',
-              body: [
-                '## Release',
-                '',
-                `- Source: \`dev\``,
-                `- Version: \`v${process.env.OLD_VERSION}\` → \`v${process.env.NEW_VERSION}\``,
-                `- Bump: \`${process.env.BUMP_TYPE}\``,
-                '',
-                'This PR will merge after all required checks and reviews pass.'
-              ].join('\n')
+              state: 'all',
+              labels: label,
+              per_page: 100
             });
+            let request = existingIssues.find(
+              (issue) => !issue.pull_request && (issue.body || '').includes(marker)
+            );
 
-            core.notice(`Release PR #${pr.number}: ${pr.html_url}`);
+            if (!request) {
+              const { data } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Release request: ${bump} (${context.runId})`,
+                body: [
+                  marker,
+                  '## Release request',
+                  '',
+                  `- Bump: \`${bump}\``,
+                  `- Requested by: @${context.actor}`,
+                  `- Workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                  '',
+                  '此 Issue 是版本配置佇列的持久化項目；建立 Release PR 後會自動關閉。'
+                ].join('\n'),
+                labels: ['release-request']
+              });
+              request = data;
+            }
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'auto-version.yml',
+              ref: 'main'
+            });
+            core.notice(`Release request #${request.number} 已保存並排入版本佇列`);

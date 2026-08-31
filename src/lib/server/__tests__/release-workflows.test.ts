@@ -23,25 +23,35 @@ describe('release workflow contracts', () => {
 		}
 	});
 
-	it('prepares a versioned release branch from dev before opening the main PR', () => {
+	it('persists manual release requests before dispatching the version coordinator', () => {
 		const workflow = readWorkflow('prepare-release.yml');
+		const autoVersion = readWorkflow('auto-version.yml');
 		const autoMerge = readWorkflow('auto-merge-release.yml');
 
 		expect(workflow).toContain('name: Prepare Release');
 		expect(workflow).toContain('workflow_dispatch:');
-		expect(workflow).toContain('ref: dev');
-		expect(workflow).toContain('release/v${NEW_VERSION}');
-		expect(workflow).toContain("base: 'main'");
+		expect(workflow).toContain('moa-release-request');
+		expect(workflow).toContain("labels: ['release-request']");
+		expect(workflow).toContain("workflow_id: 'auto-version.yml'");
+		expect(workflow).toContain("ref: 'main'");
+		expect(workflow).not.toContain('group: version-preparation');
 		expect(workflow).not.toContain('enablePullRequestAutoMerge');
 		expect(workflow).not.toContain('git push origin main');
 		expect(workflow).not.toContain('git push origin dev');
-		expect(workflow).toContain('已有進行中的 Release／Hotfix PR');
-		expect(workflow).toContain('- name: 再次確認沒有版本 PR');
-		expect(workflow).toContain('git merge-base --is-ancestor origin/main HEAD');
-		expect(workflow).toContain('head -n 1 || true');
-		expect(workflow).toContain('npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts');
-		expect(workflow).toContain('group: version-preparation');
-		expect(readWorkflow('auto-version.yml')).toContain('group: version-preparation');
+
+		expect(autoVersion).toContain('group: version-preparation');
+		expect(autoVersion).toContain('issues:');
+		expect(autoVersion).toContain("labels: 'release-request'");
+		expect(autoVersion).toContain('moa-release-request');
+		expect(autoVersion).toContain("branch: 'dev'");
+		expect(autoVersion).toContain('release/v${NEW_VERSION}');
+		expect(autoVersion).toContain("base: 'main'");
+		expect(autoVersion).toContain('git merge-base --is-ancestor origin/main HEAD');
+		expect(autoVersion).toContain('head -n 1 || true');
+		expect(autoVersion).toContain('npm version "$BUMP_TYPE" --no-git-tag-version --ignore-scripts');
+		expect(autoVersion).toContain("state: 'closed'");
+		expect(autoVersion).toContain('recentClosedPulls');
+		expect(autoVersion).toContain('Release request #${requestNumber} 已由 PR');
 		expect(autoMerge).toContain("startsWith(github.event.workflow_run.head_branch, 'release/v')");
 		expect(autoMerge).toContain('compareVersions(headVersion, baseVersion) <= 0');
 		expect(autoMerge).toContain("mergeMethod: 'MERGE'");
@@ -52,13 +62,16 @@ describe('release workflow contracts', () => {
 
 		expect(workflow).toContain('types: [opened, reopened, synchronize, ready_for_review, closed]');
 		expect(workflow).toContain('push:');
-		expect(workflow).toContain('branches: [main]');
+		expect(workflow).toContain('branches: [main, dev]');
 		expect(workflow).toContain('group: version-preparation');
 		expect(workflow).toContain('github.paginate(github.rest.pulls.list');
 		expect(workflow).toContain("pull.head.ref.startsWith('release/v')");
 		expect(workflow).toContain('等待 Release PR');
 		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
+		expect(workflow).toContain("core.setOutput('kind', 'release')");
+		expect(workflow).toContain("core.setOutput('kind', 'hotfix')");
+		expect(workflow).toContain('目前工作已不是版本佇列首項');
 		expect(workflow).toContain('git merge --no-edit origin/main');
 		expect(workflow).not.toContain('reservedVersions');
 		expect(workflow).toContain(
@@ -165,8 +178,8 @@ describe('release workflow contracts', () => {
 		const autoVersion = readWorkflow('auto-version.yml');
 		const syncMainToDev = readWorkflow('sync-main-to-dev.yml');
 
-		expect(prepareRelease).toContain('token: ${{ secrets.PAT }}');
 		expect(prepareRelease).toContain('github-token: ${{ secrets.PAT }}');
+		expect(prepareRelease).toContain('github.rest.actions.createWorkflowDispatch');
 		expect(autoVersion).toContain('token: ${{ secrets.PAT }}');
 		expect(syncMainToDev).toContain('github-token: ${{ secrets.PAT }}');
 	});
