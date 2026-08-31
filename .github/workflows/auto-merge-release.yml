@@ -1,4 +1,4 @@
-name: Auto Merge Hotfix
+name: Auto Merge Release
 
 on:
   workflow_run:
@@ -6,22 +6,21 @@ on:
     types: [completed]
 
 concurrency:
-  group: auto-merge-hotfix-${{ github.event.workflow_run.head_branch }}
+  group: auto-merge-release-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
-  auto-merge-hotfix:
+  auto-merge-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      issues: write
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
-      startsWith(github.event.workflow_run.head_branch, 'hotfix/')
+      startsWith(github.event.workflow_run.head_branch, 'release/v')
     steps:
-      - name: 等待版本、Codex Review 並啟用 Hotfix 自動合併
+      - name: 等待 Codex Review 並啟用 Release 自動合併
         uses: actions/github-script@v8
         with:
           script: |
@@ -107,24 +106,14 @@ jobs:
                 pull_number: associatedPR.number
               });
 
-              if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) continue;
+              if (!pr.head.ref.startsWith('release/v') || pr.base.ref !== 'main' || pr.draft) continue;
 
               const [baseVersion, headVersion] = await Promise.all([
                 getPackageVersion(pr.base.sha),
                 getPackageVersion(pr.head.sha)
               ]);
-
-              if (headVersion === baseVersion) {
-                core.notice(`Hotfix PR #${pr.number} 尚未完成版本 bump，等待下一次 CI`);
-                continue;
-              }
-
-              const [major, minor, patch] = baseVersion.split('.').map(Number);
-              const expectedVersion = [major, minor, patch + 1].join('.');
-              if (headVersion !== expectedVersion) {
-                throw new Error(
-                  `Hotfix PR #${pr.number} 版本應為 v${expectedVersion}，目前為 v${headVersion}`
-                );
+              if (headVersion === baseVersion || pr.head.ref !== `release/v${headVersion}`) {
+                throw new Error(`Release PR #${pr.number} 的分支與 package.json 版本不一致`);
               }
 
               const reviewedSha = pr.head.sha;
@@ -140,7 +129,7 @@ jobs:
                 throw new Error('PR 在 Codex Review 期間有新 commit，必須重新執行 CI 與 Review');
               }
               if (pr.mergeable_state === 'dirty') {
-                throw new Error(`Hotfix PR #${pr.number} 有合併衝突`);
+                throw new Error(`Release PR #${pr.number} 有合併衝突`);
               }
 
               await github.graphql(`
@@ -157,23 +146,5 @@ jobs:
                 mergeMethod: 'MERGE'
               });
 
-              core.notice(`Hotfix PR #${pr.number} 已啟用 Merge commit 自動合併`);
+              core.notice(`Release PR #${pr.number} 已啟用 Merge commit 自動合併`);
             }
-
-  notify:
-    name: Hotfix 自動合併通知
-    runs-on: ubuntu-latest
-    needs: auto-merge-hotfix
-    if: always() && needs.auto-merge-hotfix.result != 'skipped'
-    steps:
-      - uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: markdown
-          message: |
-            ${{ needs.auto-merge-hotfix.result == 'success' && '🚨 *Hotfix 已通過自動合併檢查*' || '❌ *Hotfix 自動合併失敗*' }}
-
-            *專案:* `${{ github.repository }}`
-            *分支:* `${{ github.event.workflow_run.head_branch }} → main`
-            [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

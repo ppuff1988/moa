@@ -1,0 +1,126 @@
+name: Prepare Release
+run-name: Prepare ${{ inputs.bump }} release from dev by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment; auto follows Conventional Commits
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: version-preparation
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: 建立版本化 Release PR
+    runs-on: ubuntu-latest
+    env:
+      NPM_VERSION: '12.0.1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: 使用專案指定的 npm
+        run: npm install --global "npm@${NPM_VERSION}"
+
+      - name: 計算並寫入版本
+        id: version
+        env:
+          REQUESTED_BUMP: ${{ inputs.bump }}
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          BUMP_TYPE="$REQUESTED_BUMP"
+
+          if [ "$BUMP_TYPE" = "auto" ]; then
+            LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+            if [ -n "$LAST_TAG" ]; then
+              COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:'%s%n%b' --no-merges)
+            else
+              COMMITS=$(git log --pretty=format:'%s%n%b' --no-merges)
+            fi
+
+            if printf '%s\n' "$COMMITS" | grep -qiE 'BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
+              BUMP_TYPE="major"
+            elif printf '%s\n' "$COMMITS" | grep -qiE '^feat(\(.+\))?:'; then
+              BUMP_TYPE="minor"
+            else
+              BUMP_TYPE="patch"
+            fi
+          fi
+
+          NEW_VERSION=$(npm version "$BUMP_TYPE" --no-git-tag-version | sed 's/^v//')
+          RELEASE_BRANCH="release/v${NEW_VERSION}"
+
+          {
+            echo "old_version=$CURRENT_VERSION"
+            echo "new_version=$NEW_VERSION"
+            echo "bump_type=$BUMP_TYPE"
+            echo "branch=$RELEASE_BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 提交到 Release 分支
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
+        run: |
+          if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
+            echo "Release 分支 ${RELEASE_BRANCH} 已存在，停止重複建立"
+            exit 1
+          fi
+
+          git switch -c "$RELEASE_BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): bump version to v${NEW_VERSION}"
+          git push origin "$RELEASE_BRANCH"
+
+      - name: 建立 Release PR
+        uses: actions/github-script@v8
+        env:
+          OLD_VERSION: ${{ steps.version.outputs.old_version }}
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          BUMP_TYPE: ${{ steps.version.outputs.bump_type }}
+          RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `chore(release): promote dev to main v${process.env.NEW_VERSION}`,
+              head: process.env.RELEASE_BRANCH,
+              base: 'main',
+              body: [
+                '## Release',
+                '',
+                `- Source: \`dev\``,
+                `- Version: \`v${process.env.OLD_VERSION}\` → \`v${process.env.NEW_VERSION}\``,
+                `- Bump: \`${process.env.BUMP_TYPE}\``,
+                '',
+                'This PR will merge after all required checks and reviews pass.'
+              ].join('\n')
+            });
+
+            core.notice(`Release PR #${pr.number}: ${pr.html_url}`);

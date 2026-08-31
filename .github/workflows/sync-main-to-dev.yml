@@ -1,10 +1,14 @@
 name: Sync Main to Dev
 
 on:
-  workflow_run:
-    workflows: ['Auto Version Bump']
-    types: [completed]
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: sync-main-to-dev
+  cancel-in-progress: false
 
 jobs:
   create-pr:
@@ -12,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       (github.event.pull_request.head.ref == 'dev' ||
+        startsWith(github.event.pull_request.head.ref, 'release/v') ||
+        startsWith(github.event.pull_request.head.ref, 'hotfix/')))
     permissions:
       contents: write
       pull-requests: write
@@ -24,9 +30,26 @@ jobs:
         id: open_pr
         uses: actions/github-script@v8
         with:
+          github-token: ${{ secrets.PAT }}
           script: |
             console.log('🔍 開始檢查 main → dev 同步狀態...');
             console.log('');
+
+            async function enableMergeAutoMerge(pr) {
+              await github.graphql(`
+                mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: $mergeMethod
+                  }) {
+                    pullRequest { number }
+                  }
+                }
+              `, {
+                pullRequestId: pr.node_id,
+                mergeMethod: 'MERGE'
+              });
+            }
 
             // 從 main 的 package.json 讀取版本
             const { data: pkg } = await github.rest.repos.getContent({
@@ -109,6 +132,7 @@ jobs:
               core.setOutput('result', 'exists');
               core.setOutput('pr_number', String(prs[0].number));
               core.setOutput('pr_url', prs[0].html_url);
+              await enableMergeAutoMerge(prs[0]);
               return;
             }
 
@@ -122,7 +146,7 @@ jobs:
               `- 新版本: v${version}`,
               `- 來源: main → dev`,
               '',
-              '此 PR 將在 CI 通過後由 Auto Merge to Dev workflow 以 Squash 模式自動合併（符合 Require linear history）'
+              '此 PR 將在必要檢查通過後以 Merge commit 自動合併，保留 main 與 dev 的共同祖先。'
             ].join('\n');
 
             const { data: pr } = await github.rest.pulls.create({
@@ -150,20 +174,8 @@ jobs:
             console.log('');
             console.log('🔍 嘗試啟用 GitHub 內建 Auto-merge...');
             try {
-              await github.graphql(`
-                mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
-                  enablePullRequestAutoMerge(input: {
-                    pullRequestId: $pullRequestId,
-                    mergeMethod: $mergeMethod
-                  }) {
-                    pullRequest { number }
-                  }
-                }
-              `, {
-                pullRequestId: pr.node_id,
-                mergeMethod: 'SQUASH'
-              });
-              console.log('✅ GitHub Auto-merge 已啟用（Squash 模式）');
+              await enableMergeAutoMerge(pr);
+              console.log('✅ GitHub Auto-merge 已啟用（Merge commit 模式）');
               console.log('ℹ️ PR 將在所有檢查通過後自動合併');
             } catch (e) {
               console.log('⚠️ 無法啟用 GitHub Auto-merge');
@@ -177,7 +189,7 @@ jobs:
               console.log('      ☑ Require status checks to pass before merging');
               console.log('      ☑ 選擇必要的檢查項目（如：lint, test-api）');
               console.log('');
-              console.log('✅ 不過沒關係！Auto Merge to Dev 工作流程會在 CI 通過後自動處理');
+              throw e;
             }
   notify:
     name: TG 通知 - Sync Main→Dev
@@ -228,7 +240,7 @@ jobs:
         env:
           RESULT: ${{ needs.create-pr.result }}
       - name: 發送 Telegram 通知
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}

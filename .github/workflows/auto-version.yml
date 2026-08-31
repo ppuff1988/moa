@@ -1,135 +1,77 @@
 name: Auto Version Bump
+run-name: Prepare hotfix version for #${{ github.event.pull_request.number }}
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, reopened, synchronize, ready_for_review]
     branches: [main]
-  workflow_run:
-    workflows: ['Auto Merge Hotfix']
-    types: [completed]
+
+concurrency:
+  group: hotfix-version-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
-  check-and-bump:
+  bump-hotfix:
+    name: 在 Hotfix PR 分支寫入 patch 版本
     runs-on: ubuntu-latest
-    # 對於 PR 關閉事件：只在已合併到 main 時執行
-    # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
     if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
-    permissions:
-      contents: write
-    outputs:
-      version_changed: ${{ steps.bump.outputs.version_changed }}
-      new_version: ${{ steps.bump.outputs.new_version }}
-      old_version: ${{ steps.bump.outputs.old_version }}
-      bump_type: ${{ steps.bump.outputs.bump_type }}
-
+      !github.event.pull_request.draft &&
+      startsWith(github.head_ref, 'hotfix/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      NPM_VERSION: '12.0.1'
+      HEAD_BRANCH: ${{ github.head_ref }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
+          token: ${{ secrets.PAT }}
 
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
-          cache: 'npm'
+          cache: npm
 
-      - name: 配置 Git
+      - name: 使用專案指定的 npm
+        run: npm install --global "npm@${NPM_VERSION}"
+
+      - name: 計算 main 的下一個 patch 版本
+        id: version
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+
+          BASE_VERSION=$(git show origin/main:package.json | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version));")
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_VERSION=$(node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); console.log([major, minor, patch + 1].join('.'));" "$BASE_VERSION")
+
+          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "expected_version=$EXPECTED_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT_VERSION" = "$EXPECTED_VERSION" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Hotfix 已使用預期版本 v${EXPECTED_VERSION}"
+            exit 0
+          fi
+
+          if [ "$CURRENT_VERSION" != "$BASE_VERSION" ]; then
+            echo "Hotfix 版本 v${CURRENT_VERSION} 不是 main v${BASE_VERSION} 或預期 v${EXPECTED_VERSION}"
+            exit 1
+          fi
+
+          npm version "$EXPECTED_VERSION" --no-git-tag-version
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 提交版本更新到 Hotfix 分支
+        if: steps.version.outputs.changed == 'true'
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.expected_version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: 分析 Commits 並自動升級版本
-        id: bump
-        run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "📦 當前版本: $CURRENT_VERSION"
-
-          LAST_COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          if echo "$LAST_COMMIT_MSG" | grep -q "chore(release): bump version"; then
-            echo "⏭️ 跳過版本升級 commit，避免無限循環"
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-
-          # 如果沒有 tag，使用所有提交記錄（適用於新倉庫）
-          if [ -z "$LAST_TAG" ]; then
-            # 獲取第一個提交的 hash
-            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-            COMMITS=$(git log ${FIRST_COMMIT}..HEAD --pretty=format:"%s" --no-merges)
-          else
-            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" --no-merges)
-          fi
-
-          if [ -z "$COMMITS" ]; then
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ 沒有新的 commits"
-            exit 0
-          fi
-
-          echo "$COMMITS"
-
-          BUMP_TYPE="none"
-          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|!:"; then
-            BUMP_TYPE="major"
-          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
-            BUMP_TYPE="minor"
-          elif echo "$COMMITS" | grep -qiE "^(fix|chore|refactor|perf|test|build|ci|docs|style)(\(.+\))?:"; then
-            BUMP_TYPE="patch"
-          fi
-
-          if [ "$BUMP_TYPE" = "none" ]; then
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          NEW_VERSION=$(npm version $BUMP_TYPE --no-git-tag-version | sed 's/v//')
-          echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
-          echo "version_changed=true" >> $GITHUB_OUTPUT
-          echo "✅ 版本升級為: $NEW_VERSION"
-
-      - name: 提交與推送變更
-        if: steps.bump.outputs.version_changed == 'true'
-        run: |
-          NEW_VERSION=${{ steps.bump.outputs.new_version }}
-          BUMP_TYPE=${{ steps.bump.outputs.bump_type }}
-
-          git add package.json package-lock.json || true
-          git commit -m "chore(release): bump version to v${NEW_VERSION}" -m "Type: ${BUMP_TYPE}"
-
-          echo "🔄 確保 main 最新..."
-          git pull --rebase origin main || true
-
-          echo "📤 推送到 main..."
-          git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
-
-          echo "✅ 版本升級完成，tag 將由 CI Release workflow 創建"
-          echo "ℹ️ Sync Main to Dev workflow 將自動建立同步 PR"
-
-  notify:
-    name: 版本升級通知
-    runs-on: ubuntu-latest
-    needs: check-and-bump
-    if: needs.check-and-bump.outputs.version_changed == 'true'
-    steps:
-      - name: 📣 發送版本升級通知
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: markdown
-          message: |
-            🚀 *版本自動升級*
-            *專案:* `${{ github.repository }}`
-            *版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
-            *類型:* `${{ needs.check-and-bump.outputs.bump_type }}`
-            *合併者:* `${{ github.actor }}`
-            [查看 Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          git add package.json package-lock.json
+          git commit -m "chore(release): bump hotfix version to v${EXPECTED_VERSION}"
+          git push origin "HEAD:${HEAD_BRANCH}"

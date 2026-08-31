@@ -6,6 +6,10 @@ on:
     types:
       - completed
 
+concurrency:
+  group: auto-merge-dev-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
@@ -35,10 +39,77 @@ jobs:
       )
 
     steps:
-      - uses: actions/github-script@v8
+      - name: 等待 Codex Review 並自動合併
+        uses: actions/github-script@v8
         id: merge
         with:
           script: |
+            const CODEX_BOT = 'chatgpt-codex-connector[bot]';
+            const CODEX_SUMMARY_MARKER = 'codex-pull-request-review-summary';
+            const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+            async function waitForCodexReview(pr) {
+              const shortSha = pr.head.sha.slice(0, 7);
+              const maxAttempts = 30;
+
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                const [issueComments, reviews, reviewComments] = await Promise.all([
+                  github.paginate(github.rest.issues.listComments, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    per_page: 100
+                  }),
+                  github.paginate(github.rest.pulls.listReviews, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    per_page: 100
+                  }),
+                  github.paginate(github.rest.pulls.listReviewComments, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    per_page: 100
+                  })
+                ]);
+
+                const currentReviews = reviews.filter(
+                  (review) => review.user?.login === CODEX_BOT && review.commit_id === pr.head.sha
+                );
+                const currentReviewIds = new Set(currentReviews.map((review) => review.id));
+                const findingReviews = currentReviews.filter(
+                  (review) => review.state === 'COMMENTED' && (review.body || '').includes('Codex Review')
+                );
+                const findings = reviewComments.filter(
+                  (comment) =>
+                    comment.user?.login === CODEX_BOT &&
+                    currentReviewIds.has(comment.pull_request_review_id)
+                );
+                const completedSummary = issueComments.some((comment) => {
+                  const body = comment.body || '';
+                  return (
+                    comment.user?.login === CODEX_BOT &&
+                    body.includes(CODEX_SUMMARY_MARKER) &&
+                    body.includes('✅ **Completed**') &&
+                    body.includes(`\`${shortSha}\``)
+                  );
+                });
+
+                if (findingReviews.length > 0 || findings.length > 0) {
+                  throw new Error(
+                    `Codex Review 在目前 commit ${shortSha} 發現問題，停止自動合併`
+                  );
+                }
+                if (completedSummary) return;
+
+                console.log(`等待 Codex Review (${attempt}/${maxAttempts})，commit ${shortSha}`);
+                if (attempt < maxAttempts) await sleep(20_000);
+              }
+
+              throw new Error(`等待 Codex Review 逾時，停止自動合併 commit ${shortSha}`);
+            }
+
             let hasConflicts = false;
             let conflictPRNumbers = [];
             const associatedPRs = context.payload.workflow_run.pull_requests;
@@ -50,7 +121,7 @@ jobs:
 
             for (const associatedPR of associatedPRs) {
               // 獲取完整的 PR 資訊
-              const { data: pr } = await github.rest.pulls.get({
+              let { data: pr } = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: associatedPR.number
@@ -67,7 +138,20 @@ jobs:
 
               console.log(`🔍 檢查 PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
 
-              if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
+              const reviewedSha = pr.head.sha;
+              await waitForCodexReview(pr);
+
+              ({ data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: associatedPR.number
+              }));
+
+              if (pr.head.sha !== reviewedSha) {
+                throw new Error('PR 在 Codex Review 期間有新 commit，必須重新執行 CI 與 Review');
+              }
+
+              if (pr.mergeable_state === 'clean') {
                 // 可以直接 merge
                 await github.rest.pulls.merge({
                   owner: context.repo.owner,
@@ -139,7 +223,9 @@ jobs:
                   console.log(`⚠️ 建立補救 PR 失敗: ${error.message}`);
                 }
               } else {
-                console.log(`⏳ PR #${pr.number} 狀態: ${pr.mergeable_state}，暫不處理`);
+                throw new Error(
+                  `PR #${pr.number} 合併狀態為 ${pr.mergeable_state}，不是 clean，停止自動合併`
+                );
               }
             }
 
@@ -162,7 +248,7 @@ jobs:
       (needs.auto-merge.result == 'failure' || needs.auto-merge.outputs.has_conflicts == 'true')
     steps:
       - name: 📣 發送合併通知
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}

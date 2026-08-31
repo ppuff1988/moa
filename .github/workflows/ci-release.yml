@@ -1,20 +1,25 @@
 name: CI Release
 
 on:
-  workflow_run:
-    workflows: ['Auto Version Bump']
-    types: [completed]
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
 
 jobs:
   build-docker:
     runs-on: ubuntu-latest
-    # 只在版本升級成功或手動觸發時執行
-    # Auto Version Bump 只會在 PR 合併到 main 時執行，所以不需要檢查分支
+    # 只發布合併完成的版本化 Release／Hotfix PR，或由人工手動觸發。
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       (startsWith(github.event.pull_request.head.ref, 'release/v') ||
+        startsWith(github.event.pull_request.head.ref, 'hotfix/')))
     environment: production
     permissions:
       contents: read
@@ -23,11 +28,13 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: 檢查觸發來源
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           echo "📋 觸發事件: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "✅ 由 Auto Version Bump 完成觸發"
-            echo "📦 Version Bump 結果: ${{ github.event.workflow_run.conclusion }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "✅ 由已合併的版本 PR 觸發"
+            echo "📦 來源分支: $SOURCE_BRANCH"
           else
             echo "✅ 手動觸發"
           fi
@@ -46,7 +53,7 @@ jobs:
         id: get_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 版本號碼: $VERSION"
 
       - uses: docker/setup-buildx-action@v3
@@ -94,10 +101,13 @@ jobs:
     name: 創建發布標籤
     runs-on: ubuntu-latest
     needs: build-docker
-    # 在 Auto Version Bump 成功或手動觸發時創建標籤與 Release
+    # 在版本化 PR 合併或手動觸發時創建標籤與 Release。
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       (startsWith(github.event.pull_request.head.ref, 'release/v') ||
+        startsWith(github.event.pull_request.head.ref, 'hotfix/')))
     permissions:
       contents: write
     outputs:
@@ -122,14 +132,14 @@ jobs:
 
           # 檢查該版本的 tag 是否已存在（本地或遠端）
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
             echo "⏭️ 版本 $TAG 已存在，跳過發布"
           else
-            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "✅ 版本 $TAG 是新版本，將創建發布"
           fi
 
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: 創建並推送標籤
         if: steps.check_version.outputs.should_release == 'true'
@@ -163,15 +173,16 @@ jobs:
           else
             echo "📝 從 $PREV_TAG 到 $TAG 的變更"
             # 獲取兩個版本之間的 commit 記錄
-            COMMITS=$(git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges | head -n 20)
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges | head -n 20)
           fi
 
           # 將多行內容儲存到 output
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          {
+            echo "commits<<EOF"
+            echo "$COMMITS"
+            echo "EOF"
+            echo "prev_tag=$PREV_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 創建 GitHub Release
         if: steps.check_version.outputs.should_release == 'true'
@@ -242,7 +253,7 @@ jobs:
       (needs.build-docker.result == 'failure' || needs.create-tag.outputs.should_release == 'true')
     steps:
       - name: 📣 發送發布通知
-        uses: appleboy/telegram-action@master
+        uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -255,7 +266,7 @@ jobs:
             *提交者:* `${{ github.actor }}`
 
             ${{ needs.build-docker.result == 'failure' && '⚠️ Docker 建置失敗，請檢查錯誤' || '✅ Docker 映像已建置並推送' }}
-            ${{ needs.create-tag.outputs.should_release == 'true' && format('✅ Git tag 和 GitHub Release 已創建', '') || '' }}
+            ${{ needs.create-tag.outputs.should_release == 'true' && '✅ Git tag 和 GitHub Release 已創建' || '' }}
 
             *Docker 標籤:*
             **App:**
