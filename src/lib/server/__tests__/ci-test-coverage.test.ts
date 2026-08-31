@@ -26,7 +26,6 @@ describe('CI test coverage', () => {
 			expect(installVersion).toBeLessThan(installDependencies);
 		}
 	});
-
 	it('README CI badge 指向現有的 CI Test workflow', () => {
 		expect(readme).toContain('actions/workflows/ci-test.yml/badge.svg');
 		expect(readme).toContain('actions/workflows/ci-test.yml)');
