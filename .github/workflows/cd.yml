@@ -219,17 +219,18 @@ jobs:
           # DEPLOY_PATH is an administrator-controlled repository variable and expands locally.
           # shellcheck disable=SC2029
           ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo SSH connection verified"
-          # shellcheck disable=SC2029
-          scp "${SCP_OPTS[@]}" "$ENV_FILE" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/.env"
 
           REMOTE_PATH=$(printf '%q' "$DEPLOY_PATH")
           REMOTE_COMMAND="bash -s -- ${REMOTE_PATH} ${DEPLOY_SHA} ${DEPLOY_VERSION}"
           max_attempts=3
           attempt=1
           while [ "$attempt" -le "$max_attempts" ]; do
+            # 前一次失敗可能已把遠端 .env 持久化回 rollback image；每次重試都先
+            # 重傳本次要求的 immutable image，避免舊版被誤報為部署成功。
             # REMOTE_COMMAND contains only a validated SHA/version and an administrator path.
             # shellcheck disable=SC2029
-            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" <<'REMOTE_SCRIPT'
+            if scp "${SCP_OPTS[@]}" "$ENV_FILE" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/.env" && \
+              ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" <<'REMOTE_SCRIPT'
           set -euo pipefail
           deploy_path="$1"
           deploy_sha="$2"

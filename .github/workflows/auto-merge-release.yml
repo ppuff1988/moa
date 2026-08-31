@@ -69,6 +69,53 @@ jobs:
               return 0;
             }
 
+            async function validateReleaseRequest(pr) {
+              if (pr.head.repo?.full_name !== context.payload.repository.full_name) {
+                throw new Error(`Release PR #${pr.number} 必須來自目前 repository`);
+              }
+
+              const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pr.body || '')?.[1]);
+              if (!Number.isSafeInteger(requestNumber) || requestNumber <= 0) {
+                throw new Error(`Release PR #${pr.number} 缺少有效的 release request`);
+              }
+
+              const [{ data: issue }, comments] = await Promise.all([
+                github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber
+                }),
+                github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  per_page: 100
+                })
+              ]);
+              const hasRequestLabel = issue.labels.some(
+                (label) => (label.name || label) === 'release-request'
+              );
+              const hasRequestMarker =
+                /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=\d+ -->/.test(
+                  issue.body || ''
+                );
+              const expectedCompletion = `Release PR #${pr.number} 已建立：${pr.html_url}`;
+              const hasAutomationCompletion = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedCompletion)
+              );
+
+              if (
+                issue.state !== 'closed' ||
+                !hasRequestLabel ||
+                !hasRequestMarker ||
+                !hasAutomationCompletion
+              ) {
+                throw new Error(`Release PR #${pr.number} 未通過 release request metadata 驗證`);
+              }
+            }
+
             async function waitForCodexReview(pr) {
               const shortSha = pr.head.sha.slice(0, 7);
               const maxAttempts = 30;
@@ -141,6 +188,8 @@ jobs:
               });
 
               if (!pr.head.ref.startsWith('release/v') || pr.base.ref !== 'main' || pr.draft) continue;
+
+              await validateReleaseRequest(pr);
 
               if (pr.head.sha !== context.payload.workflow_run.head_sha) {
                 throw new Error(

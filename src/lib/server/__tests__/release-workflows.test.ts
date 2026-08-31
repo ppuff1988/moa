@@ -153,6 +153,9 @@ describe('release workflow contracts', () => {
 		expect(workflow).not.toContain('releases/latest/download');
 		expect(workflow).not.toContain('appleboy/telegram-action@master');
 		expect(workflow).not.toContain('git pull origin main');
+		expect(workflow.indexOf('while [ "$attempt" -le "$max_attempts" ]')).toBeLessThan(
+			workflow.indexOf('scp "${SCP_OPTS[@]}" "$ENV_FILE"')
+		);
 
 		expect(compose).toContain('image: ${APP_IMAGE}');
 		expect(compose).toContain('image: ${WORKER_IMAGE}');
@@ -185,6 +188,17 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain("mergeMethod: 'MERGE'");
 		expect(workflow).not.toContain("merge_method: 'squash'");
 		expect(workflow).not.toContain('github.rest.pulls.merge');
+	});
+
+	it('only auto-merges generated same-repository release requests', () => {
+		const workflow = readWorkflow('auto-merge-release.yml');
+
+		expect(workflow).toContain('pr.head.repo?.full_name !== context.payload.repository.full_name');
+		expect(workflow).toContain('validateReleaseRequest(pr)');
+		expect(workflow).toContain('release-request');
+		expect(workflow).toContain('moa-release-request');
+		expect(workflow).toContain('Release PR #${pr.number} 已建立');
+		expect(workflow).toContain("comment.author_association === 'OWNER'");
 	});
 
 	it('uses the automation PAT when bot changes must trigger another workflow', () => {
