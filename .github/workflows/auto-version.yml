@@ -2,7 +2,9 @@ name: Auto Version Bump
 run-name: Reconcile release and hotfix version queue
 
 on:
-  pull_request:
+  # This job receives a write-capable PAT. For PR lifecycle events, always load
+  # the workflow definition from the trusted base branch, never from the PR.
+  pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, closed]
     branches: [main]
   push:
@@ -31,7 +33,7 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'issues' &&
        contains(github.event.issue.labels.*.name, 'release-request')) ||
-      (github.event_name == 'pull_request' &&
+      (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        (startsWith(github.event.pull_request.head.ref, 'hotfix/') ||
         startsWith(github.event.pull_request.head.ref, 'release/v')))

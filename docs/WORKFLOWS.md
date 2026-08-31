@@ -104,7 +104,7 @@ release/* (發布分支，可選)
 - `CI Test`：PR 的 lint、型別、單元、API 與 Playwright smoke 測試。完整 8 人三回合 E2E 不在每次 CI 執行。
 - `Auto Merge to Dev`：確認 CI SHA 與無 finding 的 Codex Review 都對應目前 PR SHA。一般 PR 使用 squash；`main → dev` 使用 Merge commit。
 - `Prepare Release`：只接受 repository owner 從受保護的 `main` 手動執行，把 `auto`／`patch`／`minor`／`major` 保存為帶有 `release-request` 標籤的 Issue，再喚醒版本協調器。請求會綁定原始 workflow run，且不依賴 Actions pending run，因此不會在 concurrency 取代 pending run 時遺失。
-- `Auto Version Bump`：是唯一的版本協調器。每次都從 repository state 重建佇列，ready Hotfix 可搶占進行中的 Release PR；協調器會先驗證完整信任鏈、重新開啟原 durable request，再關閉 PR 並移除舊 Release branch。否則處理最早且能驗證 owner、`main` 與原始 workflow run 的 Release request；確認 `dev` 已包含最新 `main` 且來源 SHA 未變後，才配置版本並建立 `release/vX.Y.Z` PR。版本協調器會先在 request Issue 留下精確的 Release commit SHA，再建立 PR 與完成標記；中斷恢復時也只接受同一個 SHA。
+- `Auto Version Bump`：是唯一的版本協調器。PR lifecycle 使用 `pull_request_target`，讓具寫入權限的 PAT 只由 base branch 上的可信 workflow 定義存取；協調器不執行 PR scripts，並以固定 commit SHA、隔離 npm 設定及 `--ignore-scripts` 處理版本檔。每次都從 repository state 重建佇列，ready Hotfix 可搶占進行中的 Release PR；協調器會先驗證完整信任鏈、重新開啟原 durable request，再關閉 PR 並移除舊 Release branch。否則處理最早且能驗證 owner、`main` 與原始 workflow run 的 Release request；確認 `dev` 已包含最新 `main` 且來源 SHA 未變後，才配置版本並建立 `release/vX.Y.Z` PR。版本協調器會先在 request Issue 留下精確的 Release commit SHA，再建立 PR 與完成標記；中斷恢復時也只接受同一個 SHA。
 - `Auto Merge Release`／`Auto Merge Hotfix`：在目前 SHA 通過 CI 與 Codex Review 後，使用 Merge commit 合併到 `main`。Release PR 另須由 repository owner 在本 repository 建立，並同時通過 workflow run、request Issue、準備 commit SHA 與完成標記驗證。
 - `Sync Main to Dev`：版本 PR 合併後建立同步 PR；仍需通過 CI 與 Codex gate，不會在建立時直接啟用 auto-merge。
 - `CI Release`：從已合併 PR 重建未完成發布佇列，固定 merge commit 建置版本化 image、驗證 tag、等待部署，再建立 GitHub Release 作為完成標記。

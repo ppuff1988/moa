@@ -83,6 +83,8 @@ describe('release workflow contracts', () => {
 	it('serializes hotfixes by repository state and advances the queue after main changes', () => {
 		const workflow = readWorkflow('auto-version.yml');
 
+		expect(workflow).toContain('pull_request_target:');
+		expect(workflow).not.toMatch(/^ {2}pull_request:$/m);
 		expect(workflow).toContain('types: [opened, reopened, synchronize, ready_for_review, closed]');
 		expect(workflow).toContain('push:');
 		expect(workflow).toContain('branches: [main, dev]');
