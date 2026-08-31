@@ -34,4 +34,10 @@ describe('local API test runner', () => {
 			expect(source, path).not.toMatch(/fetch\(['"]http:\/\/localhost:5173/);
 		}
 	});
+
+	it('does not print database credentials when the test server starts', () => {
+		const source = readFileSync(resolve(process.cwd(), 'scripts/dev-server.js'), 'utf8');
+
+		expect(source).not.toContain("console.log('DATABASE_URL:', process.env.DATABASE_URL)");
+	});
 });

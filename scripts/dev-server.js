@@ -13,7 +13,6 @@ console.log('🔍 環境變數:');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 console.log('POSTGRES_HOST:', process.env.POSTGRES_HOST);
-console.log('DATABASE_URL:', process.env.DATABASE_URL);
 
 const app = express();
 const server = createServer(app);
