@@ -24,9 +24,9 @@ export default defineConfig({
 				includeVersionFile: false
 			},
 			manifest: {
-				name: 'MOA - 末日危途',
-				short_name: 'MOA',
-				description: '多人線上推理遊戲 - 在末日危途中找出潛伏的怪物',
+				name: '古董局中局',
+				short_name: '古董局中局',
+				description: '古董局中局非官方APP - 傳承千年智慧，品鑑古董真偽',
 				theme_color: '#000000',
 				background_color: '#000000',
 				display: 'standalone',

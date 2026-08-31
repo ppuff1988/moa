@@ -1,11 +1,19 @@
 import { verifyAuthToken } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gamePlayers, games } from '$lib/server/db/schema';
-import { getGameState } from '$lib/server/game';
+import { games } from '$lib/server/db/schema';
+import { getGameState, joinGame } from '$lib/server/game';
 import { getSocketIO } from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
+
+const JOIN_GAME_ERRORS = new Set([
+	'遊戲不存在',
+	'遊戲已開始，無法加入',
+	'房間已滿',
+	'玩家已在遊戲中',
+	'用戶不存在'
+]);
 
 export const POST: RequestHandler = async ({ request }) => {
 	const authResult = await verifyAuthToken(request);
@@ -40,55 +48,16 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: '房間密碼錯誤' }, { status: 401 });
 	}
 
-	// 檢查遊戲狀態
-	if (game.status !== 'waiting') {
-		return json({ message: '遊戲已開始，無法加入' }, { status: 400 });
-	}
-
-	// 檢查房間是否已滿
-	if (game.playerCount >= 8) {
-		return json({ message: '房間已滿' }, { status: 400 });
-	}
-
-	// 檢查玩家是否已在房間中
-	const [existingPlayer] = await db
-		.select()
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, user.id)))
-		.limit(1);
-
-	if (existingPlayer) {
-		return json({ message: '您已經在房間中' }, { status: 400 });
-	}
-
-	// 加入房間 - 使用 try-catch 處理並發情況下的重複鍵錯誤
 	let newPlayer;
 	try {
-		[newPlayer] = await db
-			.insert(gamePlayers)
-			.values({
-				gameId: game.id,
-				userId: user.id,
-				isHost: false
-			})
-			.returning();
+		newPlayer = await joinGame(game.id, user.id);
 	} catch (error) {
-		// 處理重複鍵錯誤（並發情況下可能發生）
-		if (error instanceof Error && error.message.includes('duplicate key')) {
-			return json({ message: '您已經在房間中' }, { status: 400 });
+		if (error instanceof Error && JOIN_GAME_ERRORS.has(error.message)) {
+			const message = error.message === '玩家已在遊戲中' ? '您已經在房間中' : error.message;
+			return json({ message }, { status: 400 });
 		}
-		// 其他錯誤則拋出
 		throw error;
 	}
-
-	// 使用 SQL 的原子遞增操作來避免並發情況下的玩家計數錯誤
-	await db
-		.update(games)
-		.set({
-			playerCount: sql`${games.playerCount} + 1`,
-			updatedAt: new Date()
-		})
-		.where(eq(games.id, game.id));
 
 	// 立即通過 Socket.IO 廣播房間更新，確保已在房間的玩家能即時看到新玩家加入
 	// 注意：只廣播 room-update（更新玩家列表），不廣播 player-joined（避免重複通知）
@@ -118,10 +87,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		gameId: game.id,
 		player: {
 			id: newPlayer.id,
-			userId: user.id,
-			nickname: user.nickname,
-			avatar: user.avatar,
-			isHost: false
+			userId: newPlayer.userId,
+			nickname: newPlayer.nickname,
+			avatar: newPlayer.avatar,
+			isHost: newPlayer.isHost
 		}
 	});
 };

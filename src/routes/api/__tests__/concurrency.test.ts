@@ -188,6 +188,47 @@ describe('Concurrency and Race Conditions', () => {
 			const successCount = responses.filter((r) => r.status === 200).length;
 			expect(successCount).toBeLessThanOrEqual(1);
 		});
+
+		it('七人房同時加入兩人時只允許一人取得最後名額', async () => {
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+
+			for (const player of testUsers.slice(1, 7)) {
+				const response = await fetch(`${API_BASE}/api/room/join`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${player.token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ roomName: room.roomName, password: room.password })
+				});
+				expect(response.status).toBe(200);
+			}
+
+			const responses = await Promise.all(
+				testUsers.slice(7, 9).map((player) =>
+					fetch(`${API_BASE}/api/room/join`, {
+						method: 'POST',
+						headers: {
+							Authorization: `Bearer ${player.token}`,
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({ roomName: room.roomName, password: room.password })
+					})
+				)
+			);
+
+			expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+			expect(responses.filter((response) => response.status === 400)).toHaveLength(1);
+
+			const [savedGame] = await db.select().from(games).where(eq(games.id, room.gameId)).limit(1);
+			const savedPlayers = await db
+				.select()
+				.from(gamePlayers)
+				.where(eq(gamePlayers.gameId, room.gameId));
+			expect(savedGame.playerCount).toBe(8);
+			expect(savedPlayers).toHaveLength(8);
+		});
 	});
 
 	describe('Concurrent Ready Status Changes', () => {

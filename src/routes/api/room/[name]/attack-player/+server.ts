@@ -1,12 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
-	verifyPlayerRole,
-	getCurrentRoundOrError,
 	getNextActionOrdering,
-	checkPlayerCanAction
+	checkPlayerCanAction,
+	runCurrentActionTransaction,
+	type ActionTransaction
 } from '$lib/server/api-helpers';
-import { db } from '$lib/server/db';
 import { gamePlayers, gameActions, user, roles } from '$lib/server/db/schema';
 import { getAttackedRound } from '$lib/server/game-turn-order';
 import { eq, and } from 'drizzle-orm';
@@ -30,7 +29,11 @@ interface PlayerWithRole {
 /**
  * 查詢指定玩家的完整信息（包含角色）
  */
-async function getPlayerWithRole(gameId: string, playerId: number): Promise<PlayerWithRole | null> {
+async function getPlayerWithRole(
+	db: Pick<ActionTransaction, 'select'>,
+	gameId: string,
+	playerId: number
+): Promise<PlayerWithRole | null> {
 	const result = await db
 		.select({
 			playerId: gamePlayers.id,
@@ -51,6 +54,7 @@ async function getPlayerWithRole(gameId: string, playerId: number): Promise<Play
  * 根據角色名稱查詢玩家
  */
 async function getPlayerByRoleName(
+	db: Pick<ActionTransaction, 'select'>,
 	gameId: string,
 	roleName: string
 ): Promise<PlayerWithRole | null> {
@@ -75,7 +79,11 @@ async function getPlayerByRoleName(
 /**
  * 更新玩家的行動狀態和被攻擊記錄
  */
-async function updatePlayerAttackedStatus(playerId: number, attackedRound: number): Promise<void> {
+async function updatePlayerAttackedStatus(
+	db: Pick<ActionTransaction, 'select' | 'update'>,
+	playerId: number,
+	attackedRound: number
+): Promise<void> {
 	// 獲取當前玩家資料
 	const [currentPlayer] = await db
 		.select()
@@ -111,183 +119,176 @@ function hasPlayerAttacked(actions: (typeof gameActions.$inferSelect)[]): boolea
 
 // 攻击玩家（偷袭技能）
 export const POST: RequestHandler = async ({ request, params }) => {
-	// 验证玩家身份和角色
-	const verifyResult = await verifyPlayerRole(request, params.name!);
-	if ('error' in verifyResult) {
-		return verifyResult.error;
-	}
+	const guardResult = await runCurrentActionTransaction(
+		request,
+		params.name!,
+		async ({ transaction: db, game, player, role, currentRound }) => {
+			// 检查角色是否有攻击能力
+			if (!role.canAttack) {
+				return json(
+					{
+						success: false,
+						message: '你没有攻击玩家的能力'
+					},
+					{ status: 403 }
+				);
+			}
 
-	const { game, player, role } = verifyResult;
+			// 檢查玩家是否被封鎖（被攻擊後無法行動）
+			const canActionCheck = checkPlayerCanAction(player);
+			if (!canActionCheck.canAct) {
+				return canActionCheck.error;
+			}
 
-	// 检查角色是否有攻击能力
-	if (!role.canAttack) {
-		return json(
-			{
-				success: false,
-				message: '你没有攻击玩家的能力'
-			},
-			{ status: 403 }
-		);
-	}
+			// 解析请求体
+			const body = await request.json();
+			const { targetPlayerId } = body;
 
-	// 檢查玩家是否被封鎖（被攻擊後無法行動）
-	const canActionCheck = checkPlayerCanAction(player);
-	if (!canActionCheck.canAct) {
-		return canActionCheck.error;
-	}
+			// 验证目标玩家ID
+			if (!targetPlayerId) {
+				return json(
+					{
+						success: false,
+						message: '请指定攻擊目标'
+					},
+					{ status: 400 }
+				);
+			}
 
-	// 解析请求体
-	const body = await request.json();
-	const { targetPlayerId } = body;
+			if (targetPlayerId === player.id) {
+				return json(
+					{
+						success: false,
+						message: '不能攻擊自己'
+					},
+					{ status: 400 }
+				);
+			}
 
-	// 验证目标玩家ID
-	if (!targetPlayerId) {
-		return json(
-			{
-				success: false,
-				message: '请指定攻擊目标'
-			},
-			{ status: 400 }
-		);
-	}
+			// 获取目标玩家信息
+			const targetPlayer = await getPlayerWithRole(db, game.id, targetPlayerId);
 
-	if (targetPlayerId === player.id) {
-		return json(
-			{
-				success: false,
-				message: '不能攻擊自己'
-			},
-			{ status: 400 }
-		);
-	}
+			if (!targetPlayer) {
+				return json(
+					{
+						success: false,
+						message: '目標玩家不存在'
+					},
+					{ status: 404 }
+				);
+			}
 
-	// 获取目标玩家信息
-	const targetPlayer = await getPlayerWithRole(game.id, targetPlayerId);
+			// 获取目标玩家的角色详细信息
+			let targetRole = null;
+			if (targetPlayer.roleId) {
+				const [roleData] = await db
+					.select()
+					.from(roles)
+					.where(eq(roles.id, targetPlayer.roleId))
+					.limit(1);
+				targetRole = roleData;
+			}
 
-	if (!targetPlayer) {
-		return json(
-			{
-				success: false,
-				message: '目標玩家不存在'
-			},
-			{ status: 404 }
-		);
-	}
+			// 检查玩家在当前回合是否已执行过攻击
+			const existingActions = await db
+				.select()
+				.from(gameActions)
+				.where(
+					and(
+						eq(gameActions.gameId, game.id),
+						eq(gameActions.roundId, currentRound.id),
+						eq(gameActions.playerId, player.id)
+					)
+				);
 
-	// 获取目标玩家的角色详细信息
-	let targetRole = null;
-	if (targetPlayer.roleId) {
-		const [roleData] = await db
-			.select()
-			.from(roles)
-			.where(eq(roles.id, targetPlayer.roleId))
-			.limit(1);
-		targetRole = roleData;
-	}
+			if (hasPlayerAttacked(existingActions)) {
+				return json(
+					{
+						success: false,
+						message: '你已經在本回合使用過攻擊了'
+					},
+					{ status: 400 }
+				);
+			}
 
-	// 获取当前回合
-	const roundResult = await getCurrentRoundOrError(game.id);
-	if ('error' in roundResult) {
-		return roundResult.error;
-	}
-	const currentRound = roundResult.round;
+			// 处理攻击效果
+			const isPermanentBlock = targetRole?.name === '姬云浮';
 
-	// 检查玩家在当前回合是否已执行过攻击
-	const existingActions = await db
-		.select()
-		.from(gameActions)
-		.where(
-			and(
-				eq(gameActions.gameId, game.id),
-				eq(gameActions.roundId, currentRound.id),
-				eq(gameActions.playerId, player.id)
-			)
-		);
-
-	if (hasPlayerAttacked(existingActions)) {
-		return json(
-			{
-				success: false,
-				message: '你已經在本回合使用過攻擊了'
-			},
-			{ status: 400 }
-		);
-	}
-
-	// 处理攻击效果
-	const isPermanentBlock = targetRole?.name === '姬云浮';
-
-	// 計算被攻擊的回合數
-	// actionOrder 會保留所有已輪到的玩家，即使玩家沒有使用技能、沒有 gameActions 紀錄。
-	// 因此不能用 gameActions 判斷玩家是否已行動，否則直接交棒的玩家會被錯判為尚未行動。
-	// 姬云浮也根據是否行動過記錄對應的回合，不設定為 999
-	// - 目標已行動：記錄為下一回合 (currentRound + 1)
-	// - 目標未行動：記錄為當前回合 (currentRound)
-	const attackedRoundValue = getAttackedRound(
-		currentRound.round,
-		currentRound.actionOrder,
-		targetPlayerId
-	);
-
-	// 更新目标玩家的被攻擊狀態
-	await updatePlayerAttackedStatus(targetPlayerId, attackedRoundValue);
-
-	// 記錄受影響的玩家（僅用於後端記錄，不返回給前端）
-	const affectedPlayers: AffectedPlayer[] = [
-		{ id: targetPlayerId, nickname: targetPlayer.nickname }
-	];
-
-	// 特殊處理：如果攻擊的是方震，也要禁用許愿的行動能力
-	if (targetRole?.name === '方震') {
-		const xuYuanPlayer = await getPlayerByRoleName(game.id, '許愿');
-
-		if (xuYuanPlayer) {
-			const xuYuanAttackedRound = getAttackedRound(
+			// 計算被攻擊的回合數
+			// actionOrder 會保留所有已輪到的玩家，即使玩家沒有使用技能、沒有 gameActions 紀錄。
+			// 因此不能用 gameActions 判斷玩家是否已行動，否則直接交棒的玩家會被錯判為尚未行動。
+			// 姬云浮也根據是否行動過記錄對應的回合，不設定為 999
+			// - 目標已行動：記錄為下一回合 (currentRound + 1)
+			// - 目標未行動：記錄為當前回合 (currentRound)
+			const attackedRoundValue = getAttackedRound(
 				currentRound.round,
 				currentRound.actionOrder,
-				xuYuanPlayer.playerId
+				targetPlayerId
 			);
 
-			// 許愿的被攻擊記錄邏輯與方震相同
-			await updatePlayerAttackedStatus(xuYuanPlayer.playerId, xuYuanAttackedRound);
-			affectedPlayers.push({
-				id: xuYuanPlayer.playerId,
-				nickname: xuYuanPlayer.nickname
+			// 更新目标玩家的被攻擊狀態
+			await updatePlayerAttackedStatus(db, targetPlayerId, attackedRoundValue);
+
+			// 記錄受影響的玩家（僅用於後端記錄，不返回給前端）
+			const affectedPlayers: AffectedPlayer[] = [
+				{ id: targetPlayerId, nickname: targetPlayer.nickname }
+			];
+
+			// 特殊處理：如果攻擊的是方震，也要禁用許愿的行動能力
+			if (targetRole?.name === '方震') {
+				const xuYuanPlayer = await getPlayerByRoleName(db, game.id, '許愿');
+
+				if (xuYuanPlayer) {
+					const xuYuanAttackedRound = getAttackedRound(
+						currentRound.round,
+						currentRound.actionOrder,
+						xuYuanPlayer.playerId
+					);
+
+					// 許愿的被攻擊記錄邏輯與方震相同
+					await updatePlayerAttackedStatus(db, xuYuanPlayer.playerId, xuYuanAttackedRound);
+					affectedPlayers.push({
+						id: xuYuanPlayer.playerId,
+						nickname: xuYuanPlayer.nickname
+					});
+				}
+			}
+
+			// 計算整個回合的行動順序
+			const nextOrdering = await getNextActionOrdering(game.id, currentRound.id, db);
+
+			// 記錄行動到 gameActions（包含完整的 affectedPlayers 供後端使用）
+			await db.insert(gameActions).values({
+				gameId: game.id,
+				roundId: currentRound.id,
+				playerId: player.id,
+				ordering: nextOrdering,
+				actionData: {
+					type: 'attack_player',
+					targetPlayerId: targetPlayerId,
+					targetPlayerNickname: targetPlayer.nickname,
+					attackedRound: attackedRoundValue,
+					isPermanentBlock: isPermanentBlock,
+					roleName: role.name,
+					round: currentRound.round,
+					affectedPlayers: affectedPlayers
+				}
+			});
+
+			// 構建回應消息 - 只顯示直接攻擊的目標，不洩漏連帶受影響的玩家
+			const message = `成功攻擊 ${targetPlayer.nickname}`;
+
+			return json({
+				success: true,
+				message: message,
+				targetPlayerId: targetPlayerId,
+				targetPlayerNickname: targetPlayer.nickname,
+				attackedRound: attackedRoundValue,
+				isPermanentBlock: isPermanentBlock
+				// 移除 affectedPlayers，避免洩漏連帶受影響的玩家身分
 			});
 		}
-	}
+	);
 
-	// 計算整個回合的行動順序
-	const nextOrdering = await getNextActionOrdering(game.id, currentRound.id);
-
-	// 記錄行動到 gameActions（包含完整的 affectedPlayers 供後端使用）
-	await db.insert(gameActions).values({
-		gameId: game.id,
-		roundId: currentRound.id,
-		playerId: player.id,
-		ordering: nextOrdering,
-		actionData: {
-			type: 'attack_player',
-			targetPlayerId: targetPlayerId,
-			targetPlayerNickname: targetPlayer.nickname,
-			attackedRound: attackedRoundValue,
-			isPermanentBlock: isPermanentBlock,
-			roleName: role.name,
-			round: currentRound.round,
-			affectedPlayers: affectedPlayers
-		}
-	});
-
-	// 構建回應消息 - 只顯示直接攻擊的目標，不洩漏連帶受影響的玩家
-	const message = `成功攻擊 ${targetPlayer.nickname}`;
-
-	return json({
-		success: true,
-		message: message,
-		targetPlayerId: targetPlayerId,
-		targetPlayerNickname: targetPlayer.nickname,
-		attackedRound: attackedRoundValue,
-		isPermanentBlock: isPermanentBlock
-		// 移除 affectedPlayers，避免洩漏連帶受影響的玩家身分
-	});
+	return 'error' in guardResult ? guardResult.error : guardResult.data;
 };

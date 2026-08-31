@@ -3,6 +3,13 @@
  * their turn remain behind the current player, even when they performed no
  * action and therefore have no gameActions row.
  */
+export function getNextRoundStarter(actionOrder: unknown): number | null {
+	if (!Array.isArray(actionOrder) || actionOrder.length === 0) return null;
+
+	const playerId = Number(actionOrder[0]);
+	return Number.isInteger(playerId) ? playerId : null;
+}
+
 export function hasPlayerTakenTurn(actionOrder: unknown, playerId: number): boolean {
 	if (!Array.isArray(actionOrder)) return false;
 

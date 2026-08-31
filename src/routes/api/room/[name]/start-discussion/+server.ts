@@ -1,106 +1,64 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import {
-	verifyPlayerInRoomWithStatus,
-	getCurrentRoundOrError,
-	restoreCanActionIfNeeded
-} from '$lib/server/api-helpers';
-import { db } from '$lib/server/db';
-import { gameRounds, gamePlayers, roles } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { restoreCanActionIfNeeded, runCurrentActionTransaction } from '$lib/server/api-helpers';
+import { gameRounds, gamePlayers } from '$lib/server/db/schema';
+import { and, eq, isNull } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request, params }) => {
-	try {
-		const verifyResult = await verifyPlayerInRoomWithStatus(request, params.name!, 'playing');
-		if ('error' in verifyResult) {
-			return verifyResult.error;
-		}
-
-		const { game } = verifyResult;
-
-		// 獲取當前回合
-		const roundResult = await getCurrentRoundOrError(game.id);
-		if ('error' in roundResult) {
-			return roundResult.error;
-		}
-		const currentRound = roundResult.round;
-
-		// 檢查當前階段是否為行動階段
-		if (currentRound.phase !== 'action') {
-			return json({ message: '當前不在行動階段' }, { status: 400 });
-		}
-
-		// 在進入討論階段之前，處理當前行動玩家的 can_action 還原
-		// 這是為了處理最後一個行動玩家的情況，因為他們不會指派下一位玩家
-		const actionOrder = (currentRound.actionOrder as number[]) || [];
-		if (actionOrder.length > 0) {
-			const currentActionPlayerId = actionOrder[0];
-
-			// 獲取當前行動玩家的資訊
-			const [currentActionPlayer] = await db
-				.select()
+	const guardResult = await runCurrentActionTransaction<{ error: Response } | { roundId: number }>(
+		request,
+		params.name!,
+		async ({ transaction, game, player, role, currentRound }) => {
+			const activePlayers = await transaction
+				.select({ id: gamePlayers.id })
 				.from(gamePlayers)
-				.where(eq(gamePlayers.id, currentActionPlayerId))
-				.limit(1);
+				.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+			const actionOrder = Array.isArray(currentRound.actionOrder)
+				? (currentRound.actionOrder as number[])
+				: [];
+			const actedPlayerIds = new Set(actionOrder.map(Number));
 
-			if (currentActionPlayer) {
-				// 檢查是否需要還原 canAction（處理被攻擊的情況）
-				// attackedRounds 記錄了所有被攻擊的回合
-				if (currentActionPlayer.canAction === false && currentActionPlayer.attackedRounds) {
-					const attackedRounds = currentActionPlayer.attackedRounds as number[];
+			if (!activePlayers.every((activePlayer) => actedPlayerIds.has(activePlayer.id))) {
+				return {
+					error: json({ message: '仍有玩家尚未完成行動' }, { status: 409 })
+				};
+			}
 
-					// 如果當前回合在被攻擊回合列表中，且該玩家已完成行動，則還原 canAction
-					// 注意：即使包含 999（永久封鎖），canAction 也會恢復，但鑑定時會被阻擋
-					if (attackedRounds.includes(currentRound.round)) {
-						await db
-							.update(gamePlayers)
-							.set({ canAction: true })
-							.where(eq(gamePlayers.id, currentActionPlayer.id));
-					}
-				}
-
-				// 檢查當前玩家是否需要還原 canAction（根據技能使用情況）
-				if (currentActionPlayer.roleId) {
-					const [currentRole] = await db
-						.select()
-						.from(roles)
-						.where(eq(roles.id, currentActionPlayer.roleId))
-						.limit(1);
-
-					if (currentRole) {
-						const roleSkill = currentRole.skill as Record<string, number> | null;
-
-						// 檢查是否需要還原 can_action（行動完畢時）
-						// blockedRound 只用於黃煙煙和木戶加奈的天生封鎖回合
-						await restoreCanActionIfNeeded(
-							currentActionPlayer.id,
-							currentActionPlayer.blockedRound,
-							currentActionPlayer.attackedRounds as number[] | null,
-							currentRound.round,
-							roleSkill
-						);
-					}
+			if (player.canAction === false && player.attackedRounds) {
+				const attackedRounds = player.attackedRounds as number[];
+				if (attackedRounds.includes(currentRound.round)) {
+					await transaction
+						.update(gamePlayers)
+						.set({ canAction: true })
+						.where(eq(gamePlayers.id, player.id));
 				}
 			}
+
+			await restoreCanActionIfNeeded(
+				player.id,
+				player.blockedRound,
+				player.attackedRounds as number[] | null,
+				currentRound.round,
+				currentRound.id,
+				role.skill as Record<string, number> | null,
+				transaction
+			);
+
+			await transaction
+				.update(gameRounds)
+				.set({ phase: 'discussion' })
+				.where(eq(gameRounds.id, currentRound.id));
+
+			return { roundId: currentRound.id };
 		}
+	);
 
-		// 更新回合階段為討論
-		await db
-			.update(gameRounds)
-			.set({
-				phase: 'discussion'
-				// 移除 actionOrder: [] - 保留行動順序以便前端顯示
-			})
-			.where(eq(gameRounds.id, currentRound.id));
+	if ('error' in guardResult) return guardResult.error;
+	if ('error' in guardResult.data) return guardResult.data.error;
 
-		return json({
-			success: true,
-			message: '已進入討論階段',
-			roundId: currentRound.id
-		});
-	} catch (error) {
-		console.error('進入討論階段時發生錯誤:', error);
-		const message = error instanceof Error ? error.message : '進入討論階段失敗';
-		return json({ message }, { status: 400 });
-	}
+	return json({
+		success: true,
+		message: '已進入討論階段',
+		roundId: guardResult.data.roundId
+	});
 };

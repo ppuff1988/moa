@@ -74,7 +74,8 @@ export const POST: RequestHandler = async ({ cookies }) => {
 		// 生成 JWT token
 		const jwtPayload: JWTPayload = {
 			userId: foundUser.id,
-			email: foundUser.email
+			email: foundUser.email,
+			tokenVersion: foundUser.tokenVersion
 		};
 
 		const token = generateJWT(jwtPayload);

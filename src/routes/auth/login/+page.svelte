@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { goto, invalidateAll } from '$app/navigation';
 	import PasswordInput from '$lib/components/ui/PasswordInput.svelte';
+	import { onMount } from 'svelte';
 
 	/** SvelteKit 自動傳入 form action 回傳資料 */
 	export let form: { message?: string; email?: string; requiresVerification?: boolean } | null =
@@ -10,6 +11,11 @@
 	let email = form?.email ?? '';
 	let password = '';
 	let isLoading = false;
+	let hydrated = false;
+
+	onMount(() => {
+		hydrated = true;
+	});
 </script>
 
 <div class="auth-container">
@@ -58,6 +64,7 @@
 	<form
 		method="POST"
 		class="auth-form"
+		data-hydrated={hydrated}
 		use:enhance={() => {
 			isLoading = true;
 			return async ({ result, update }) => {

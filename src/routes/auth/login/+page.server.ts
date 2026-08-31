@@ -21,10 +21,7 @@ export const load = async ({ locals }: ServerLoadEvent) => {
 		throw redirect(302, '/');
 	}
 
-	return {
-		title: '登入 - 古董局中局非官方APP',
-		description: '登入古董局中局非官方APP，與好友一起體驗策略與推理的樂趣'
-	};
+	return {};
 };
 
 /**

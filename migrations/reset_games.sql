@@ -10,6 +10,9 @@
 -- 使用前請確認是否需要備份數據
 -- ==========================================
 
+-- 任一 SQL 失敗時立即停止，讓 transaction 自動回滾
+\set ON_ERROR_STOP on
+
 -- 開始事務
 BEGIN;
 
@@ -28,7 +31,6 @@ SELECT
 
 -- 1. 刪除遊戲行動記錄
 DELETE FROM game_actions;
-COMMIT;
 
 -- 2. 刪除鑑人階段投票記錄
 DELETE FROM identification_votes;

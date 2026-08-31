@@ -4,13 +4,21 @@ import { db } from './db';
 import { user, type User } from './db/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
+import { requireJwtSecret } from '../../../scripts/jwt-secret.js';
 
-const JWT_SECRET = env.JWT_SECRET || 'fallback-secret-key-for-development';
 const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN || '30d';
+
+function getJwtSecret(): string {
+	return requireJwtSecret({
+		jwtSecret: env.JWT_SECRET ?? process.env.JWT_SECRET,
+		nodeEnv: process.env.NODE_ENV
+	});
+}
 
 export interface JWTPayload {
 	userId: number;
 	email: string;
+	tokenVersion?: number;
 }
 
 export interface JWTVerifyResult {
@@ -30,18 +38,12 @@ export function generateVerificationToken(): string {
 }
 
 export function generateJWT(payload: JWTPayload): string {
-	if (!JWT_SECRET) {
-		throw new Error('JWT_SECRET is not configured');
-	}
-	return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
+	return jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
 }
 
 export function verifyJWT(token: string): JWTPayload | null {
 	try {
-		if (!JWT_SECRET) {
-			return null;
-		}
-		return jwt.verify(token, JWT_SECRET) as JWTPayload;
+		return jwt.verify(token, getJwtSecret()) as JWTPayload;
 	} catch (error) {
 		// jwt.verify() 會在 token 過期或無效時拋出錯誤
 		// TokenExpiredError: token 過期
@@ -57,10 +59,7 @@ export function verifyJWT(token: string): JWTPayload | null {
 
 export function verifyJWTWithError(token: string): JWTVerifyResult {
 	try {
-		if (!JWT_SECRET) {
-			return { payload: null, error: 'invalid' };
-		}
-		const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
+		const payload = jwt.verify(token, getJwtSecret()) as JWTPayload;
 		return { payload };
 	} catch (error) {
 		// 區分過期錯誤和其他錯誤
@@ -77,8 +76,14 @@ export async function getUserFromJWT(token: string): Promise<User | null> {
 
 	try {
 		const foundUser = await db.select().from(user).where(eq(user.id, payload.userId)).limit(1);
+		const authenticatedUser = foundUser[0];
 
-		return foundUser.length > 0 ? foundUser[0] : null;
+		if (!authenticatedUser) return null;
+		if ((payload.tokenVersion ?? 0) !== authenticatedUser.tokenVersion) {
+			return null;
+		}
+
+		return authenticatedUser;
 	} catch {
 		return null;
 	}
@@ -91,10 +96,11 @@ export async function getUserFromJWT(token: string): Promise<User | null> {
  * @param user - 用戶資料
  * @returns JWT token 字串
  */
-export function generateUserJWT(user: { id: number; email: string }): string {
+export function generateUserJWT(user: { id: number; email: string; tokenVersion: number }): string {
 	const jwtPayload: JWTPayload = {
 		userId: user.id,
-		email: user.email
+		email: user.email,
+		tokenVersion: user.tokenVersion
 	};
 	return generateJWT(jwtPayload);
 }
@@ -108,7 +114,7 @@ export function generateUserJWT(user: { id: number; email: string }): string {
  * @returns JWT token 字串
  */
 export function generateAndSetJWTCookie(
-	user: { id: number; email: string },
+	user: { id: number; email: string; tokenVersion: number },
 	cookies: { set: (name: string, value: string, options: Record<string, unknown>) => void }
 ): string {
 	const token = generateUserJWT(user);

@@ -1,8 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// 確保 Playwright 使用正確的瀏覽器路徑
-process.env.PLAYWRIGHT_BROWSERS_PATH = '/workspace/.browsers';
-
 /**
  * Playwright E2E 測試配置
  */
@@ -10,9 +7,10 @@ export default defineConfig({
 	testDir: './e2e',
 
 	fullyParallel: false,
-	retries: 0, // 失敗時重試一次
+	retries: 0,
 	workers: process.env.CI ? 1 : undefined, // CI 上單工
-	timeout: 180000, // 每個測試 180 秒（3分鐘）
+	globalTimeout: process.env.PLAYWRIGHT_SMOKE ? 120000 : undefined,
+	timeout: process.env.PLAYWRIGHT_SMOKE ? 30000 : 180000,
 
 	// 報告配置
 	reporter: process.env.CI
@@ -27,9 +25,13 @@ export default defineConfig({
 
 	use: {
 		baseURL: 'http://localhost:5173',
-		trace: 'on',
-		screenshot: 'on',
-		video: 'on',
+		trace: process.env.PLAYWRIGHT_SMOKE ? 'retain-on-failure' : 'on',
+		screenshot: process.env.PLAYWRIGHT_SMOKE ? 'only-on-failure' : 'on',
+		video: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+			? 'off'
+			: process.env.PLAYWRIGHT_SMOKE
+				? 'retain-on-failure'
+				: 'on',
 		navigationTimeout: 60000, // 60秒
 		actionTimeout: 30000, // 30秒
 		serviceWorkers: 'block' // 封鎖 Service Worker 避免快取干擾 E2E 測試
@@ -40,10 +42,11 @@ export default defineConfig({
 			name: 'chromium',
 			use: {
 				...devices['Desktop Chrome'],
-				// 使用系統的 Chromium 而不是下載的版本
 				headless: true, // CI 上自動 headless
-				executablePath: '/usr/bin/chromium-browser',
-				launchArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+				launchOptions: {
+					executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+					args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+				}
 			}
 		}
 	],

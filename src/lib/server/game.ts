@@ -9,6 +9,7 @@ import {
 	gameActions
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { getNextRoundStarter } from './game-turn-order';
 
 // 遊戲角色配置
 export const GAME_ROLES = {
@@ -94,73 +95,69 @@ export async function createGame(roomName: string, roomPassword: string, hostId:
 
 // 加入遊戲
 export async function joinGame(gameId: string, userId: number, isHost: boolean = false) {
-	// 檢查遊戲是否存在
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	return db.transaction(async (tx) => {
+		// Serialize joins for the same room so capacity checks cannot use a stale count.
+		const [game] = await tx.select().from(games).where(eq(games.id, gameId)).limit(1).for('update');
 
-	if (!game) {
-		throw new Error('遊戲不存在');
-	}
+		if (!game) {
+			throw new Error('遊戲不存在');
+		}
 
-	// 檢查遊戲狀態
-	if (game.status !== 'waiting') {
-		throw new Error('遊戲已開始，無法加入');
-	}
+		if (game.status !== 'waiting') {
+			throw new Error('遊戲已開始，無法加入');
+		}
 
-	// 檢查房間是否已滿
-	if (game.playerCount >= 8) {
-		throw new Error('房間已滿');
-	}
+		if (game.playerCount >= 8) {
+			throw new Error('房間已滿');
+		}
 
-	// 檢查玩家是否已在遊戲中
-	const existingPlayer = await db
-		.select()
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
-		.limit(1);
+		const existingPlayer = await tx
+			.select()
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
+			.limit(1);
 
-	if (existingPlayer.length > 0) {
-		throw new Error('玩家已在遊戲中');
-	}
+		if (existingPlayer.length > 0) {
+			throw new Error('玩家已在遊戲中');
+		}
 
-	// 獲取玩家資訊
-	const [userInfo] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
+		const [userInfo] = await tx.select().from(user).where(eq(user.id, userId)).limit(1);
 
-	if (!userInfo) {
-		throw new Error('用戶不存在');
-	}
+		if (!userInfo) {
+			throw new Error('用戶不存在');
+		}
 
-	// 加入遊戲
-	const [player] = await db
-		.insert(gamePlayers)
-		.values({
-			gameId,
+		const [player] = await tx
+			.insert(gamePlayers)
+			.values({
+				gameId,
+				userId,
+				isHost,
+				isReady: false,
+				isOnline: true,
+				canAction: true
+			})
+			.returning();
+
+		await tx
+			.update(games)
+			.set({
+				playerCount: game.playerCount + 1,
+				updatedAt: new Date()
+			})
+			.where(eq(games.id, gameId));
+
+		return {
+			id: player.id,
 			userId,
+			nickname: userInfo.nickname,
+			avatar: userInfo.avatar,
 			isHost,
 			isReady: false,
-			isOnline: true,
-			canAction: true
-		})
-		.returning();
-
-	// 更新遊戲玩家數量
-	await db
-		.update(games)
-		.set({
-			playerCount: game.playerCount + 1,
-			updatedAt: new Date()
-		})
-		.where(eq(games.id, gameId));
-
-	return {
-		id: player.id,
-		userId: userId,
-		nickname: userInfo.nickname,
-		avatar: userInfo.avatar,
-		isHost: isHost,
-		isReady: false,
-		color: null,
-		roleId: null
-	};
+			color: null,
+			roleId: null
+		};
+	});
 }
 
 // 獲取遊戲狀態
@@ -674,22 +671,10 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 		throw new Error(`第 ${roundNumber} 回合已存在`);
 	}
 
-	// 獲取上一回合最後一個行動的玩家
-	const lastActions = await db
-		.select({
-			playerId: gameActions.playerId,
-			ordering: gameActions.ordering
-		})
-		.from(gameActions)
-		.where(and(eq(gameActions.gameId, gameId), eq(gameActions.roundId, previousRound.id)))
-		.orderBy(gameActions.ordering);
-
-	if (lastActions.length === 0) {
-		throw new Error('上一回合沒有任何玩家行動記錄');
+	const lastPlayerId = getNextRoundStarter(previousRound.actionOrder);
+	if (lastPlayerId === null) {
+		throw new Error('上一回合沒有有效的行動順序');
 	}
-
-	// 最後一個行動的玩家
-	const lastPlayerId = lastActions[lastActions.length - 1].playerId;
 
 	// 創建新回合，並將上一回合最後一位玩家設為第一位
 	const [newRound] = await db
