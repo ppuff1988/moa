@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Server as HTTPServer } from 'http';
 import type { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
-import { verifyJWT } from './auth';
+import { getUserFromJWT } from './auth';
 import { db } from './db';
 import { gamePlayers, games } from './db/schema';
 import { getGameState, updatePlayerOnlineStatus } from './game';
@@ -46,9 +46,9 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 			// 1. 優先使用 handshake auth 中的 JWT token
 			const token = socket.handshake.auth.token;
 			if (token) {
-				const payload = verifyJWT(token);
-				if (payload) {
-					socket.data.userId = payload.userId;
+				const authenticatedUser = await getUserFromJWT(token);
+				if (authenticatedUser) {
+					socket.data.userId = authenticatedUser.id;
 					return next();
 				}
 			}
@@ -61,9 +61,9 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				.find((c) => c.startsWith('jwt='));
 			if (jwtCookie) {
 				const jwtToken = jwtCookie.substring(4);
-				const payload = verifyJWT(jwtToken);
-				if (payload) {
-					socket.data.userId = payload.userId;
+				const authenticatedUser = await getUserFromJWT(jwtToken);
+				if (authenticatedUser) {
+					socket.data.userId = authenticatedUser.id;
 					return next();
 				}
 			}
@@ -163,77 +163,6 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 		// 離開房間
 		socket.on('leave-room', async () => {
 			await handleLeaveRoom(socket);
-		});
-
-		// 玩家選擇角色
-		socket.on('select-role', async (data: { roleId: number; color: string }) => {
-			try {
-				const userId = socket.data.userId;
-				const roomName = socket.data.roomName;
-				const nickname = socket.data.nickname || `玩家${userId}`;
-
-				console.log(`[select-role] 用戶 ${userId} (${nickname}) 在房間 ${roomName} 選擇角色`, {
-					roleId: data.roleId,
-					color: data.color
-				});
-
-				if (!roomName) {
-					console.error(`[select-role] 用戶 ${userId} 尚未加入房間`);
-					socket.emit('error', { message: '尚未加入房間' });
-					return;
-				}
-
-				// 查找遊戲
-				const [game] = await db.select().from(games).where(eq(games.roomName, roomName)).limit(1);
-
-				if (!game) {
-					console.error(`[select-role] 房間 ${roomName} 不存在`);
-					socket.emit('error', { message: '房間不存在' });
-					return;
-				}
-
-				console.log(`[select-role] 找到遊戲: ${game.id}, 狀態: ${game.status}`);
-
-				// 更新玩家角色和顏色
-				await db
-					.update(gamePlayers)
-					.set({
-						roleId: data.roleId,
-						color: data.color,
-						isReady: true
-					})
-					.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, userId)));
-
-				console.log(`[select-role] 已更新用戶 ${userId} 的角色和顏色`);
-
-				// 獲取更新的遊戲狀態
-				const gameState = await getGameState(game.id);
-				console.log(`[select-role] 獲取遊戲狀態完成，玩家數量: ${gameState.players.length}`);
-
-				// 檢查 Socket.IO 是否可用
-				const socketIO = getSocketIO();
-				if (!socketIO) {
-					console.error('[select-role] Socket.IO 未初始化！');
-					socket.emit('error', { message: 'Socket.IO 未初始化' });
-					return;
-				}
-
-				// 通知房間內所有玩家
-				const roomSockets = await socketIO.in(roomName).fetchSockets();
-				console.log(
-					`[select-role] 準備廣播 room-update 到房間 ${roomName}，房間內有 ${roomSockets.length} 個連接`
-				);
-
-				socketIO.to(roomName).emit('room-update', {
-					game: gameState.game,
-					players: gameState.players
-				});
-
-				console.log(`[select-role] ✅ 已成功廣播 room-update 事件`);
-			} catch (error) {
-				console.error('[select-role] 錯誤:', error);
-				socket.emit('error', { message: '選擇角色失敗，請稍後再試' });
-			}
 		});
 
 		// 玩家準備/取消準備

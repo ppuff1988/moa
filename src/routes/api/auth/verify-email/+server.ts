@@ -183,7 +183,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		console.log('✅ Email 驗證成功:', userData.email);
 
 		// 生成 JWT token 並自動登入用戶
-		const jwtToken = generateUserJWT({ id: userData.id, email: userData.email });
+		const jwtToken = generateUserJWT({
+			id: userData.id,
+			email: userData.email,
+			tokenVersion: userData.tokenVersion
+		});
 
 		// 返回成功頁面，並自動設定 token 和重定向
 		return generateResponsePage({

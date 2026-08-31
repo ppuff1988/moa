@@ -4,14 +4,19 @@ import { handler } from '../build/handler.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import pg from 'pg';
+import { createSocketAuthenticator } from './socket-auth.js';
+import { requireJwtSecret } from './jwt-secret.js';
 
 // 先加载環境變數量，再展开变量替换
 const myEnv = dotenvFlow.config();
 dotenvExpand.expand(myEnv);
 
 const { Pool } = pg;
+const jwtSecret = requireJwtSecret({
+	jwtSecret: process.env.JWT_SECRET,
+	nodeEnv: process.env.NODE_ENV
+});
 
 const app = express();
 const server = createServer(app);
@@ -21,17 +26,10 @@ const pool = new Pool({
 	connectionString:
 		process.env.DATABASE_URL || 'postgresql://moa_user:moa_pass@localhost:5432/moa_db'
 });
-
-// JWT 驗證函數
-async function verifyJWT(token) {
-	try {
-		const secret = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
-		const payload = jwt.verify(token, secret);
-		return payload;
-	} catch {
-		return null;
-	}
-}
+const authenticateSocket = createSocketAuthenticator({
+	pool,
+	jwtSecret
+});
 
 // 初始化 Socket.IO
 try {
@@ -47,17 +45,16 @@ try {
 	// 身份驗證中間件
 	io.use(async (socket, next) => {
 		try {
-			const token = socket.handshake.auth.token;
-			if (!token) {
-				return next(new Error('驗證失敗，請重新登入'));
-			}
-
-			const payload = await verifyJWT(token);
-			if (!payload || !payload.userId) {
+			const authenticatedUser = await authenticateSocket({
+				token:
+					typeof socket.handshake.auth.token === 'string' ? socket.handshake.auth.token : undefined,
+				cookieHeader: socket.handshake.headers.cookie || ''
+			});
+			if (!authenticatedUser) {
 				return next(new Error('無效的驗證令牌'));
 			}
 
-			socket.data.userId = payload.userId;
+			socket.data.userId = authenticatedUser.userId;
 			next();
 		} catch {
 			next(new Error('驗證失敗，請重新登入'));
@@ -191,112 +188,6 @@ try {
 			} catch (error) {
 				console.error('[Socket] 加入房間錯誤:', error);
 				socket.emit('error', { message: '加入房間失敗' });
-			}
-		});
-
-		// 玩家選擇角色
-		socket.on('select-role', async (data) => {
-			try {
-				const { roleId, color } = data;
-				const roomName = socket.data.roomName;
-				const nickname = socket.data.nickname || `玩家${userId}`;
-
-				console.log(`[select-role] 用戶 ${userId} (${nickname}) 在房間 ${roomName} 選擇角色`, {
-					roleId,
-					color
-				});
-
-				if (!roomName) {
-					console.error(`[select-role] 用戶 ${userId} 尚未加入房間`);
-					socket.emit('error', { message: '尚未加入房間' });
-					return;
-				}
-
-				// 查詢遊戲
-				const gameResult = await pool.query('SELECT * FROM games WHERE room_name = $1', [roomName]);
-
-				if (gameResult.rows.length === 0) {
-					console.error(`[select-role] 房間 ${roomName} 不存在`);
-					socket.emit('error', { message: '房間不存在' });
-					return;
-				}
-
-				const game = gameResult.rows[0];
-				console.log(`[select-role] 找到遊戲: ${game.id}, 狀態: ${game.status}`);
-
-				// 更新玩家角色和顏色
-				await pool.query(
-					'UPDATE game_players SET role_id = $1, color = $2, is_ready = true WHERE game_id = $3 AND user_id = $4',
-					[roleId, color, game.id, userId]
-				);
-
-				console.log(`[select-role] 已更新用戶 ${userId} 的角色和顏色`);
-
-				// 獲取更新的遊戲狀態和所有玩家資訊
-				const playersResult = await pool.query(
-					`SELECT 
-						gp.id,
-						gp.game_id,
-						gp.user_id,
-						gp.role_id,
-						gp.color,
-						gp.color_code,
-						gp.is_host,
-						gp.is_ready,
-						gp.is_online,
-						gp.can_action,
-						gp.joined_at,
-						gp.last_active_at,
-						u.nickname,
-						u.avatar
-					FROM game_players gp
-					LEFT JOIN users u ON gp.user_id = u.id
-					WHERE gp.game_id = $1
-					ORDER BY gp.joined_at`,
-					[game.id]
-				);
-
-				console.log(`[select-role] 獲取遊戲狀態完成，玩家數量: ${playersResult.rows.length}`);
-
-				// 檢查房間內的連接數
-				const roomSockets = await io.in(roomName).fetchSockets();
-				console.log(
-					`[select-role] 準備廣播 room-update 到房間 ${roomName}，房間內有 ${roomSockets.length} 個連接`
-				);
-
-				// 廣播房間更新給所有玩家
-				io.to(roomName).emit('room-update', {
-					game: {
-						id: game.id,
-						roomName: game.room_name,
-						status: game.status,
-						currentTurn: game.current_turn,
-						createdAt: game.created_at,
-						startedAt: game.started_at,
-						endedAt: game.ended_at
-					},
-					players: playersResult.rows.map((p) => ({
-						id: p.id,
-						gameId: p.game_id,
-						userId: p.user_id,
-						roleId: p.role_id,
-						color: p.color,
-						colorCode: p.color_code,
-						isHost: p.is_host,
-						isReady: p.is_ready,
-						isOnline: p.is_online,
-						canAction: p.can_action,
-						joinedAt: p.joined_at,
-						lastActiveAt: p.last_active_at,
-						nickname: p.nickname,
-						avatar: p.avatar
-					}))
-				});
-
-				console.log(`[select-role] ✅ 已成功廣播 room-update 事件`);
-			} catch (error) {
-				console.error('[select-role] 錯誤:', error);
-				socket.emit('error', { message: '選擇角色失敗' });
 			}
 		});
 
