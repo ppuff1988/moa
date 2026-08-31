@@ -33,14 +33,15 @@ export function resolveApiTestEndpoint({ apiBaseUrl, testServerPort } = {}) {
 		throw new Error('API_BASE_URL must be a valid absolute URL');
 	}
 
-	if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-		throw new Error('API_BASE_URL must use http or https');
+	if (url.protocol !== 'http:') {
+		throw new Error('API_BASE_URL must use http');
+	}
+	const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+	if (!loopbackHosts.has(url.hostname)) {
+		throw new Error('API_BASE_URL must target a loopback host');
 	}
 
-	const urlPort = parsePort(
-		url.port || (url.protocol === 'https:' ? '443' : '80'),
-		'API_BASE_URL port'
-	);
+	const urlPort = parsePort(url.port || '80', 'API_BASE_URL port');
 	if (explicitPort !== undefined && explicitPort !== urlPort) {
 		throw new Error(`API_BASE_URL port ${urlPort} does not match TEST_SERVER_PORT ${explicitPort}`);
 	}

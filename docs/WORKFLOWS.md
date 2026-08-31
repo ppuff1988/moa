@@ -103,8 +103,8 @@ release/* (發布分支，可選)
 
 - `CI Test`：PR 的 lint、型別、單元、API 與 Playwright smoke 測試。完整 8 人三回合 E2E 不在每次 CI 執行。
 - `Auto Merge to Dev`：確認 CI SHA 與無 finding 的 Codex Review 都對應目前 PR SHA。一般 PR 使用 squash；`main → dev` 使用 Merge commit。
-- `Prepare Release`：從 `dev` 計算版本，建立 `release/vX.Y.Z` PR。已有進行中的 Release／Hotfix 時拒絕重複建立。
-- `Auto Version Bump`：從所有開啟 Hotfix 選最早一筆，合入最新 `main` 並配置下一個 patch 版本；前一筆完成後才推進下一筆。
+- `Prepare Release`：確認 `dev` 已包含最新 `main`，再計算版本並建立 `release/vX.Y.Z` PR。版本計算前後都會檢查進行中的 Release／Hotfix。
+- `Auto Version Bump`：與 Prepare Release 共用版本配置鎖；Release 存在時暫停，否則從所有開啟 Hotfix 選最早一筆，合入最新 `main` 並配置下一個 patch 版本。
 - `Auto Merge Release`／`Auto Merge Hotfix`：在目前 SHA 通過 CI 與 Codex Review 後，使用 Merge commit 合併到 `main`。
 - `Sync Main to Dev`：版本 PR 合併後建立同步 PR；仍需通過 CI 與 Codex gate，不會在建立時直接啟用 auto-merge。
 - `CI Release`：從已合併 PR 重建未完成發布佇列，固定 merge commit 建置版本化 image、驗證 tag、等待部署，再建立 GitHub Release 作為完成標記。

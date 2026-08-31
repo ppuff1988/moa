@@ -32,4 +32,16 @@ describe('API test endpoint configuration', () => {
 			})
 		).toThrow('API_BASE_URL port 55174 does not match TEST_SERVER_PORT 55175');
 	});
+
+	it('rejects remote hosts so mutating tests cannot target a deployment', () => {
+		expect(() =>
+			resolveApiTestEndpoint({ apiBaseUrl: 'http://production.example.com:5174' })
+		).toThrow('API_BASE_URL must target a loopback host');
+	});
+
+	it('rejects HTTPS because the spawned development server uses plain HTTP', () => {
+		expect(() => resolveApiTestEndpoint({ apiBaseUrl: 'https://localhost:5174' })).toThrow(
+			'API_BASE_URL must use http'
+		);
+	});
 });

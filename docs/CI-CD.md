@@ -46,6 +46,8 @@
 
 當版本化 Release／Hotfix PR 合併到 `main` 後，會依序執行發布與部署：
 
+Release 與 Hotfix 共用版本配置鎖。建立 Release 前會確認 `dev` 已包含最新 `main`，Hotfix 則會等待進行中的 Release 完成，避免兩個 PR 配置到相同版本。
+
 ### 部署步驟
 
 1. **建置 Docker 映像**

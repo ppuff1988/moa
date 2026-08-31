@@ -81,7 +81,7 @@ jobs:
           BUMP_TYPE="$REQUESTED_BUMP"
 
           if [ "$BUMP_TYPE" = "auto" ]; then
-            LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+            LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
             if [ -n "$LAST_TAG" ]; then
               COMMITS=$(git log "${LAST_TAG}..HEAD" --pretty=format:'%s%n%b' --no-merges)
             else
@@ -106,6 +106,26 @@ jobs:
             echo "bump_type=$BUMP_TYPE"
             echo "branch=$RELEASE_BRANCH"
           } >> "$GITHUB_OUTPUT"
+
+      - name: 再次確認沒有版本 PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100
+            });
+            const activeVersionPulls = openPulls.filter(
+              (pull) =>
+                pull.head.ref.startsWith('release/v') || pull.head.ref.startsWith('hotfix/')
+            );
+            if (activeVersionPulls.length > 0) {
+              const numbers = activeVersionPulls.map((pull) => `#${pull.number}`).join(', ');
+              throw new Error(`版本計算期間出現 Release／Hotfix PR（${numbers}），停止建立 Release`);
+            }
 
       - name: 提交到 Release 分支
         env:

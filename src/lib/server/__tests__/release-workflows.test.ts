@@ -36,7 +36,11 @@ describe('release workflow contracts', () => {
 		expect(workflow).not.toContain('git push origin main');
 		expect(workflow).not.toContain('git push origin dev');
 		expect(workflow).toContain('已有進行中的 Release／Hotfix PR');
+		expect(workflow).toContain('- name: 再次確認沒有版本 PR');
 		expect(workflow).toContain('git merge-base --is-ancestor origin/main HEAD');
+		expect(workflow).toContain('head -n 1 || true');
+		expect(workflow).toContain('group: version-preparation');
+		expect(readWorkflow('auto-version.yml')).toContain('group: version-preparation');
 		expect(autoMerge).toContain("startsWith(github.event.workflow_run.head_branch, 'release/v')");
 		expect(autoMerge).toContain('compareVersions(headVersion, baseVersion) <= 0');
 		expect(autoMerge).toContain("mergeMethod: 'MERGE'");
@@ -48,8 +52,11 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('types: [opened, reopened, synchronize, ready_for_review, closed]');
 		expect(workflow).toContain('push:');
 		expect(workflow).toContain('branches: [main]');
-		expect(workflow).toContain('group: hotfix-version-all');
+		expect(workflow).toContain('group: version-preparation');
 		expect(workflow).toContain('github.paginate(github.rest.pulls.list');
+		expect(workflow).toContain("pull.head.ref.startsWith('release/v')");
+		expect(workflow).toContain('等待 Release PR');
+		expect(workflow).toContain("startsWith(github.event.pull_request.head.ref, 'release/v')");
 		expect(workflow).toContain('const selectedPr = hotfixPulls[0];');
 		expect(workflow).toContain('git merge --no-edit origin/main');
 		expect(workflow).not.toContain('reservedVersions');

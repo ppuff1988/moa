@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # 每次都重新掃描完整 PR 狀態；被取代的 pending event 不會遺失特定 Hotfix。
-  group: hotfix-version-all
+  # Release 與 Hotfix 共用版本配置鎖；每次再從 repository state 重建佇列。
+  group: version-preparation
   cancel-in-progress: false
 
 permissions:
@@ -24,8 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'pull_request' ||
-      (startsWith(github.event.pull_request.head.ref, 'hotfix/') &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       (startsWith(github.event.pull_request.head.ref, 'hotfix/') ||
+        (github.event.action == 'closed' &&
+         startsWith(github.event.pull_request.head.ref, 'release/v'))))
     env:
       NPM_VERSION: '12.0.1'
     steps:
@@ -67,6 +69,18 @@ jobs:
               direction: 'asc',
               per_page: 100
             });
+
+            const releasePulls = openPulls.filter(
+              (pull) =>
+                pull.head.ref.startsWith('release/v') &&
+                pull.head.repo?.full_name === context.payload.repository.full_name
+            );
+            if (releasePulls.length > 0) {
+              const numbers = releasePulls.map((pull) => `#${pull.number}`).join(', ');
+              core.notice(`等待 Release PR（${numbers}）完成後再配置 Hotfix 版本`);
+              core.setOutput('has_hotfix', 'false');
+              return;
+            }
 
             const hotfixPulls = openPulls
               .filter(
