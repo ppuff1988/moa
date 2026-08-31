@@ -67,6 +67,38 @@ jobs:
               return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')).version;
             }
 
+            async function authenticateReleaseRequest(issue) {
+              const match = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=(\d+) -->/.exec(
+                issue.body || ''
+              );
+              if (
+                issue.pull_request ||
+                issue.author_association !== 'OWNER' ||
+                issue.user?.login !== context.repo.owner ||
+                !match
+              ) {
+                return null;
+              }
+
+              try {
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: Number(match[2])
+                });
+                const trustedRun =
+                  run.path === '.github/workflows/prepare-release.yml' &&
+                  run.event === 'workflow_dispatch' &&
+                  run.head_branch === 'main' &&
+                  run.actor?.login === context.repo.owner;
+                if (!trustedRun) return null;
+                return { issue, match };
+              } catch (error) {
+                core.warning(`忽略無法驗證 workflow run 的 Release request #${issue.number}`);
+                return null;
+              }
+            }
+
             const openPulls = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -78,8 +110,13 @@ jobs:
             });
             const sameRepository = (pull) =>
               pull.head.repo?.full_name === context.payload.repository.full_name;
+            const trustedReleasePull = (pull) =>
+              pull.head.ref.startsWith('release/v') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
             const releasePulls = openPulls.filter(
-              (pull) => pull.head.ref.startsWith('release/v') && sameRepository(pull)
+              (pull) => trustedReleasePull(pull)
             );
 
             const [requestIssues, { data: recentClosedPulls }] = await Promise.all([
@@ -102,16 +139,51 @@ jobs:
                 per_page: 100
               })
             ]);
-            const markerPattern = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=\d+ -->/;
-            const validRequestIssues = requestIssues.filter(
-              (issue) => !issue.pull_request && markerPattern.test(issue.body || '')
+            const validRequests = [];
+            for (const issue of requestIssues) {
+              const authenticated = await authenticateReleaseRequest(issue);
+              if (authenticated) validRequests.push(authenticated);
+            }
+            const requestByNumber = new Map(
+              validRequests.map((request) => [request.issue.number, request.issue])
             );
-            const requestByNumber = new Map(validRequestIssues.map((issue) => [issue.number, issue]));
             const completedRequests = new Set();
             for (const pull of [...releasePulls, ...recentClosedPulls]) {
-              if (!pull.head.ref.startsWith('release/v') || !sameRepository(pull)) continue;
+              if (!trustedReleasePull(pull)) continue;
               const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pull.body || '')?.[1]);
               if (!requestByNumber.has(requestNumber) || completedRequests.has(requestNumber)) continue;
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                per_page: 100
+              });
+              const expectedPreparation = `Release commit \`${pull.head.sha}\` 已準備`;
+              const hasPreparation = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedPreparation)
+              );
+              if (!hasPreparation) {
+                core.warning(`Release PR #${pull.number} 缺少可信的 commit 準備標記，略過恢復`);
+                continue;
+              }
+              const expectedCompletion =
+                `Release PR #${pull.number} 已建立：${pull.html_url}（commit \`${pull.head.sha}\`）`;
+              const hasCompletion = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedCompletion)
+              );
+              if (!hasCompletion) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: requestNumber,
+                  body: expectedCompletion
+                });
+              }
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -169,10 +241,9 @@ jobs:
               return;
             }
 
-            const requests = validRequestIssues
-              .filter((issue) => !completedRequests.has(issue.number))
-              .map((issue) => ({ issue, match: markerPattern.exec(issue.body || '') }))
-              .filter((request) => request.match);
+            const requests = validRequests.filter(
+              (request) => !completedRequests.has(request.issue.number)
+            );
             if (requests.length === 0) {
               core.notice('目前沒有等待中的 Release／Hotfix');
               core.setOutput('has_work', 'false');
@@ -306,6 +377,37 @@ jobs:
         with:
           github-token: ${{ secrets.PAT }}
           script: |
+            async function authenticateReleaseRequest(issue) {
+              const match = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=(\d+) -->/.exec(
+                issue.body || ''
+              );
+              if (
+                issue.pull_request ||
+                issue.author_association !== 'OWNER' ||
+                issue.user?.login !== context.repo.owner ||
+                !match
+              ) {
+                return null;
+              }
+
+              try {
+                const { data: run } = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: Number(match[2])
+                });
+                const trustedRun =
+                  run.path === '.github/workflows/prepare-release.yml' &&
+                  run.event === 'workflow_dispatch' &&
+                  run.head_branch === 'main' &&
+                  run.actor?.login === context.repo.owner;
+                return trustedRun ? { issue, match } : null;
+              } catch (error) {
+                core.warning(`忽略無法驗證 workflow run 的 Release request #${issue.number}`);
+                return null;
+              }
+            }
+
             const openPulls = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -317,9 +419,12 @@ jobs:
             });
             const sameRepository = (pull) =>
               pull.head.repo?.full_name === context.payload.repository.full_name;
-            const releasePulls = openPulls.filter(
-              (pull) => pull.head.ref.startsWith('release/v') && sameRepository(pull)
-            );
+            const trustedReleasePull = (pull) =>
+              pull.head.ref.startsWith('release/v') &&
+              sameRepository(pull) &&
+              pull.author_association === 'OWNER' &&
+              pull.user?.login === context.repo.owner;
+            const releasePulls = openPulls.filter((pull) => trustedReleasePull(pull));
             const hotfixPulls = openPulls
               .filter((pull) => pull.head.ref.startsWith('hotfix/') && sameRepository(pull))
               .sort((left, right) => left.number - right.number);
@@ -360,18 +465,20 @@ jobs:
                   per_page: 100
                 })
               ]);
-              const markerPattern = /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=\d+ -->/;
-              const queueHead = requestIssues.find(
-                (candidate) => !candidate.pull_request && markerPattern.test(candidate.body || '')
-              );
-              const expectedMarker = `<!-- moa-release-request bump=${process.env.REQUESTED_BUMP} `;
+              const authenticatedRequests = [];
+              for (const candidate of requestIssues) {
+                const authenticated = await authenticateReleaseRequest(candidate);
+                if (authenticated) authenticatedRequests.push(authenticated);
+              }
+              const queueHead = authenticatedRequests[0];
+              const authenticatedIssue = await authenticateReleaseRequest(issue);
               current =
                 releasePulls.length === 0 &&
                 hotfixPulls.length === 0 &&
-                String(queueHead?.number) === process.env.REQUEST_ISSUE &&
+                String(queueHead?.issue.number) === process.env.REQUEST_ISSUE &&
+                authenticatedIssue?.match[1] === process.env.REQUESTED_BUMP &&
                 issue.state === 'open' &&
                 issue.labels.some((label) => (label.name || label) === 'release-request') &&
-                (issue.body || '').includes(expectedMarker) &&
                 dev.commit.sha === process.env.SELECTED_SHA &&
                 main.commit.sha === process.env.SELECTED_MAIN_SHA;
             }
@@ -406,10 +513,14 @@ jobs:
           if git ls-remote --exit-code --heads origin "refs/heads/${RELEASE_BRANCH}" >/dev/null 2>&1; then
             git fetch origin "${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
             REMOTE_VERSION=$(git show "origin/${RELEASE_BRANCH}:package.json" | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version));")
-            if [ "$REMOTE_VERSION" != "$NEW_VERSION" ] || ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/${RELEASE_BRANCH}"; then
+            if [ "$REMOTE_VERSION" != "$NEW_VERSION" ] ||
+              ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/${RELEASE_BRANCH}" ||
+              ! git diff --quiet "origin/${RELEASE_BRANCH}" -- .; then
               echo "既有 ${RELEASE_BRANCH} 並非目前請求建立的 Release 分支"
               exit 1
             fi
+            RELEASE_SHA=$(git rev-parse "origin/${RELEASE_BRANCH}")
+            echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
             echo "Release 分支 ${RELEASE_BRANCH} 已正確存在，繼續恢復 PR 建立流程"
             exit 0
           fi
@@ -418,6 +529,7 @@ jobs:
           git add package.json package-lock.json
           git commit -m "chore(release): bump version to v${NEW_VERSION}"
           git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 建立 Release PR 並完成請求
         if: steps.push_release.outcome == 'success'
@@ -428,9 +540,32 @@ jobs:
           BUMP_TYPE: ${{ steps.version.outputs.bump_type }}
           RELEASE_BRANCH: ${{ steps.version.outputs.branch }}
           REQUEST_ISSUE: ${{ steps.queue.outputs.issue_number }}
+          RELEASE_SHA: ${{ steps.push_release.outputs.release_sha }}
         with:
           github-token: ${{ secrets.PAT }}
           script: |
+            const requestNumber = Number(process.env.REQUEST_ISSUE);
+            const requestComments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: requestNumber,
+              per_page: 100
+            });
+            const expectedPreparation = `Release commit \`${process.env.RELEASE_SHA}\` 已準備`;
+            const hasPreparation = requestComments.some(
+              (comment) =>
+                comment.author_association === 'OWNER' &&
+                (comment.body || '').includes(expectedPreparation)
+            );
+            if (!hasPreparation) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requestNumber,
+                body: expectedPreparation
+              });
+            }
+
             const existingPulls = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -440,6 +575,12 @@ jobs:
               per_page: 100
             });
             let pr = existingPulls[0];
+            if (
+              pr &&
+              (pr.author_association !== 'OWNER' || pr.user?.login !== context.repo.owner)
+            ) {
+              throw new Error(`既有 Release PR #${pr.number} 並非由 repository owner 建立`);
+            }
             if (!pr) {
               ({ data: pr } = await github.rest.pulls.create({
                 owner: context.repo.owner,
@@ -459,17 +600,22 @@ jobs:
                 ].join('\n')
               }));
             }
+            if (pr.head.sha !== process.env.RELEASE_SHA) {
+              throw new Error(`Release PR #${pr.number} 的 commit 與已準備版本不一致`);
+            }
 
+            const expectedCompletion =
+              `Release PR #${pr.number} 已建立：${pr.html_url}（commit \`${process.env.RELEASE_SHA}\`）`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: Number(process.env.REQUEST_ISSUE),
-              body: `Release PR #${pr.number} 已建立：${pr.html_url}`
+              issue_number: requestNumber,
+              body: expectedCompletion
             });
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: Number(process.env.REQUEST_ISSUE),
+              issue_number: requestNumber,
               state: 'closed'
             });
             core.notice(`Release PR #${pr.number}: ${pr.html_url}`);

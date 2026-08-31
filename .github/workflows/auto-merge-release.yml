@@ -13,7 +13,9 @@ jobs:
   auto-merge-release:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
+      issues: read
       pull-requests: write
       statuses: write
     if: |
@@ -70,8 +72,12 @@ jobs:
             }
 
             async function validateReleaseRequest(pr) {
-              if (pr.head.repo?.full_name !== context.payload.repository.full_name) {
-                throw new Error(`Release PR #${pr.number} 必須來自目前 repository`);
+              if (
+                pr.head.repo?.full_name !== context.payload.repository.full_name ||
+                pr.author_association !== 'OWNER' ||
+                pr.user?.login !== context.repo.owner
+              ) {
+                throw new Error(`Release PR #${pr.number} 必須由 repository owner 在目前 repository 建立`);
               }
 
               const requestNumber = Number(/(?:^|\n)- Request: #(\d+)(?:\n|$)/.exec(pr.body || '')?.[1]);
@@ -95,21 +101,51 @@ jobs:
               const hasRequestLabel = issue.labels.some(
                 (label) => (label.name || label) === 'release-request'
               );
-              const hasRequestMarker =
-                /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=\d+ -->/.test(
+              const requestMarker =
+                /<!-- moa-release-request bump=(auto|patch|minor|major) run_id=(\d+) -->/.exec(
                   issue.body || ''
                 );
-              const expectedCompletion = `Release PR #${pr.number} 已建立：${pr.html_url}`;
+              const expectedPreparation = `Release commit \`${pr.head.sha}\` 已準備`;
+              const hasAutomationPreparation = comments.some(
+                (comment) =>
+                  comment.author_association === 'OWNER' &&
+                  (comment.body || '').includes(expectedPreparation)
+              );
+              const expectedCompletion =
+                `Release PR #${pr.number} 已建立：${pr.html_url}（commit \`${pr.head.sha}\`）`;
               const hasAutomationCompletion = comments.some(
                 (comment) =>
                   comment.author_association === 'OWNER' &&
                   (comment.body || '').includes(expectedCompletion)
               );
 
+              let trustedRun = false;
+              if (
+                issue.author_association === 'OWNER' &&
+                issue.user?.login === context.repo.owner &&
+                requestMarker
+              ) {
+                try {
+                  const { data: run } = await github.rest.actions.getWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: Number(requestMarker[2])
+                  });
+                  trustedRun =
+                    run.path === '.github/workflows/prepare-release.yml' &&
+                    run.event === 'workflow_dispatch' &&
+                    run.head_branch === 'main' &&
+                    run.actor?.login === context.repo.owner;
+                } catch (error) {
+                  core.warning(`無法驗證 Release request #${requestNumber} 的 workflow run`);
+                }
+              }
+
               if (
                 issue.state !== 'closed' ||
                 !hasRequestLabel ||
-                !hasRequestMarker ||
+                !trustedRun ||
+                !hasAutomationPreparation ||
                 !hasAutomationCompletion
               ) {
                 throw new Error(`Release PR #${pr.number} 未通過 release request metadata 驗證`);

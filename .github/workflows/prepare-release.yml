@@ -31,6 +31,13 @@ jobs:
         with:
           github-token: ${{ secrets.PAT }}
           script: |
+            if (context.ref !== 'refs/heads/main') {
+              throw new Error('Prepare Release 只能從受保護的 main workflow 執行');
+            }
+            if (context.actor !== context.repo.owner) {
+              throw new Error(`只有 repository owner @${context.repo.owner} 可以建立 Release request`);
+            }
+
             const allowedBumps = new Set(['auto', 'patch', 'minor', 'major']);
             const bump = process.env.REQUESTED_BUMP;
             if (!allowedBumps.has(bump)) throw new Error(`不支援的版本增量: ${bump}`);

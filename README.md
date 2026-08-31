@@ -230,7 +230,7 @@ docker-compose down
 - 🏥 **健康檢查**：自動驗證服務是否正常運行
 - 💬 **Telegram 通知**：即時通知發布與部署結果
 
-手動執行 `Prepare Release` 時，選擇的版本增量會先保存成 `release-request` Issue，再由單一版本協調器依序處理。即使 GitHub Actions 取代同 concurrency group 的 pending run，發布請求仍可從 repository state 恢復。
+repository owner 從 `main` 手動執行 `Prepare Release` 時，選擇的版本增量會先保存成綁定原始 workflow run 的 `release-request` Issue，再由單一版本協調器依序處理。Release PR 與完成標記會綁定精確 commit SHA；即使 GitHub Actions 取代同 concurrency group 的 pending run，發布請求仍可安全地從 repository state 恢復。
 
 ### 工作流程
 
