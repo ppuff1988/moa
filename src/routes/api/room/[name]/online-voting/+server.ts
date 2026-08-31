@@ -14,6 +14,17 @@ import { getSocketIO } from '$lib/server/socket';
 import { ZODIAC_ORDER } from '$lib/server/constants';
 import { getPublishedOnlineVotingResult } from '$lib/server/game-voting';
 
+class OnlineVotingSubmissionError extends Error {
+	constructor(
+		message: string,
+		readonly status: number = 400
+	) {
+		super(message);
+	}
+}
+
+type DatabaseExecutor = Pick<typeof db, 'select'>;
+
 async function getSpentChips(gameId: string, playerId: number) {
 	const rows = await db
 		.select({ chipCount: artifactVoteAllocations.chipCount })
@@ -27,8 +38,8 @@ async function getSpentChips(gameId: string, playerId: number) {
 	return rows.reduce((total, row) => total + row.chipCount, 0);
 }
 
-async function getSubmittedPlayers(roundId: number) {
-	return db
+async function getSubmittedPlayers(executor: DatabaseExecutor, roundId: number) {
+	return executor
 		.select({
 			playerId: gamePlayers.id,
 			color: gamePlayers.color,
@@ -93,7 +104,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		ownVotes: Object.fromEntries(
 			ownAllocations.map((allocation) => [allocation.artifactId, allocation.chipCount])
 		),
-		submittedPlayers: await getSubmittedPlayers(currentRound.id),
+		submittedPlayers: await getSubmittedPlayers(db, currentRound.id),
 		votingResult: null
 	});
 };
@@ -129,7 +140,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				.limit(1)
 				.for('update');
 			if (!currentRound || currentRound.phase !== 'voting') {
-				throw new Error('目前不是投票階段');
+				throw new OnlineVotingSubmissionError('目前不是投票階段', 409);
 			}
 
 			const [existingSubmission] = await tx
@@ -143,7 +154,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				)
 				.limit(1);
 			if (existingSubmission) {
-				throw new Error('本輪投票已提交，無法修改');
+				throw new OnlineVotingSubmissionError('本輪投票已提交，無法修改', 409);
 			}
 
 			const artifacts = await tx
@@ -151,7 +162,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				.from(gameArtifacts)
 				.where(and(eq(gameArtifacts.gameId, game.id), eq(gameArtifacts.round, currentRound.round)));
 			if (artifacts.length !== 4) {
-				throw new Error('當輪獸首資料不完整');
+				throw new OnlineVotingSubmissionError('當輪獸首資料不完整');
 			}
 			const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
 			const voteEntries = Object.entries(body.votes as Record<string, unknown>);
@@ -162,7 +173,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 					!Number.isInteger(chipCount) ||
 					chipCount < 0
 				) {
-					throw new Error('投票籌碼必須是當輪獸首的非負整數');
+					throw new OnlineVotingSubmissionError('投票籌碼必須是當輪獸首的非負整數');
 				}
 			}
 
@@ -186,10 +197,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				0
 			);
 			if (submittedChips > availableChips) {
-				throw new Error('投入籌碼超過目前可用數量');
+				throw new OnlineVotingSubmissionError('投入籌碼超過目前可用數量');
 			}
 			if (currentRound.round === 3 && submittedChips !== availableChips) {
-				throw new Error('第三輪必須投出全部剩餘籌碼');
+				throw new OnlineVotingSubmissionError('第三輪必須投出全部剩餘籌碼');
 			}
 			const [submission] = await tx
 				.insert(gameVoteSubmissions)
@@ -206,10 +217,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await tx.insert(artifactVoteAllocations).values(allocations);
 			}
 
-			const submittedPlayers = await tx
-				.select({ id: gameVoteSubmissions.id })
-				.from(gameVoteSubmissions)
-				.where(eq(gameVoteSubmissions.roundId, currentRound.id));
+			const submittedPlayers = await getSubmittedPlayers(tx, currentRound.id);
 			const roomPlayers = await tx
 				.select({ id: gamePlayers.id })
 				.from(gamePlayers)
@@ -274,21 +282,25 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				currentRound,
 				chipBalance: availableChips - submittedChips,
 				completed,
-				votingResult
+				votingResult,
+				submittedPlayers
 			};
 		});
 
-		if (result.completed) {
-			getSocketIO()?.to(game.roomName).emit('voting-completed', {
-				phase: 'result',
-				votingResult: result.votingResult
-			});
-		} else {
-			const submittedPlayers = await getSubmittedPlayers(result.currentRound.id);
-			getSocketIO()?.to(game.roomName).emit('online-voting-progress', {
-				round: result.currentRound.round,
-				submittedPlayers
-			});
+		try {
+			if (result.completed) {
+				getSocketIO()?.to(game.roomName).emit('voting-completed', {
+					phase: 'result',
+					votingResult: result.votingResult
+				});
+			} else {
+				getSocketIO()?.to(game.roomName).emit('online-voting-progress', {
+					round: result.currentRound.round,
+					submittedPlayers: result.submittedPlayers
+				});
+			}
+		} catch (error) {
+			console.error('廣播線上投票狀態失敗:', error);
 		}
 
 		return json({
@@ -298,7 +310,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			votingResult: result.votingResult
 		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : '提交投票失敗';
-		return json({ message }, { status: message.includes('已提交') ? 409 : 400 });
+		if (error instanceof OnlineVotingSubmissionError) {
+			return json({ message: error.message }, { status: error.status });
+		}
+
+		console.error('提交線上投票失敗:', error);
+		return json({ message: '提交投票失敗，請稍後再試' }, { status: 500 });
 	}
 };

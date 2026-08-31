@@ -6,10 +6,12 @@ import {
 	boolean,
 	json,
 	index,
+	check,
 	uniqueIndex,
 	serial,
 	uuid
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
@@ -187,6 +189,10 @@ export const artifactVoteAllocations = pgTable(
 		chipCount: integer('chip_count').notNull()
 	},
 	(table) => ({
+		chipCountCheck: check(
+			'artifact_vote_allocations_chip_count_check',
+			sql`${table.chipCount} > 0`
+		),
 		submissionArtifactIdx: uniqueIndex('artifact_vote_allocations_submission_artifact_idx').on(
 			table.submissionId,
 			table.artifactId
