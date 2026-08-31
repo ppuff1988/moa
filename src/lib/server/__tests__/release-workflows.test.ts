@@ -163,6 +163,10 @@ describe('release workflow contracts', () => {
 		expect(deploy).toContain('docker image tag "$PREVIOUS_APP_IMAGE_ID"');
 		expect(deploy).toContain('docker image tag "$PREVIOUS_WORKER_IMAGE_ID"');
 		expect(deploy).not.toContain("docker inspect --format '{{.Config.Image}}'");
+		expect(deploy).toContain('persist_image_selection');
+		expect(deploy).toContain('trap finalize_deployment EXIT');
+		expect(deploy).toContain('DEPLOYMENT_SUCCEEDED=true');
+		expect(deploy).toContain('已持久化 rollback image 選擇');
 		expect(deploy).toContain('回復舊版本');
 		expect(deploy).not.toContain('stop app email-worker');
 	});

@@ -112,7 +112,7 @@ release/* (發布分支，可選)
 
 Ruleset 另外要求 PR、`lint`、`test-api` 與 conversation resolution。Workflow gate 不接受舊 SHA 的 CI／Codex 結果，也不接受 `mergeable_state: unstable`。
 
-發布與部署採狀態重建而非把 concurrency 當 FIFO。GitHub 若取代 pending event，後續 scanner 仍會找到最舊的未完成版本；`main → dev` 合併使用 automation PAT，讓同步後的 `dev` push 能重新喚醒等待中的版本請求。migration 執行期間保留舊服務；部署會在 pull 新 image 前以運行中容器的 immutable image ID 建立暫時 rollback tag，新版本健康檢查失敗時用該 tag 回復。migration 必須保持向後相容。
+發布與部署採狀態重建而非把 concurrency 當 FIFO。GitHub 若取代 pending event，後續 scanner 仍會找到最舊的未完成版本；`main → dev` 合併使用 automation PAT，讓同步後的 `dev` push 能重新喚醒等待中的版本請求。migration 執行期間保留舊服務；部署會在 pull 新 image 前以運行中容器的 immutable image ID 建立 rollback tag。任何部署失敗都會把 `.env` 的 App／Worker image 持久化回 rollback tag 並保留該 tag，避免後續 `compose up` 再次啟動失敗版本；只有部署成功才清除 rollback tag。migration 必須保持向後相容。
 
 ## 📝 Commit 訊息規範
 

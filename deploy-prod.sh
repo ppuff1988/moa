@@ -57,9 +57,9 @@ fi
 # 舊版 compose 可能只記錄 moa:latest；若直接保存名稱，pull 後它會指向新版本，無法回復。
 PREVIOUS_APP_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_app_prod 2>/dev/null || true)
 PREVIOUS_WORKER_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_email_worker_prod 2>/dev/null || true)
-ROLLBACK_TAG_SUFFIX="$(date +%s)-$$"
 PREVIOUS_APP_IMAGE=""
 PREVIOUS_WORKER_IMAGE=""
+DEPLOYMENT_SUCCEEDED=false
 
 cleanup_rollback_tags() {
     if [ -n "$PREVIOUS_APP_IMAGE" ]; then
@@ -69,13 +69,43 @@ cleanup_rollback_tags() {
         docker image rm "$PREVIOUS_WORKER_IMAGE" >/dev/null 2>&1 || true
     fi
 }
-trap cleanup_rollback_tags EXIT
+
+persist_env_value() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^${key}=" .env; then
+        sed -i "s|^${key}=.*$|${key}=${value}|" .env
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+
+persist_image_selection() {
+    persist_env_value APP_IMAGE "$PREVIOUS_APP_IMAGE"
+    persist_env_value WORKER_IMAGE "$PREVIOUS_WORKER_IMAGE"
+    echo "🛟 已持久化 rollback image 選擇，後續 compose up 會維持舊版本"
+}
+
+finalize_deployment() {
+    local status=$?
+    trap - EXIT
+    if [ "$DEPLOYMENT_SUCCEEDED" = "true" ]; then
+        cleanup_rollback_tags
+    elif [ -n "$PREVIOUS_APP_IMAGE" ] && [ -n "$PREVIOUS_WORKER_IMAGE" ]; then
+        # 任何失敗（包含 pull／migration／health check）都把持久設定還原到舊映像。
+        persist_image_selection
+    else
+        cleanup_rollback_tags
+    fi
+    exit "$status"
+}
+trap finalize_deployment EXIT
 
 if [ -n "$PREVIOUS_APP_IMAGE_ID" ] && [ -n "$PREVIOUS_WORKER_IMAGE_ID" ]; then
-    PREVIOUS_APP_IMAGE="moa-rollback:app-${ROLLBACK_TAG_SUFFIX}"
-    PREVIOUS_WORKER_IMAGE="moa-rollback:worker-${ROLLBACK_TAG_SUFFIX}"
-    docker image tag "$PREVIOUS_APP_IMAGE_ID" "$PREVIOUS_APP_IMAGE"
-    docker image tag "$PREVIOUS_WORKER_IMAGE_ID" "$PREVIOUS_WORKER_IMAGE"
+    docker image tag "$PREVIOUS_APP_IMAGE_ID" "moa-rollback:app"
+    PREVIOUS_APP_IMAGE="moa-rollback:app"
+    docker image tag "$PREVIOUS_WORKER_IMAGE_ID" "moa-rollback:worker"
+    PREVIOUS_WORKER_IMAGE="moa-rollback:worker"
     echo "🛟 已固定目前運行映像，供部署失敗時回復"
 else
     echo "ℹ️ 找不到完整的既有 App／Worker 容器，這次部署沒有可用 rollback 映像"
@@ -192,6 +222,8 @@ while [ "$attempt" -le "$max_attempts" ]; do
     sleep 2
     attempt=$((attempt + 1))
 done
+
+DEPLOYMENT_SUCCEEDED=true
 
 echo ""
 echo "===================================="
