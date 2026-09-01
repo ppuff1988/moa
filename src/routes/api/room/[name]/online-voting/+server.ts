@@ -9,7 +9,7 @@ import {
 	gameRounds,
 	gameVoteSubmissions
 } from '$lib/server/db/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getSocketIO } from '$lib/server/socket';
 import { ZODIAC_ORDER } from '$lib/server/constants';
 import { getPublishedOnlineVotingResult } from '$lib/server/game-voting';
@@ -58,6 +58,9 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
+	if (player.leftAt) {
+		return json({ message: '您已離開此房間' }, { status: 403 });
+	}
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
@@ -116,6 +119,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
+	if (player.leftAt) {
+		return json({ message: '您已離開此房間' }, { status: 403 });
+	}
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
@@ -141,6 +147,17 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				.for('update');
 			if (!currentRound || currentRound.phase !== 'voting') {
 				throw new OnlineVotingSubmissionError('目前不是投票階段', 409);
+			}
+
+			// 鎖定玩家列，避免驗證後與主動離房同時發生時仍寫入新投票。
+			const [activePlayer] = await tx
+				.select({ id: gamePlayers.id })
+				.from(gamePlayers)
+				.where(and(eq(gamePlayers.id, player.id), isNull(gamePlayers.leftAt)))
+				.limit(1)
+				.for('update');
+			if (!activePlayer) {
+				throw new OnlineVotingSubmissionError('您已離開此房間', 403);
 			}
 
 			const [existingSubmission] = await tx
@@ -218,15 +235,19 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			}
 
 			const submittedPlayers = await getSubmittedPlayers(tx, currentRound.id);
-			// 遊戲規則（docs/RULE.md「線上投票」）：進行中離席是暫時狀態，
-			// 本局會等待原玩家回來，因此 quorum 刻意包含所有 game_players。
-			// 請勿用 leftAt 過濾名單，也勿把 leftAt 當成原帳號的授權撤銷。
+			// 遊戲規則（docs/RULE.md「線上投票」）：暫時斷線只改 isOnline，
+			// isOnline 不影響投票資格，因此本局會等待該玩家回來。
+			// leftAt 不為空的玩家已主動離開，不再列入尚待提交的 quorum；
+			// 若他在離開前已提交，既有投票仍保留在本輪結果中。
 			const roomPlayers = await tx
 				.select({ id: gamePlayers.id })
 				.from(gamePlayers)
-				.where(eq(gamePlayers.gameId, game.id));
+				.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
 
-			const completed = submittedPlayers.length === roomPlayers.length;
+			const submittedPlayerIds = new Set(
+				submittedPlayers.map((submittedPlayer) => submittedPlayer.playerId)
+			);
+			const completed = roomPlayers.every((roomPlayer) => submittedPlayerIds.has(roomPlayer.id));
 			let votingResult = null;
 			if (completed) {
 				const voteRows = await tx

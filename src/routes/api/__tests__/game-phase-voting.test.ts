@@ -354,6 +354,39 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			expect(round.phase).toBe('result');
 		});
 
+		it('暫時斷線玩家仍列入投票門檻並等待其回來', async () => {
+			const room = await createVotingGame(true);
+			await db
+				.update(gamePlayers)
+				.set({ isOnline: false })
+				.where(
+					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
+				);
+
+			const response = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
+
+			expect(response.status).toBe(200);
+			expect((await response.json()).completed).toBe(false);
+		});
+
+		it('主動離開玩家不再列入待提交門檻且不能再投票', async () => {
+			const room = await createVotingGame(true);
+			await db
+				.update(gamePlayers)
+				.set({ leftAt: new Date() })
+				.where(
+					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
+				);
+
+			const departedResponse = await submitOnlineVotes(room.roomName, testUsers[1].token, {});
+			expect(departedResponse.status).toBe(403);
+			expect((await departedResponse.json()).message).toContain('已離開');
+
+			const hostResponse = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
+			expect(hostResponse.status).toBe(200);
+			expect((await hostResponse.json()).completed).toBe(true);
+		});
+
 		it('未開啟線上投票的房間拒絕玩家投票端點', async () => {
 			const room = await createVotingGame(false);
 			const response = await submitOnlineVotes(room.roomName, testUsers[0].token, {});

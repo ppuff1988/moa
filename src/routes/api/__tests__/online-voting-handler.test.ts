@@ -119,6 +119,26 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
+
+	it('rejects a player who explicitly left the room', async () => {
+		mocks.verifyPlayerInRoom.mockResolvedValue({
+			game: {
+				id: '11111111-1111-1111-1111-111111111111',
+				roomName: '123456',
+				onlineVotingEnabled: true
+			},
+			player: { id: 7, leftAt: new Date() }
+		});
+
+		const response = await POST({
+			request: createRequest(),
+			params: { name: '123456' }
+		} as never);
+
+		expect(response.status).toBe(403);
+		expect(await response.json()).toEqual({ message: '您已離開此房間' });
+		expect(mocks.transaction).not.toHaveBeenCalled();
+	});
 });
 
 describe('online voting database constraints', () => {
@@ -130,16 +150,16 @@ describe('online voting database constraints', () => {
 		);
 	});
 
-	it('documents that temporary departures remain in the voting quorum', () => {
+	it('documents that disconnected players remain in the quorum while explicit departures do not', () => {
 		const endpoint = readFileSync(
 			resolve(process.cwd(), 'src/routes/api/room/[name]/online-voting/+server.ts'),
 			'utf8'
 		);
 		const rules = readFileSync(resolve(process.cwd(), 'docs/RULE.md'), 'utf8');
 
-		expect(endpoint).toContain('quorum 刻意包含所有 game_players');
-		expect(endpoint).toContain('請勿用 leftAt 過濾名單');
-		expect(rules).toContain('遊戲會保留該玩家席位並等待本人回來');
-		expect(rules).toContain('left_at` 只記錄暫時離席狀態，不撤銷原帳號的遊戲或投票資格');
+		expect(endpoint).toContain('isOnline 不影響投票資格');
+		expect(endpoint).toContain('leftAt 不為空的玩家已主動離開');
+		expect(rules).toContain('Socket 斷線而暫時離線時，只會將 `is_online` 標記為 `false`');
+		expect(rules).toContain('主動離開房間才會設定 `left_at`');
 	});
 });
