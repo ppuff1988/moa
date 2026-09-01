@@ -177,6 +177,10 @@ describe('release workflow contracts', () => {
 
 	it('reconciles every merged version and marks completion only after deployment', () => {
 		const workflow = readWorkflow('ci-release.yml');
+		const buildDockerJob = workflow.slice(
+			workflow.indexOf('\n  build-docker:'),
+			workflow.indexOf('\n  prepare-tag:')
+		);
 
 		expect(workflow).toContain('pull_request:');
 		expect(workflow).toContain('types: [closed]');
@@ -207,6 +211,7 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain("needs.deploy-production.result == 'success'");
 		expect(workflow).toContain('tagCommit !== releaseSha');
 		expect(workflow).toContain('generate_release_notes: true');
+		expect(buildDockerJob).toContain('    environment: production');
 		expect(workflow).not.toContain(
 			"github.rest.actions.createWorkflowDispatch({\n                owner: context.repo.owner,\n                repo: context.repo.repo,\n                workflow_id: 'cd.yml'"
 		);
