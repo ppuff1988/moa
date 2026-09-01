@@ -22,7 +22,7 @@ describe('Auto Version Bump workflow', () => {
 	});
 
 	it('recomputes the latest main state on one retry-safe version pull request', () => {
-		expect(workflow).toContain('group: auto-version-main');
+		expect(workflow).toContain("'auto-version-main'");
 		expect(workflow).toContain('cancel-in-progress: true');
 		expect(workflow).toContain('VERSION_BRANCH="chore/version-bump"');
 		expect(workflow).toContain('git push --force-with-lease');
@@ -33,9 +33,15 @@ describe('Auto Version Bump workflow', () => {
 
 	it('starts release consumers only for a merged version branch', () => {
 		for (const consumer of [releaseWorkflow, syncWorkflow]) {
-			expect(consumer).toContain("branches: ['chore/version-bump*']");
+			expect(consumer).toContain("branches: ['chore/version-bump']");
+			expect(consumer).not.toContain("branches: ['chore/version-bump*']");
 		}
 		expect(syncWorkflow).not.toContain("head_branch == 'main'");
+	});
+
+	it('preserves the merged version run in a separate concurrency group', () => {
+		expect(workflow).toContain("format('auto-version-release-{0}'");
+		expect(workflow).toContain("github.event.pull_request.head.ref == 'chore/version-bump'");
 	});
 
 	it('fails the trigger workflow when a version pull request closes unmerged', () => {

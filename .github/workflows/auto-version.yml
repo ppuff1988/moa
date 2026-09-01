@@ -9,8 +9,12 @@ on:
     types: [completed]
 
 concurrency:
-  group: auto-version-main
-  # Newer runs recompute every commit since the latest tag, so the latest main state wins.
+  group: >-
+    ${{ github.event_name == 'pull_request' &&
+        github.event.pull_request.head.ref == 'chore/version-bump' &&
+        format('auto-version-release-{0}', github.event.pull_request.number) ||
+        'auto-version-main' }}
+  # Version PR closures keep their release signal; other runs aggregate the latest main state.
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'pull_request' &&
-      startsWith(github.event.pull_request.head.ref, 'chore/version-bump')
+      github.event.pull_request.head.ref == 'chore/version-bump'
     steps:
       - name: 拒絕未合併的版本 PR 關閉事件
         if: github.event.pull_request.merged != true
