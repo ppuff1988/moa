@@ -27,6 +27,9 @@ describe('Auto Version Bump workflow', () => {
 		expect(workflow).toContain('VERSION_BRANCH="chore/version-bump"');
 		expect(workflow).toContain('git push --force-with-lease');
 		expect(workflow).toContain('gh pr list');
+		expect(workflow).toContain('--json url,isCrossRepository,headRepository,headRepositoryOwner');
+		expect(workflow).toContain('.isCrossRepository == false');
+		expect(workflow).toContain('env.GITHUB_REPOSITORY');
 		expect(workflow).toContain('--json autoMergeRequest');
 		expect(workflow).not.toContain('等待版本升級 PR 合併');
 	});

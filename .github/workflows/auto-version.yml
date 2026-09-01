@@ -145,8 +145,9 @@ jobs:
             --base main \
             --head "$VERSION_BRANCH" \
             --state open \
-            --json url \
-            --jq '.[0].url // empty')
+            --limit 100 \
+            --json url,isCrossRepository,headRepository,headRepositoryOwner \
+            --jq '[.[] | select(.isCrossRepository == false and (.headRepositoryOwner.login + "/" + .headRepository.name) == env.GITHUB_REPOSITORY)] | .[0].url // empty')
 
           if [ -z "$PR_URL" ]; then
             PR_URL=$(gh pr create \
