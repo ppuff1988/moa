@@ -1,6 +1,6 @@
 # 共用配置定義
 x-app-image: &app-image
-  image: ${DOCKER_USERNAME}/moa:latest
+  image: ${APP_IMAGE}
 
 services:
   db:
@@ -65,7 +65,7 @@ services:
       start_period: 40s
 
   email-worker:
-    image: ${DOCKER_USERNAME}/moa:worker # 使用專門的 worker image
+    image: ${WORKER_IMAGE} # 使用與 App 同版本的不可變 image
     container_name: moa_email_worker_prod
     restart: always
     environment:

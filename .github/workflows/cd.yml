@@ -2,102 +2,132 @@
 name: CD
 
 on:
-  workflow_dispatch: # 支援手動觸發部署
+  workflow_call:
     inputs:
       version:
-        description: '部署版本號'
+        description: 不含 v 前綴的正式版本號
+        required: true
+        type: string
+      release_sha:
+        description: 版本 tag 對應的完整 commit SHA
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 部署已發布版本（例如 1.2.3，不含 v）
+        required: true
+        type: string
+      release_sha:
+        description: 可選；用來再次核對 tag 的完整 commit SHA
         required: false
         type: string
-      tag:
-        description: '部署標籤'
-        required: false
-        type: string
-  release: # 當 GitHub Release 創建時觸發
-    types: [published]
 
 concurrency:
   group: production-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
+  resolve-release:
+    name: 驗證部署版本
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - name: 驗證觸發來源與輸入
+        env:
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.release_sha }}
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "github.ref != 'refs/heads/main': production 部署只能從 main 執行"
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "版本格式錯誤: $VERSION"
+            exit 1
+          fi
+          if [ -n "$EXPECTED_SHA" ] && ! printf '%s' "$EXPECTED_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo 'release_sha 必須是完整的 40 位小寫 commit SHA'
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          ref: v${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: 核對 tag、commit 與 package 版本
+        id: release
+        env:
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.release_sha }}
+        run: |
+          DEPLOY_SHA=$(git rev-list -n 1 "v${VERSION}")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "tag v${VERSION} 的 package.json 版本是 v${PACKAGE_VERSION}"
+            exit 1
+          fi
+          if [ -n "$EXPECTED_SHA" ] && [ "$DEPLOY_SHA" != "$EXPECTED_SHA" ]; then
+            echo "tag v${VERSION} 指向 $DEPLOY_SHA，但預期是 $EXPECTED_SHA"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          echo "部署版本已固定: v${VERSION} @ ${DEPLOY_SHA}"
+
   deploy-production:
     name: 部署到生產環境
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'release'
+    timeout-minutes: 45
+    needs: resolve-release
     environment: production
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.resolve-release.outputs.release_sha }}
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: 📦 讀取部署版本
-        id: get_version
+      - name: 安裝並驗證 Cloudflare Tunnel
+        env:
+          CLOUDFLARED_VERSION: '2026.8.3'
+          CLOUDFLARED_SHA256: 660b348d473bba81997445b534e7eaefaf4c4e16331866922326c338a7013dd9
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-            echo "ℹ️ 使用手動指定版本: $VERSION"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-            echo "ℹ️ 使用 Release 版本: $VERSION"
-          else
-            VERSION=$(node -p "require('./package.json').version")
-            echo "ℹ️ 從 package.json 讀取版本: $VERSION"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📦 準備部署版本: $VERSION"
-
-      - name: ☁️ 安裝 Cloudflare Tunnel (cloudflared)
-        run: |
-          curl -fsSL --output cloudflared.deb \
-            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          curl -fsSL --retry 3 --output cloudflared.deb \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb"
+          echo "${CLOUDFLARED_SHA256}  cloudflared.deb" | sha256sum --check --strict
           sudo dpkg -i cloudflared.deb
           cloudflared --version
 
-      - name: 🔐 設定 SSH 金鑰
+      - name: 設定 SSH 身分與主機指紋
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         run: |
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_SSH_KNOWN_HOSTS" ]; then
+            echo 'DEPLOY_SSH_KEY 與 DEPLOY_SSH_KNOWN_HOSTS 都必須設定'
+            exit 1
+          fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          ssh-keygen -l -f ~/.ssh/deploy_key >/dev/null
 
-          echo "📝 寫入 SSH 金鑰..."
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          echo "🔍 驗證金鑰格式..."
-          if ! ssh-keygen -l -f ~/.ssh/deploy_key > /dev/null 2>&1; then
-            echo "⚠️ 金鑰格式可能有問題，嘗試修復..."
-            sed -i 's/\r$//' ~/.ssh/deploy_key
-          fi
-
-          echo "✅ SSH 金鑰設定完成"
-
-      - name: � 驗證 Cloudflare Service Token
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: |
-          if [ -z "$CF_ACCESS_CLIENT_ID" ]; then
-            echo "❌ CF_ACCESS_CLIENT_ID secret 未設定或為空！"
-            exit 1
-          fi
-          if [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
-            echo "❌ CF_ACCESS_CLIENT_SECRET secret 未設定或為空！"
-            exit 1
-          fi
-          echo "✅ Cloudflare Service Token 已設定（長度: ${#CF_ACCESS_CLIENT_ID} / ${#CF_ACCESS_CLIENT_SECRET}）"
-
-      - name: �🚀 部署到伺服器
+      - name: 部署指定版本
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-          # cloudflared 原生環境變數，子程序自動繼承，無需經 ProxyCommand shell 解析
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -118,61 +148,61 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM_EMAIL: ${{ vars.SMTP_FROM_EMAIL }}
           SMTP_FROM_NAME: ${{ vars.SMTP_FROM_NAME }}
-          DEPLOY_VERSION: ${{ steps.get_version.outputs.version }}
+          DEPLOY_VERSION: ${{ needs.resolve-release.outputs.version }}
+          DEPLOY_SHA: ${{ needs.resolve-release.outputs.release_sha }}
         run: |
           set -euo pipefail
 
-          # 去除 secrets 可能的尾部空白/換行
-          DEPLOY_HOST=$(echo "$DEPLOY_HOST" | tr -d '[:space:]')
-          TUNNEL_SERVICE_TOKEN_ID=$(echo "$TUNNEL_SERVICE_TOKEN_ID" | tr -d '[:space:]')
-          TUNNEL_SERVICE_TOKEN_SECRET=$(echo "$TUNNEL_SERVICE_TOKEN_SECRET" | tr -d '[:space:]')
+          DEPLOY_HOST=$(printf '%s' "$DEPLOY_HOST" | tr -d '[:space:]')
+          TUNNEL_SERVICE_TOKEN_ID=$(printf '%s' "$TUNNEL_SERVICE_TOKEN_ID" | tr -d '[:space:]')
+          TUNNEL_SERVICE_TOKEN_SECRET=$(printf '%s' "$TUNNEL_SERVICE_TOKEN_SECRET" | tr -d '[:space:]')
+          for required in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH TUNNEL_SERVICE_TOKEN_ID TUNNEL_SERVICE_TOKEN_SECRET DOCKER_USERNAME; do
+            if [ -z "${!required}" ]; then
+              echo "必要部署設定 ${required} 未設定"
+              exit 1
+            fi
+          done
 
-          KEY_PATH=~/.ssh/deploy_key
-
-          # 使用 printf 將 token 值直接寫入 wrapper script（避免 heredoc YAML 縮排問題）
           PROXY_SCRIPT=$(mktemp)
-          printf '#!/bin/sh\nexec cloudflared access ssh --hostname "$1" --service-token-id "%s" --service-token-secret "%s"\n' \
-            "$TUNNEL_SERVICE_TOKEN_ID" "$TUNNEL_SERVICE_TOKEN_SECRET" > "$PROXY_SCRIPT"
-          chmod 700 "$PROXY_SCRIPT"
-
-          CF_PROXY="$PROXY_SCRIPT %h"
-          SSH_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
-          SCP_OPTS=(-i "$KEY_PATH" -o "ProxyCommand=$CF_PROXY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
-
-          echo "🔗 測試 SSH 連線..."
-          if ! ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo '✅ SSH 連線成功'"; then
-            echo "❌ SSH 連線失敗，請檢查 DEPLOY_HOST / SSH 金鑰 / Cloudflare Service Token 設定"
-            exit 1
-          fi
-
-          # 在 Runner 本機產生安全的 .env 檔
           ENV_FILE=$(mktemp)
+          # shellcheck disable=SC2317
           cleanup() { rm -f "$ENV_FILE" "$PROXY_SCRIPT"; }
           trap cleanup EXIT
 
-          escape_squotes() {
-            # 將單引號轉為可在單引號字串中表示的序列：' → '\''
-            sed "s/'/'\"'\"'/g" <<< "$1"
-          }
+          # $1 and token variables must expand when ProxyCommand runs, not while writing the script.
+          # shellcheck disable=SC2016
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'exec cloudflared access ssh --hostname "$1" --service-token-id "$TUNNEL_SERVICE_TOKEN_ID" --service-token-secret "$TUNNEL_SERVICE_TOKEN_SECRET"' \
+            > "$PROXY_SCRIPT"
+          chmod 700 "$PROXY_SCRIPT"
 
+          CF_PROXY="$PROXY_SCRIPT %h"
+          SSH_OPTS=(-i ~/.ssh/deploy_key -o "ProxyCommand=$CF_PROXY" -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3)
+          SCP_OPTS=(-i ~/.ssh/deploy_key -o "ProxyCommand=$CF_PROXY" -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes -o ConnectTimeout=30)
+
+          # shellcheck disable=SC2001
+          escape_squotes() { sed "s/'/'\"'\"'/g" <<< "$1"; }
           write_kv() {
             local key="$1"
-            local val="$2"
-            local esc
-            esc=$(escape_squotes "$val")
-            printf "%s='%s'\n" "$key" "$esc" >> "$ENV_FILE"
+            local value
+            value=$(escape_squotes "$2")
+            printf "%s='%s'\n" "$key" "$value" >> "$ENV_FILE"
           }
 
-          echo "⚙️ 產生 .env 檔案 (本機)"
           : > "$ENV_FILE"
           write_kv DOCKER_USERNAME "$DOCKER_USERNAME"
+          write_kv APP_IMAGE "${DOCKER_USERNAME}/moa:v${DEPLOY_VERSION}"
+          write_kv WORKER_IMAGE "${DOCKER_USERNAME}/moa:worker-v${DEPLOY_VERSION}"
+          write_kv DEPLOY_VERSION "$DEPLOY_VERSION"
+          write_kv DEPLOY_SHA "$DEPLOY_SHA"
           write_kv DATABASE_URL "$DATABASE_URL"
           write_kv JWT_SECRET "$JWT_SECRET"
-          write_kv JWT_EXPIRES_IN "30d"
+          write_kv JWT_EXPIRES_IN '30d'
           write_kv POSTGRES_USER "$POSTGRES_USER"
           write_kv POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
           write_kv POSTGRES_DB "$POSTGRES_DB"
-          write_kv NODE_ENV "production"
+          write_kv NODE_ENV 'production'
           write_kv PUBLIC_GTM_ID "$PUBLIC_GTM_ID"
           write_kv GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
           write_kv GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
@@ -186,69 +216,61 @@ jobs:
           write_kv SMTP_FROM_EMAIL "$SMTP_FROM_EMAIL"
           write_kv SMTP_FROM_NAME "$SMTP_FROM_NAME"
 
-          echo "📤 上傳 .env 到遠端伺服器..."
-          scp "${SCP_OPTS[@]}" "$ENV_FILE" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/.env"
+          # DEPLOY_PATH is an administrator-controlled repository variable and expands locally.
+          # shellcheck disable=SC2029
+          ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "echo SSH connection verified"
 
+          REMOTE_PATH=$(printf '%q' "$DEPLOY_PATH")
+          REMOTE_COMMAND="bash -s -- ${REMOTE_PATH} ${DEPLOY_SHA} ${DEPLOY_VERSION}"
           max_attempts=3
           attempt=1
-
-          echo "🚀 開始部署版本: $DEPLOY_VERSION"
-
-          while [ $attempt -le $max_attempts ]; do
-            echo "🔄 嘗試連線 (第 $attempt/$max_attempts 次)..."
-            if ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -lc '
-              set -euo pipefail
-              cd "$DEPLOY_PATH"
-              echo "📥 拉取最新代碼..."
-              git pull origin main
-              echo "🚀 執行部署腳本（包含 migrations）..."
-              ./deploy-prod.sh
-            '"; then
-              echo "✅ 部署成功！版本: $DEPLOY_VERSION"
+          while [ "$attempt" -le "$max_attempts" ]; do
+            # 前一次失敗可能已把遠端 .env 持久化回 rollback image；每次重試都先
+            # 重傳本次要求的 immutable image，避免舊版被誤報為部署成功。
+            # REMOTE_COMMAND contains only a validated SHA/version and an administrator path.
+            # shellcheck disable=SC2029
+            if scp "${SCP_OPTS[@]}" "$ENV_FILE" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/.env" && \
+              ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_COMMAND" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          deploy_path="$1"
+          deploy_sha="$2"
+          deploy_version="$3"
+          cd "$deploy_path"
+          git fetch origin main --tags
+          tag_sha=$(git rev-list -n 1 "v${deploy_version}")
+          if [ "$tag_sha" != "$deploy_sha" ]; then
+            echo "遠端 tag v${deploy_version} 指向 $tag_sha，不是 $deploy_sha"
+            exit 1
+          fi
+          git checkout --detach "$deploy_sha"
+          ./deploy-prod.sh
+          REMOTE_SCRIPT
+            then
+              echo "部署成功: v${DEPLOY_VERSION} @ ${DEPLOY_SHA}"
               exit 0
             fi
 
-            echo "❌ 部署失敗，10 秒後重試..."
-            sleep 10
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "部署失敗，10 秒後重試 (${attempt}/${max_attempts})"
+              sleep 10
+            fi
             attempt=$((attempt + 1))
           done
 
-          echo "❌ 達到最大重試次數，部署失敗！"
+          echo '部署達到最大重試次數'
           exit 1
 
-      - name: 🧹 清理 SSH 金鑰
+      - name: 清理 SSH 金鑰
         if: always()
-        run: shred -u ~/.ssh/deploy_key
+        run: shred -u ~/.ssh/deploy_key ~/.ssh/known_hosts 2>/dev/null || true
 
   notify:
     name: 發送部署通知
     runs-on: ubuntu-latest
-    needs: deploy-production
-    if: always()
+    needs: [resolve-release, deploy-production]
+    if: always() && needs.resolve-release.result != 'skipped'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: 📦 讀取版本
-        id: get_version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-          else
-            VERSION=$(node -p "require('./package.json').version")
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: 📣 發送 Telegram 通知
-        uses: appleboy/telegram-action@master
+      - uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -257,9 +279,7 @@ jobs:
             🚀 *部署通知*
 
             *狀態:* ${{ needs.deploy-production.result == 'success' && '✅ 成功' || '❌ 失敗' }}
-            *專案:* `${{ github.repository }}`
-            *版本:* `${{ steps.get_version.outputs.version }}`
-            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || '手動觸發' }}`
-            *提交者:* `${{ github.actor }}`
-
+            *版本:* `v${{ needs.resolve-release.outputs.version }}`
+            *Commit:* `${{ needs.resolve-release.outputs.release_sha }}`
+            *觸發者:* `${{ github.actor }}`
             [查看工作流程](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

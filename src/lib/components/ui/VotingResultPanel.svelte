@@ -1,6 +1,7 @@
 <script lang="ts">
 	import SettlementButton from '$lib/components/game/SettlementButton.svelte';
 	import Portal from '$lib/components/ui/Portal.svelte';
+	import VotingChip from '$lib/components/ui/VotingChip.svelte';
 	import { addNotification } from '$lib/stores/notifications';
 	import type { PublishedVotingResult } from '$lib/types/game';
 	import { requestNextRound } from '$lib/utils/nextRound';
@@ -33,7 +34,10 @@
 			const response = await requestNextRound({
 				roomName,
 				currentRound,
-				onNextRound
+				onNextRound,
+				onSynchronizationError: () => {
+					addNotification('下一回合已開始，但畫面同步失敗，請重新整理', 'warning');
+				}
 			});
 
 			if (!response.ok) {
@@ -59,28 +63,90 @@
 				</div>
 				<div class="result-content">
 					{#if votingResult && topTwo.length === 2}
-						<div class="all-results">
-							{#each topTwo as beast, index (beast.id)}
-								<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
-									<div class="rank-badge-large">{getRankBadge(index + 1)}</div>
-									<div class="beast-info">
-										<h5 class="beast-name">{beast.animal}首</h5>
-										<div class="vote-count">{beast.votes} 票</div>
-									</div>
-									{#if index === 0}
-										<div class="beast-status-pending">待揭曉</div>
-									{:else if index === 1}
-										<!-- 第二名一定會公布真偽 -->
-										<div
-											class="beast-status-large"
-											class:is-real={votingResult.secondPlace.isGenuine}
-										>
-											{votingResult.secondPlace.isGenuine ? '真品 ✓' : '贗品 ✗'}
+						{#if votingResult.artifacts?.length}
+							<div class="detailed-results" aria-label="四個獸首投票結果">
+								{#each votingResult.artifacts as beast (beast.id)}
+									<article
+										class="detailed-result-card"
+										class:top-one={beast.rank === 1}
+										class:top-two={beast.rank === 2}
+									>
+										<div class="detailed-result-header">
+											<div class="rank-identity">
+												{#if beast.rank === 1 || beast.rank === 2}
+													<span
+														class="result-medal"
+														aria-label={beast.rank === 1 ? '第一名金牌' : '第二名銀牌'}
+													>
+														{getRankBadge(beast.rank)}
+													</span>
+												{/if}
+												<div>
+													<span class="result-rank">
+														{beast.rank ? `第 ${beast.rank} 名` : '未入選'}
+													</span>
+													<h5>{beast.animal}首</h5>
+												</div>
+											</div>
+											<strong class="detailed-vote-total">{beast.votes}<span>票</span></strong>
 										</div>
-									{/if}
-								</div>
-							{/each}
-						</div>
+
+										<div class="color-breakdown" aria-label={`${beast.animal}首顏色票數`}>
+											{#if beast.colorBreakdown.length === 0}
+												<span class="zero-chip-result">本輪無籌碼</span>
+											{:else}
+												{#each beast.colorBreakdown as item (`${beast.id}-${item.color}`)}
+													<div class="color-chip-row">
+														<VotingChip
+															colorCode={item.colorCode}
+															layers={item.chips}
+															size="small"
+															label={`${item.color}色籌碼 ${item.chips} 枚`}
+														/>
+														<span>{item.color}色</span>
+														<strong>×{item.chips}</strong>
+													</div>
+												{/each}
+											{/if}
+										</div>
+
+										{#if beast.rank === 1}
+											<div class="detailed-status pending">第一名 · 真偽待揭曉</div>
+										{:else if beast.rank === 2}
+											<div
+												class="detailed-status"
+												class:is-real={votingResult.secondPlace.isGenuine}
+											>
+												第二名 · {votingResult.secondPlace.isGenuine ? '真品' : '贗品'}
+											</div>
+										{/if}
+									</article>
+								{/each}
+							</div>
+						{:else}
+							<div class="all-results">
+								{#each topTwo as beast, index (beast.id)}
+									<div class="result-card" class:top-one={index === 0} class:top-two={index === 1}>
+										<div class="rank-badge-large">{getRankBadge(index + 1)}</div>
+										<div class="beast-info">
+											<h5 class="beast-name">{beast.animal}首</h5>
+											<div class="vote-count">{beast.votes} 票</div>
+										</div>
+										{#if index === 0}
+											<div class="beast-status-pending">待揭曉</div>
+										{:else if index === 1}
+											<!-- 第二名一定會公布真偽 -->
+											<div
+												class="beast-status-large"
+												class:is-real={votingResult.secondPlace.isGenuine}
+											>
+												{votingResult.secondPlace.isGenuine ? '真品 ✓' : '贗品 ✗'}
+											</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/if}
 					{:else}
 						<div class="no-votes-message">
 							<p>載入投票結果中...</p>
@@ -401,6 +467,148 @@
 		}
 	}
 
+	.detailed-results {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.875rem;
+	}
+
+	.detailed-result-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+		min-width: 0;
+		padding: 1rem;
+		border: 1px solid rgba(212, 175, 55, 0.28);
+		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.detailed-result-card.top-one {
+		border-color: rgba(251, 191, 36, 0.78);
+		background: rgba(251, 191, 36, 0.1);
+	}
+
+	.detailed-result-card.top-two {
+		border-color: rgba(203, 213, 225, 0.72);
+		background: rgba(203, 213, 225, 0.08);
+	}
+
+	.detailed-result-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.rank-identity {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		min-width: 0;
+	}
+
+	.result-medal {
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		flex: 0 0 auto;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: 50%;
+		background: rgba(18, 13, 9, 0.28);
+		font-size: 1.7rem;
+		line-height: 1;
+		filter: drop-shadow(0 0.3rem 0.3rem rgba(12, 8, 5, 0.32));
+	}
+
+	.top-one .result-medal {
+		border-color: rgba(251, 191, 36, 0.5);
+		background: rgba(251, 191, 36, 0.1);
+	}
+
+	.top-two .result-medal {
+		border-color: rgba(203, 213, 225, 0.42);
+		background: rgba(203, 213, 225, 0.08);
+	}
+
+	.result-rank {
+		color: rgba(255, 255, 255, 0.62);
+		font-size: 0.6875rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+	}
+
+	.detailed-result-header h5 {
+		margin: 0.125rem 0 0;
+		color: #f8e7b0;
+		font-size: 1.25rem;
+	}
+
+	.detailed-vote-total {
+		display: flex;
+		align-items: baseline;
+		gap: 0.25rem;
+		color: #fbbf24;
+		font-size: 1.75rem;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+
+	.detailed-vote-total span {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.62);
+	}
+
+	.color-breakdown {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+		min-height: 2rem;
+	}
+
+	.color-chip-row {
+		display: grid;
+		grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 0.4rem;
+		min-width: 0;
+		padding: 0.4rem 0.5rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.16);
+		color: rgba(255, 255, 255, 0.82);
+		font-size: 0.75rem;
+	}
+
+	.color-chip-row strong {
+		font-variant-numeric: tabular-nums;
+		color: #fff;
+	}
+
+	.zero-chip-result {
+		grid-column: 1 / -1;
+		color: rgba(255, 255, 255, 0.5);
+		font-size: 0.75rem;
+	}
+
+	.detailed-status {
+		margin-top: auto;
+		padding-top: 0.75rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.12);
+		color: #fca5a5;
+		font-size: 0.8125rem;
+		font-weight: 700;
+	}
+
+	.detailed-status.is-real {
+		color: #86efac;
+	}
+
+	.detailed-status.pending {
+		color: #fcd34d;
+	}
+
 	@media (max-width: 768px) {
 		.modal-dialog {
 			max-height: calc(100vh - 1rem);
@@ -488,6 +696,14 @@
 		.beast-status-pending {
 			font-size: 0.75rem;
 			padding: 0.5rem 0.625rem;
+		}
+
+		.detailed-results {
+			grid-template-columns: 1fr;
+		}
+
+		.color-breakdown {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 </style>

@@ -1,26 +1,65 @@
 <script lang="ts">
 	import Portal from '$lib/components/ui/Portal.svelte';
+	import ArtifactDisplay from '$lib/components/ui/ArtifactDisplay.svelte';
 	import { addNotification } from '$lib/stores/notifications';
 	import type { PublishedVotingResult } from '$lib/types/game';
+	import { getSocket } from '$lib/utils/socket';
+	import { onDestroy, onMount } from 'svelte';
 
 	interface BeastHead {
 		id: number;
 		animal: string;
 		votes: number;
+		identifiedIsGenuine?: boolean;
 	}
 
 	export let roomName: string;
 	export let beastHeads: BeastHead[] = [];
 	export let identifiedArtifacts: number[] = [];
+	export let failedIdentifications: number[] = [];
+	export let blockedArtifacts: number[] = [];
 	export let isHost: boolean = false;
+	export let onlineVotingEnabled: boolean = false;
+	export let currentRound: number = 1;
 	export let onVotesSubmitted: (result: PublishedVotingResult) => void = () => {};
-
-	// Suppress unused warning - kept for future use
-	$: void identifiedArtifacts;
 
 	let voteInputs: Record<number, number> = {};
 	let showConfirmDialog = false;
 	let topTwoForConfirmation: number[] = []; // 僅用於確認對話框中顯示排名
+	let onlineVoteInputs: Record<number, number> = {};
+	let onlineState: {
+		round: number;
+		chipBalance: number;
+		totalPlayers: number;
+		playerColor: string | null;
+		playerColorCode: string | null;
+		hasSubmitted: boolean;
+		ownVotes: Record<string, number>;
+		submittedPlayers: Array<{
+			playerId: number;
+			color: string | null;
+			colorCode: string | null;
+		}>;
+	} | null = null;
+	let isLoadingOnlineState = false;
+	let isSubmittingOnline = false;
+	let showOnlineConfirmDialog = false;
+	let onlineInputsInitialized = false;
+
+	$: onlineAllocated = Object.values(onlineVoteInputs).reduce((sum, chips) => sum + chips, 0);
+	$: onlineAvailable = onlineState
+		? onlineState.hasSubmitted
+			? onlineState.chipBalance + onlineAllocated
+			: onlineState.chipBalance
+		: 0;
+	$: onlineRemaining = onlineState?.hasSubmitted
+		? onlineState.chipBalance
+		: Math.max(0, onlineAvailable - onlineAllocated);
+	$: onlineCanSubmit =
+		Boolean(onlineState) &&
+		!onlineState?.hasSubmitted &&
+		!isSubmittingOnline &&
+		(currentRound < 3 || onlineRemaining === 0);
 
 	// 12生肖排序（用於同票數時的排序）
 	const ZODIAC_ORDER = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
@@ -131,71 +170,283 @@
 			voteInputs[beastId] = Math.floor(value); // 確保是整數
 		}
 	}
+
+	async function fetchOnlineVotingState() {
+		if (!onlineVotingEnabled) return;
+		isLoadingOnlineState = true;
+		try {
+			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/online-voting`, {
+				credentials: 'include'
+			});
+			if (!response.ok) {
+				const error = await response.json();
+				addNotification(error.message || '載入投票狀態失敗', 'error');
+				return;
+			}
+
+			const data = await response.json();
+			onlineState = data;
+			if (!onlineInputsInitialized || data.hasSubmitted) {
+				onlineVoteInputs = Object.fromEntries(
+					beastHeads.map((beast) => [beast.id, Number(data.ownVotes?.[beast.id] ?? 0)])
+				);
+				onlineInputsInitialized = true;
+			}
+		} catch (error) {
+			console.error('載入線上投票狀態錯誤:', error);
+			addNotification('載入投票狀態失敗，請檢查網路連接', 'error');
+		} finally {
+			isLoadingOnlineState = false;
+		}
+	}
+
+	function adjustOnlineVote(beastId: number, difference: number) {
+		if (!onlineState || onlineState.hasSubmitted || isSubmittingOnline) return;
+		const currentValue = onlineVoteInputs[beastId] ?? 0;
+		if (difference > 0 && onlineAllocated >= onlineAvailable) return;
+		onlineVoteInputs = {
+			...onlineVoteInputs,
+			[beastId]: Math.max(0, currentValue + difference)
+		};
+	}
+
+	function openOnlineConfirmation() {
+		if (!onlineCanSubmit) {
+			if (currentRound === 3 && onlineRemaining > 0) {
+				addNotification(`第三輪還有 ${onlineRemaining} 枚籌碼必須投出`, 'warning');
+			}
+			return;
+		}
+		showOnlineConfirmDialog = true;
+	}
+
+	async function submitOnlineVotes() {
+		if (!onlineState || isSubmittingOnline) return;
+		showOnlineConfirmDialog = false;
+		isSubmittingOnline = true;
+		try {
+			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/online-voting`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ votes: onlineVoteInputs })
+			});
+			const data = await response.json();
+			if (!response.ok) {
+				addNotification(data.message || '提交投票失敗', 'error');
+				return;
+			}
+
+			addNotification('投票已鎖定，無法修改', 'success');
+			if (data.completed && data.votingResult) {
+				onVotesSubmitted(data.votingResult);
+			} else {
+				await fetchOnlineVotingState();
+			}
+		} catch (error) {
+			console.error('提交線上投票錯誤:', error);
+			addNotification('提交投票失敗，請檢查網路連接', 'error');
+		} finally {
+			isSubmittingOnline = false;
+		}
+	}
+
+	const handleOnlineVotingProgress = () => {
+		void fetchOnlineVotingState();
+	};
+
+	onMount(() => {
+		if (!onlineVotingEnabled) return;
+		void fetchOnlineVotingState();
+		getSocket()?.on('online-voting-progress', handleOnlineVotingProgress);
+	});
+
+	onDestroy(() => {
+		getSocket()?.off('online-voting-progress', handleOnlineVotingProgress);
+	});
 </script>
 
-<div class="voting-panel">
-	<div class="skills-header">
-		<h4 class="action-subtitle">投票階段</h4>
-		<p class="skills-description">{isHost ? '請為每個獸首分配投票數' : '房主正在設定投票數'}</p>
-	</div>
+{#if onlineVotingEnabled}
+	<div class="online-voting-panel" aria-busy={isLoadingOnlineState || isSubmittingOnline}>
+		<div class="online-voting-heading">
+			<div>
+				<p class="round-kicker">投票階段</p>
+				<h4>把籌碼放到生肖下方</h4>
+			</div>
+			{#if onlineState}
+				<div class="submission-progress" aria-label="投票提交進度">
+					<strong>{onlineState.submittedPlayers.length}/{onlineState.totalPlayers}</strong>
+					<span>已提交</span>
+				</div>
+			{/if}
+		</div>
 
-	{#if isHost}
-		<div class="voting-section">
-			<div class="voting-grid">
-				{#each beastHeads as beast (beast.id)}
-					<div class="vote-input-row">
-						<label for="vote-{beast.id}" class="vote-label">
-							<span class="vote-beast-name">
-								{beast.animal}首
-							</span>
-						</label>
-						<input
-							id="vote-{beast.id}"
-							type="number"
-							min="0"
-							class="vote-input"
-							bind:value={voteInputs[beast.id]}
-							placeholder="0"
-							on:input={(e) => handleVoteInput(beast.id, e)}
-						/>
+		{#if isLoadingOnlineState && !onlineState}
+			<div class="online-loading" role="status">正在載入籌碼...</div>
+		{:else if onlineState}
+			<div class="chip-wallet">
+				<div class="wallet-stat">
+					<span>手中籌碼</span>
+					<strong>{onlineAvailable}</strong>
+				</div>
+				<div class="wallet-stat">
+					<span>已放上桌</span>
+					<strong>{onlineAllocated}</strong>
+				</div>
+				<div class="wallet-stat remaining">
+					<span>{currentRound === 3 ? '仍須投出' : '提交後保留'}</span>
+					<strong>{onlineRemaining}</strong>
+				</div>
+			</div>
+
+			<div class="submitted-colors" aria-label="已提交玩家">
+				<span class="submitted-label">提交狀態</span>
+				{#if onlineState.submittedPlayers.length === 0}
+					<span class="no-submissions">尚未有人提交</span>
+				{:else}
+					{#each onlineState.submittedPlayers as submitted (submitted.playerId)}
+						<span class="submitted-chip">
+							<span class="chip-dot" style:background={submitted.colorCode ?? '#6B7280'}></span>
+							{submitted.color ?? '未設定'}色已提交
+						</span>
+					{/each}
+				{/if}
+			</div>
+
+			<ArtifactDisplay
+				{beastHeads}
+				{identifiedArtifacts}
+				{failedIdentifications}
+				{blockedArtifacts}
+				{currentRound}
+				votingControls={{
+					allocations: onlineVoteInputs,
+					remaining: onlineRemaining,
+					playerColorCode: onlineState.playerColorCode ?? '#6B7280',
+					locked: onlineState.hasSubmitted || isSubmittingOnline,
+					onAdjust: adjustOnlineVote
+				}}
+			/>
+
+			{#if onlineState.hasSubmitted}
+				<div class="ballot-locked" role="status">
+					<strong>你的投票已鎖定</strong>
+					<span>等待其他玩家提交；全員完成前不會公開票數。</span>
+				</div>
+			{:else}
+				{#if currentRound === 3 && onlineRemaining > 0}
+					<p class="final-round-warning" role="alert">
+						第三輪必須再分配 {onlineRemaining} 枚籌碼才能提交。
+					</p>
+				{/if}
+				<button
+					type="button"
+					class="online-submit-btn"
+					disabled={!onlineCanSubmit}
+					on:click={openOnlineConfirmation}
+				>
+					{onlineAllocated === 0 ? '確認保留全部籌碼' : `確認提交 ${onlineAllocated} 枚籌碼`}
+				</button>
+			{/if}
+		{/if}
+	</div>
+{:else}
+	<div class="voting-panel">
+		<div class="skills-header">
+			<h4 class="action-subtitle">投票階段</h4>
+			<p class="skills-description">{isHost ? '請為每個獸首分配投票數' : '房主正在設定投票數'}</p>
+		</div>
+
+		{#if isHost}
+			<div class="voting-section">
+				<div class="voting-grid">
+					{#each beastHeads as beast (beast.id)}
+						<div class="vote-input-row">
+							<label for="vote-{beast.id}" class="vote-label">
+								<span class="vote-beast-name">
+									{beast.animal}首
+								</span>
+							</label>
+							<input
+								id="vote-{beast.id}"
+								type="number"
+								min="0"
+								class="vote-input"
+								bind:value={voteInputs[beast.id]}
+								placeholder="0"
+								on:input={(e) => handleVoteInput(beast.id, e)}
+							/>
+						</div>
+					{/each}
+				</div>
+				<button class="submit-votes-btn" on:click={showConfirmation}>
+					<span>提交投票結果</span>
+					<span class="btn-arrow">→</span>
+				</button>
+			</div>
+		{:else}
+			<div class="waiting-container">
+				<div class="waiting-content">
+					<div class="waiting-icon">
+						<svg
+							class="hourglass-icon"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M5 22h14" />
+							<path d="M5 2h14" />
+							<path
+								d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+							/>
+							<path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+						</svg>
 					</div>
-				{/each}
+					<h3 class="waiting-title">房主設定中</h3>
+					<div class="waiting-dots">
+						<span class="dot"></span>
+						<span class="dot"></span>
+						<span class="dot"></span>
+					</div>
+				</div>
 			</div>
-			<button class="submit-votes-btn" on:click={showConfirmation}>
-				<span>提交投票結果</span>
-				<span class="btn-arrow">→</span>
-			</button>
-		</div>
-	{:else}
-		<div class="waiting-container">
-			<div class="waiting-content">
-				<div class="waiting-icon">
-					<svg
-						class="hourglass-icon"
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
+		{/if}
+	</div>
+{/if}
+
+<Portal isOpen={showOnlineConfirmDialog}>
+	<div class="modal-overlay">
+		<div class="modal-container online-confirm-dialog">
+			<div class="confirm-dialog-content">
+				<h4>確認本輪投票</h4>
+				<div class="vote-summary">
+					{#each beastHeads.filter((beast) => (onlineVoteInputs[beast.id] ?? 0) > 0) as beast (beast.id)}
+						<div class="vote-summary-item">
+							<span class="summary-beast-name">{beast.animal}首</span>
+							<span class="summary-votes">{onlineVoteInputs[beast.id]} 枚</span>
+						</div>
+					{/each}
+					{#if onlineAllocated === 0}
+						<p class="zero-vote-copy">本輪不投籌碼，全部保留至下一輪。</p>
+					{/if}
+				</div>
+				<p class="modal-warning">提交後不可取消或修改。</p>
+				<div class="modal-actions">
+					<button class="secondary-btn" on:click={() => (showOnlineConfirmDialog = false)}
+						>取消</button
 					>
-						<path d="M5 22h14" />
-						<path d="M5 2h14" />
-						<path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
-						<path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
-					</svg>
-				</div>
-				<h3 class="waiting-title">房主設定中</h3>
-				<div class="waiting-dots">
-					<span class="dot"></span>
-					<span class="dot"></span>
-					<span class="dot"></span>
+					<button class="confirm-btn" on:click={submitOnlineVotes} disabled={isSubmittingOnline}>
+						{isSubmittingOnline ? '提交中...' : '確認並鎖定'}
+					</button>
 				</div>
 			</div>
 		</div>
-	{/if}
-</div>
+	</div>
+</Portal>
 
 <!-- 確認對話框 -->
 <Portal isOpen={showConfirmDialog}>
@@ -888,6 +1139,232 @@
 		.confirm-btn {
 			padding: 0.75rem 1rem;
 			font-size: 1rem;
+		}
+	}
+
+	.online-voting-panel {
+		--voting-text-strong: #f4eee3;
+		--voting-text-muted: #c5b9aa;
+		--voting-text-gold: #d6bc76;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		width: 100%;
+		padding: 0.25rem;
+		color: var(--voting-text-strong);
+		box-sizing: border-box;
+	}
+
+	.online-voting-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.round-kicker {
+		margin: 0 0 0.25rem;
+		color: var(--voting-text-gold);
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.online-voting-heading h4 {
+		margin: 0;
+		color: var(--voting-text-strong);
+		font-size: 1.25rem;
+		font-weight: 650;
+		letter-spacing: -0.015em;
+		text-shadow: 0 1px 12px rgba(13, 9, 6, 0.45);
+	}
+
+	.submission-progress {
+		display: flex;
+		align-items: baseline;
+		gap: 0.375rem;
+		padding: 0.5rem 0.75rem;
+		border: 1px solid rgba(214, 188, 118, 0.26);
+		border-radius: 999px;
+		background: rgba(197, 185, 170, 0.1);
+	}
+
+	.submission-progress strong,
+	.wallet-stat strong {
+		color: var(--voting-text-strong);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.submission-progress span {
+		color: var(--voting-text-muted);
+		font-size: 0.75rem;
+	}
+
+	.chip-wallet {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0;
+		border-block: 1px solid rgba(214, 188, 118, 0.2);
+	}
+
+	.wallet-stat {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.75rem 1rem;
+		border-right: 1px solid rgba(214, 188, 118, 0.2);
+	}
+
+	.wallet-stat:last-child {
+		border-right: 0;
+	}
+
+	.wallet-stat span {
+		color: var(--voting-text-muted);
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+
+	.wallet-stat strong {
+		font-size: 1.5rem;
+		line-height: 1;
+	}
+
+	.wallet-stat.remaining strong {
+		color: var(--voting-text-gold);
+	}
+
+	.submitted-colors {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		min-height: 2rem;
+	}
+
+	.submitted-label {
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: var(--voting-text-gold);
+	}
+
+	.no-submissions,
+	.submitted-chip {
+		font-size: 0.75rem;
+		color: var(--voting-text-muted);
+	}
+
+	.submitted-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.25rem 0.5rem;
+		border: 1px solid rgba(197, 185, 170, 0.24);
+		border-radius: 999px;
+	}
+
+	.chip-dot {
+		width: 0.75rem;
+		height: 0.75rem;
+		border: 1px solid rgba(255, 255, 255, 0.7);
+		border-radius: 50%;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+	}
+
+	.online-submit-btn:focus-visible {
+		outline: 3px solid hsl(var(--ring) / 0.55);
+		outline-offset: 2px;
+	}
+
+	.online-submit-btn {
+		min-height: 3rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid hsl(var(--secondary));
+		border-radius: var(--radius);
+		background: hsl(var(--secondary));
+		color: hsl(var(--secondary-foreground));
+		font-size: 1rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition:
+			opacity 180ms ease,
+			filter 180ms ease;
+	}
+
+	.online-submit-btn:hover:not(:disabled) {
+		filter: brightness(1.08);
+	}
+
+	.online-submit-btn:disabled {
+		opacity: 0.42;
+		cursor: not-allowed;
+	}
+
+	.ballot-locked,
+	.final-round-warning,
+	.online-loading {
+		padding: 0.875rem 1rem;
+		border-radius: var(--radius);
+		line-height: 1.5;
+	}
+
+	.ballot-locked {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		border: 1px solid hsl(var(--secondary) / 0.4);
+		background: hsl(var(--secondary) / 0.1);
+	}
+
+	.ballot-locked span,
+	.online-loading {
+		color: var(--voting-text-muted);
+	}
+
+	.final-round-warning {
+		margin: 0;
+		border: 1px solid rgba(251, 191, 36, 0.45);
+		background: rgba(251, 191, 36, 0.1);
+		color: #fcd34d;
+	}
+
+	.online-confirm-dialog h4 {
+		margin: 0 0 1rem;
+		color: #2d2419;
+		font-size: 1.25rem;
+	}
+
+	.zero-vote-copy {
+		margin: 0;
+		padding: 0.75rem;
+		border-radius: var(--radius);
+		background: rgba(109, 90, 68, 0.08);
+		color: #5a4935;
+		line-height: 1.5;
+	}
+
+	@media (max-width: 640px) {
+		.online-voting-panel {
+			padding: 0;
+		}
+
+		.chip-wallet {
+			gap: 0.375rem;
+		}
+
+		.wallet-stat {
+			padding: 0.625rem;
+		}
+
+		.wallet-stat strong {
+			font-size: 1.25rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.online-submit-btn {
+			transition: none;
 		}
 	}
 </style>

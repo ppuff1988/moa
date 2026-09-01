@@ -114,7 +114,6 @@ export const POST: RequestHandler = async (event) => {
 		io.to(game.roomName).emit('player-locked', {
 			playerId: player.id,
 			userId: player.userId,
-			roleId,
 			color,
 			colorCode,
 			isReady: true

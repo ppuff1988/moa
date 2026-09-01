@@ -101,81 +101,18 @@ release/* (發布分支，可選)
 
 以下說明與實際 workflow 檔案對應：
 
-- `CI Test` → `.github/workflows/ci-test.yml`
-- `Auto Merge Hotfix` → `.github/workflows/auto-merge-hotfix.yml`
-- `Auto Merge to Dev` → `.github/workflows/auto-merge-dev.yml`
-- `Auto Version Bump` → `.github/workflows/auto-version.yml`
-- `CI Release` → `.github/workflows/ci-release.yml`
-- `CD` → `.github/workflows/cd.yml`
+- `CI Test`：PR 的 lint、型別、單元、API 與 Playwright smoke 測試。完整 8 人三回合 E2E 不在每次 CI 執行。
+- `Auto Merge to Dev`：確認 CI SHA 與無 finding 的 Codex Review 都對應目前 PR SHA。一般 PR 使用 squash；`main → dev` 使用 Merge commit。
+- `Prepare Release`：只接受 repository owner 從受保護的 `main` 手動執行，把 `auto`／`patch`／`minor`／`major` 保存為帶有 `release-request` 標籤的 Issue，再喚醒版本協調器。請求會綁定原始 workflow run，且不依賴 Actions pending run，因此不會在 concurrency 取代 pending run 時遺失。
+- `Auto Version Bump`：是唯一的版本協調器。PR lifecycle 使用 `pull_request_target`，讓具寫入權限的 PAT 只由 base branch 上的可信 workflow 定義存取；只有 repository owner 建立、來自同一 repository 且非 draft 的 Hotfix 能進入佇列。Hotfix 程式碼不會 checkout 或執行：main 合併交由 GitHub server-side API，版本更新只解析固定 SHA 的 `package.json`／`package-lock.json`，建立僅替換這兩個 blob 的 commit，並以禁止 force 的 ref update 防止 race。Release 則只 checkout 受保護的 `dev` 固定 SHA，使用隔離 npm 設定及 `--ignore-scripts`。每次都從 repository state 重建佇列，ready Hotfix 可搶占進行中的 Release PR；協調器會先驗證完整信任鏈、重新開啟原 durable request，再關閉 PR 並移除舊 Release branch。否則處理最早且能驗證 owner、`main` 與原始 workflow run 的 Release request；確認 `dev` 已包含最新 `main` 且來源 SHA 未變後，才配置版本並建立 `release/vX.Y.Z` PR。版本協調器會先在 request Issue 留下精確的 Release commit SHA，再建立 PR 與完成標記；中斷恢復時也只接受同一個 SHA。
+- `Auto Merge Release`／`Auto Merge Hotfix`：在目前 SHA 通過 CI 與 Codex Review 後，以 automation PAT 啟用 Merge commit 合併到 `main`，確保 merge 產生的 main push／PR closed 仍會觸發 CI Release、main → dev 同步與下一輪版本協調。Release PR 另須由 repository owner 在本 repository 建立，並同時通過 workflow run、request Issue、準備 commit SHA 與完成標記驗證。
+- `Sync Main to Dev`：版本 PR 合併後建立同步 PR；仍需通過 CI 與 Codex gate，不會在建立時直接啟用 auto-merge。
+- `CI Release`：從已合併 PR 重建未完成發布佇列，固定 merge commit 建置版本化 image、驗證 tag、等待部署，再建立 GitHub Release 作為完成標記。若較舊候選持續失敗而後續 Hotfix 已合併，只有在 GitHub 證明 Hotfix commit 包含所有較舊候選、且版本嚴格遞增時，Hotfix 才能 supersede 它們並先救援 production；Hotfix 發布完成後，舊版本由正式版水位自然退出佇列。
+- `CD`：可由 CI Release 呼叫，或從 `main` 手動指定已發布版本。tag、package 版本、完整 SHA、遠端 checkout 與 App／Worker image 必須一致；每次部署重試前都會重傳本次目標 `.env`，避免前一次 rollback 設定讓舊版被誤報為部署成功。
 
-### CI Test
+Ruleset 另外要求 PR、`lint`、`test-api` 與 conversation resolution。Workflow gate 同時綁定 CI 的 head SHA、base SHA 與 base ref；Codex 等待期間若 PR 關閉、轉為 draft、被 retarget，或任一 SHA 改變，都必須停止或重新執行 CI／Review，也不接受 `mergeable_state: unstable`。自動合併 concurrency 使用 PR number（沒有關聯 PR 時才退回 run ID），避免不同 fork 或不同目標的同名分支互相取消。
 
-- 觸發條件:
-  - pull_request 到 `dev` 或 `main`
-  - push 到 `dev`
-- 內容：lint、型別檢查、啟動測試 DB → 建置 → 啟動測試伺服器 → API 測試
-- 注意：PR 或 commit 訊息若包含 `[skip ci]` 或 `[ci skip]`，GitHub 會跳過 CI
-
-### Auto-merge Dev Workflow（自動合併到 dev）
-
-- 觸發條件：`workflow_run` of `CI Test`，且事件來源為 `pull_request`
-- 合併條件（由 workflow 判斷）：
-  - PR 目標分支為 `dev`
-  - PR 非 draft
-  - PR `mergeable_state` 為 `clean` 或 `unstable`（可合併）
-- 行為：
-  - 直接 `squash` 合併到 `dev`
-  - 嘗試刪除來源分支（排除保護分支，如 `main`、`dev`）
-  - 若發現 `mergeable_state: dirty`（衝突），會建立補救 PR 並加上 `merge-conflict` 標籤
-- 備註：審核人數、必須通過的檢查等「規則」建議由 Branch protection 管理，本 workflow 不另行強制檢查審核數
-
-### Auto-merge Hotfix Workflow（緊急修復）
-
-- 觸發條件：`workflow_run` of `CI Test`，且事件來源為 `pull_request`
-- 合併條件：
-  - PR 來源分支以 `hotfix/` 開頭
-  - PR 目標分支為 `main`
-  - PR 非 draft
-  - PR `mergeable_state` 為 `clean` 或 `unstable`
-- 行為：
-  - 自動 `squash` 合併到 `main`
-  - 自動建立同步到 `dev` 的 PR，並加入 `hotfix`、`auto-sync` 標籤
-  - 若同步 PR 建立失敗且顯示已存在（422），會嘗試刪除 `hotfix/*` 分支
-
-### Auto-version Workflow（自動升版）
-
-- 觸發條件：
-  - PR 關閉（closed）且已合併，目標為 `main`
-  - 或 `Auto Merge Hotfix` 完成（`workflow_run` 成功）
-- 行為：
-  - 分析自上個 tag 以來的 commit 訊息（遵循 Conventional Commits）
-  - 決定 `major` / `minor` / `patch`，以 `npm version` 升版（不打 tag）
-  - 建立升版 commit（不包含 `[skip ci]`），push 到 `main`
-  - 建立並 push tag（`vX.Y.Z`）
-  - 將升版 commit cherry-pick 同步到 `dev`（從 `main` 的釋出 commit 取 SHA 再切 `dev` cherry-pick）
-- 備註：若沒有符合規則的 commit，會跳過升版
-
-### CI Release（建置與發布）
-
-- 觸發條件：
-  - push 到 `main`（注意：若由 GITHUB_TOKEN 觸發，GitHub 可能不再連鎖觸發其他 workflow）
-  - 或 `Auto Version Bump` 完成（`workflow_run`）
-  - 或手動觸發（`workflow_dispatch`）
-- 行為：
-  - 讀取 `package.json` 版本，建置並推送 Docker 映像（`latest`、`vX.Y.Z`、`${{ github.sha }}`）
-  - 若檢查到該版本 tag 尚未存在，建立 git tag 並 push
-  - 產生 Release Notes（從上一個版本 tag 至 HEAD 的 commits）並建立 GitHub Release
-  - 發送 Telegram 通知
-
-### CD（部署到生產環境）
-
-- 觸發條件：
-  - `workflow_run` of `CI Release` 完成且來源分支為 `main`
-  - 或手動觸發（`workflow_dispatch`）
-- 行為：
-  - 以 SSH 方式登入目標主機，更新 `.env` 後執行 `deploy-prod.sh`
-  - 進行健康檢查（`/api/health`）
-  - 成功或失敗皆會發送 Telegram 通知
+發布與部署採狀態重建而非把 concurrency 當 FIFO。GitHub 若取代 pending event，後續 scanner 仍會找到最舊的未完成版本；`main → dev` 合併使用 automation PAT，讓同步後的 `dev` push 能重新喚醒等待中的版本請求。migration 執行期間保留舊服務；部署會在 pull 新 image 前以運行中容器的 immutable image ID 建立 rollback tag。服務切換開始後的任何錯誤（包含 `compose up` 部分失敗）都會立即嘗試主動 rollback；所有部署失敗也會把 `.env` 的 App／Worker image 持久化回 rollback tag 並保留該 tag，避免後續 `compose up` 再次啟動失敗版本。只有部署成功才清除 rollback tag。migration 必須保持向後相容。
 
 ## 📝 Commit 訊息規範
 
@@ -220,13 +157,12 @@ release/* (發布分支，可選)
 
 推薦標準流程：
 
-1. 從 `dev`（或 `release/*`）建立 PR 到 `main`
-2. 等待 CI 通過與審核
-3. 合併到 `main`
+1. 在 `Prepare Release` 選擇 `auto`（或明確 major/minor/patch），系統會建立可追蹤的 Release request Issue
+2. 等待版本協調器依序建立 `release/vX.Y.Z` PR，以及該 PR 的 CI 與 Codex Review 通過
+3. 以 Merge commit 合併到 `main`
 4. 自動化鏈：
-   - Auto-version 分析 commits → 升版 → 建立 tag → 同步到 `dev`
-   - CI Release 建置/推送 Docker、（如需）建立 tag 與 GitHub Release
-   - CD 自動部署到生產
+   - CI Release 建置版本 image → 驗證 tag → 呼叫 CD → 建立 GitHub Release
+   - Sync Main to Dev 建立同步 PR，經 CI／Codex gate 後 Merge 回 `dev`
 
 ## 🔧 前置設定與注意事項
 
@@ -235,15 +171,13 @@ release/* (發布分支，可選)
   - 勾選「Read and write permissions」，並建議勾選「Allow GitHub Actions to create and approve pull requests」
 - Secrets/Variables：
   - Docker：`DOCKER_USERNAME`、`DOCKER_PASSWORD`
-  - 部署：`DEPLOY_HOST`（Secret/Var 視情況）、`DEPLOY_SSH_KEY`（Secret）、`DEPLOY_USER`（Var）、`DEPLOY_PORT`（Var，預設 22）、`DEPLOY_PATH`（Var）、`DEPLOY_URL`（Var）
+  - 部署：`DEPLOY_HOST`、`DEPLOY_SSH_KEY`、`DEPLOY_SSH_KNOWN_HOSTS`（Secrets），以及 `DEPLOY_USER`、`DEPLOY_PATH`、`DEPLOY_URL`（Variables）
   - App：`DATABASE_URL`（Secret）、`JWT_SECRET`（Secret）、`POSTGRES_*`（Var/Secret）、`PUBLIC_GTM_ID`（Var）
   - 通知：`TELEGRAM_BOT_TOKEN`（Secret）、`TELEGRAM_CHAT_ID`（Secret）
-- 關於 GITHUB_TOKEN：
-  - 由 workflow 以 GITHUB_TOKEN 觸發的 push 事件，預設不一定會再觸發其他 workflows
-  - 本專案已透過 `workflow_run` 串接 Auto-version → CI Release → CD，以避免鏈條中斷
+- 自動建立分支／PR 與自我 dispatch 使用 `PAT`，確保後續 workflow 會被觸發
 - 避免使用 `[skip ci]` / `[ci skip]`：
   - 這會讓 PR 的 `CI Test` 不執行，導致 `auto-merge-dev` 不會啟動
 
 ---
 
-最後更新: 2025-10-16
+最後更新: 2026-09-01

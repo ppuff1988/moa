@@ -25,6 +25,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const { game } = verifyResult;
+		if (game.onlineVotingEnabled) {
+			return json({ message: '線上投票房間必須由所有玩家自行提交籌碼' }, { status: 400 });
+		}
 		const body = await request.json();
 		const votes = body.votes as Record<string, unknown> | undefined;
 

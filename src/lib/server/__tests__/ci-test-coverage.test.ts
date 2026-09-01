@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('CI test coverage', () => {
 	const root = process.cwd();
 	const workflow = readFileSync(resolve(root, '.github/workflows/ci-test.yml'), 'utf8');
+	const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
 	const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
 		engines: { npm: string };
 		scripts: Record<string, string>;
@@ -18,12 +19,17 @@ describe('CI test coverage', () => {
 		expect(jobSections).toHaveLength(3);
 
 		for (const section of jobSections) {
-			const installVersion = section.indexOf('run: npm install --global npm@${NPM_VERSION}');
+			const installVersion = section.indexOf('run: npm install --global "npm@${NPM_VERSION}"');
 			const installDependencies = section.indexOf('run: npm ci');
 
 			expect(installVersion).toBeGreaterThan(-1);
 			expect(installVersion).toBeLessThan(installDependencies);
 		}
+	});
+	it('README CI badge 指向現有的 CI Test workflow', () => {
+		expect(readme).toContain('actions/workflows/ci-test.yml/badge.svg');
+		expect(readme).toContain('actions/workflows/ci-test.yml)');
+		expect(readme).not.toContain('actions/workflows/ci.yml');
 	});
 
 	it('以不連資料庫的獨立設定執行 unit tests', () => {
@@ -34,9 +40,17 @@ describe('CI test coverage', () => {
 
 		const unitConfig = readFileSync(unitConfigPath, 'utf8');
 		expect(unitConfig).toContain("include: ['src/lib/**/*.{test,spec}.{js,ts}']");
+		expect(unitConfig).toContain(
+			"exclude: ['node_modules/**/*', 'src/**/*.svelte.{test,spec}.{js,ts}']"
+		);
 		expect(unitConfig).not.toContain('setupFiles');
 		expect(workflow).toMatch(/^ {2}test-unit:$/m);
 		expect(workflow).toContain('run: npm run test:unit -- --run');
+	});
+
+	it('CI 另外執行 browser component tests', () => {
+		expect(workflow).toContain('run: npx playwright install --with-deps chromium');
+		expect(workflow).toContain('run: npx vitest --config vitest.config.ts --project client --run');
 	});
 
 	it('PR CI 只執行短 smoke E2E，不執行 8 人完整 game-flow', () => {

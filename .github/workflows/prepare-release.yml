@@ -1,0 +1,101 @@
+name: Prepare Release
+run-name: Queue ${{ inputs.bump }} release from dev by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment; auto follows Conventional Commits
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  enqueue:
+    name: 記錄 Release 請求
+    runs-on: ubuntu-latest
+    steps:
+      - name: 保存請求並喚醒版本協調器
+        uses: actions/github-script@v8
+        env:
+          REQUESTED_BUMP: ${{ inputs.bump }}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            if (context.ref !== 'refs/heads/main') {
+              throw new Error('Prepare Release 只能從受保護的 main workflow 執行');
+            }
+            if (context.actor !== context.repo.owner) {
+              throw new Error(`只有 repository owner @${context.repo.owner} 可以建立 Release request`);
+            }
+
+            const allowedBumps = new Set(['auto', 'patch', 'minor', 'major']);
+            const bump = process.env.REQUESTED_BUMP;
+            if (!allowedBumps.has(bump)) throw new Error(`不支援的版本增量: ${bump}`);
+
+            const label = 'release-request';
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+                color: 'b68b2c',
+                description: 'Durable request for the release version coordinator'
+              });
+            }
+
+            const marker = `<!-- moa-release-request bump=${bump} run_id=${context.runId} -->`;
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              labels: label,
+              per_page: 100
+            });
+            let request = existingIssues.find(
+              (issue) => !issue.pull_request && (issue.body || '').includes(marker)
+            );
+
+            if (!request) {
+              const { data } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Release request: ${bump} (${context.runId})`,
+                body: [
+                  marker,
+                  '## Release request',
+                  '',
+                  `- Bump: \`${bump}\``,
+                  `- Requested by: @${context.actor}`,
+                  `- Workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                  '',
+                  '此 Issue 是版本配置佇列的持久化項目；建立 Release PR 後會自動關閉。'
+                ].join('\n'),
+                labels: ['release-request']
+              });
+              request = data;
+            }
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'auto-version.yml',
+              ref: 'main'
+            });
+            core.notice(`Release request #${request.number} 已保存並排入版本佇列`);

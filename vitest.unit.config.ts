@@ -7,7 +7,7 @@ export default defineConfig({
 		globals: true,
 		environment: 'node',
 		include: ['src/lib/**/*.{test,spec}.{js,ts}'],
-		exclude: ['node_modules/**/*'],
+		exclude: ['node_modules/**/*', 'src/**/*.svelte.{test,spec}.{js,ts}'],
 		env: {
 			NODE_ENV: 'test',
 			JWT_SECRET: process.env.JWT_SECRET

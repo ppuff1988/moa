@@ -3,8 +3,11 @@ name: Auto Merge Hotfix
 on:
   workflow_run:
     workflows: ['CI Test']
-    types:
-      - completed
+    types: [completed]
+
+concurrency:
+  group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
 
 jobs:
   auto-merge-hotfix:
@@ -13,125 +16,242 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    # 只在以下條件時執行：
-    # 1. CI Test 成功
-    # 2. 是 PR 事件（不是 push）
-    # 3. 分支是 hotfix/**
+      statuses: write
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
       startsWith(github.event.workflow_run.head_branch, 'hotfix/')
-
     steps:
-      - uses: actions/github-script@v8
+      - name: 等待版本、Codex Review 並啟用 Hotfix 自動合併
+        uses: actions/github-script@v8
         with:
+          # PAT 讓 Hotfix merge 產生的 main push／PR closed 能觸發
+          # CI Release、main → dev 同步與下一輪版本協調。
           github-token: ${{ secrets.PAT }}
           script: |
-            const associatedPRs = context.payload.workflow_run.pull_requests;
+            const CODEX_BOT = 'chatgpt-codex-connector[bot]';
+            const CODEX_SUMMARY_MARKER = 'codex-pull-request-review-summary';
+            const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-            if (!associatedPRs || associatedPRs.length === 0) {
-              console.log('ℹ️ 此 workflow run 沒有關聯的 PR');
-              return;
+            async function setCodexStatus(sha, state, description) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state,
+                context: 'codex-review',
+                description,
+                target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/commit/${sha}`
+              });
             }
 
+            async function getPackageVersion(ref) {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: 'package.json',
+                ref
+              });
+              return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')).version;
+            }
+
+            async function waitForCodexReview(pr) {
+              const shortSha = pr.head.sha.slice(0, 7);
+              const maxAttempts = 30;
+              await setCodexStatus(pr.head.sha, 'pending', `等待 Codex Review (${shortSha})`);
+
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                const [issueComments, reviews, reviewComments] = await Promise.all([
+                  github.paginate(github.rest.issues.listComments, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    per_page: 100
+                  }),
+                  github.paginate(github.rest.pulls.listReviews, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    per_page: 100
+                  }),
+                  github.paginate(github.rest.pulls.listReviewComments, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    per_page: 100
+                  })
+                ]);
+
+                const currentReviews = reviews.filter(
+                  (review) => review.user?.login === CODEX_BOT && review.commit_id === pr.head.sha
+                );
+                const currentReviewIds = new Set(currentReviews.map((review) => review.id));
+                const findings = reviewComments.filter(
+                  (comment) =>
+                    comment.user?.login === CODEX_BOT &&
+                    currentReviewIds.has(comment.pull_request_review_id)
+                );
+                const completedSummary = issueComments.some((comment) => {
+                  const body = comment.body || '';
+                  return (
+                    comment.user?.login === CODEX_BOT &&
+                    body.includes(CODEX_SUMMARY_MARKER) &&
+                    body.includes('✅ **Completed**') &&
+                    body.includes(`\`${shortSha}\``)
+                  );
+                });
+
+                if (findings.length > 0) {
+                  await setCodexStatus(pr.head.sha, 'failure', `Codex 發現 ${findings.length} 個問題`);
+                  throw new Error(`Codex Review 在 commit ${shortSha} 發現問題，停止自動合併`);
+                }
+                if (completedSummary) {
+                  await setCodexStatus(pr.head.sha, 'success', `Codex Review 通過 (${shortSha})`);
+                  return;
+                }
+
+                core.info(`等待 Codex Review (${attempt}/${maxAttempts})，commit ${shortSha}`);
+                if (attempt < maxAttempts) await sleep(20_000);
+              }
+
+              await setCodexStatus(pr.head.sha, 'failure', `等待 Codex Review 逾時 (${shortSha})`);
+              throw new Error(`等待 Codex Review 逾時，停止自動合併 commit ${shortSha}`);
+            }
+
+            async function getHotfixQueue() {
+              const openPulls = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                base: 'main',
+                per_page: 100
+              });
+              return openPulls
+                .filter(
+                  (pull) =>
+                    !pull.draft &&
+                    pull.head.ref.startsWith('hotfix/') &&
+                    pull.head.repo?.full_name === context.payload.repository.full_name &&
+                    pull.author_association === 'OWNER' &&
+                    pull.user?.login === context.repo.owner
+                )
+                .sort((left, right) => left.number - right.number);
+            }
+
+            const associatedPRs = context.payload.workflow_run.pull_requests || [];
             for (const associatedPR of associatedPRs) {
-              // 獲取完整的 PR 資訊
-              const { data: pr } = await github.rest.pulls.get({
+              let { data: pr } = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: associatedPR.number
               });
 
-              // 只處理本 repository 的 hotfix 分支且目標是 main 的 PR
               if (
                 !pr.head.ref.startsWith('hotfix/') ||
                 pr.base.ref !== 'main' ||
                 pr.draft ||
-                pr.head.repo.full_name !== context.payload.repository.full_name
+                pr.author_association !== 'OWNER' ||
+                pr.user?.login !== context.repo.owner
+              ) continue;
+
+              if (pr.head.sha !== context.payload.workflow_run.head_sha) {
+                throw new Error(
+                  `Hotfix PR #${pr.number} 的目前 commit 並非觸發此流程的 CI commit`
+                );
+              }
+              if (
+                pr.base.sha !== associatedPR.base.sha ||
+                pr.base.ref !== associatedPR.base.ref
               ) {
-                console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (同 repository hotfix/* → main, 非 draft)`);
+                throw new Error(
+                  `Hotfix PR #${pr.number} 的 base 已在 CI 後改變，必須以新 base 重新執行 CI`
+                );
+              }
+
+              const hotfixPulls = await getHotfixQueue();
+              const queueHead = hotfixPulls[0];
+              if (!queueHead || queueHead.number !== pr.number) {
+                core.notice(`Hotfix PR #${pr.number} 尚未輪到，等待前面的 Hotfix 完成`);
                 continue;
               }
 
-              const sourceBranch = pr.head.ref;
-              const targetBranch = pr.base.ref;
+              const [baseVersion, headVersion] = await Promise.all([
+                getPackageVersion(pr.base.sha),
+                getPackageVersion(pr.head.sha)
+              ]);
 
-              console.log(`🚨 處理 HOTFIX PR #${pr.number}: ${sourceBranch} → ${targetBranch}`);
-
-              if (pr.mergeable_state === 'clean' || pr.mergeable_state === 'unstable') {
-                // 合併到 main (加上 fix: 前綴以觸發 auto version bump)
-                await github.rest.pulls.merge({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: pr.number,
-                  merge_method: 'squash',
-                  commit_title: `fix: 🚨 [HOTFIX] ${pr.title}`,
-                  commit_message: `緊急修復 - 原始 PR #${pr.number}\n\n${pr.body || ''}`
-                });
-
-                console.log(`🚨 HOTFIX PR #${pr.number} 已自動合併到 main (含 fix: 前綴)`);
-                console.log('ℹ️ 將觸發 Auto Version Bump → Sync Main to Dev 流程');
-
-                // 立即刪除 hotfix 分支
-                try {
-                  await github.rest.git.deleteRef({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    ref: `heads/${sourceBranch}`
-                  });
-                  console.log(`🗑️ 已刪除 hotfix 分支: ${sourceBranch}`);
-                } catch (delError) {
-                  console.log(`⚠️ 刪除分支失敗: ${delError.message}`);
-                }
-              } else if (pr.mergeable_state === 'dirty') {
-                console.log(`❌ HOTFIX PR #${pr.number} 有衝突，需要手動處理`);
-
-                // 加上 label 提醒
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  labels: ['hotfix', 'merge-conflict', 'needs-attention']
-                });
-
-                // 留言通知
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  body: '🚨 **HOTFIX 自動合併失敗**\n\n此 PR 存在合併衝突，請立即手動處理。'
-                });
-              } else {
-                console.log(`⏳ HOTFIX PR #${pr.number} 狀態: ${pr.mergeable_state}，等待就緒`);
+              if (headVersion === baseVersion) {
+                core.notice(`Hotfix PR #${pr.number} 尚未完成版本 bump，等待下一次 CI`);
+                continue;
               }
+
+              const [major, minor, patch] = baseVersion.split('.').map(Number);
+              const expectedVersion = [major, minor, patch + 1].join('.');
+              if (headVersion !== expectedVersion) {
+                throw new Error(
+                  `Hotfix PR #${pr.number} 版本應為 v${expectedVersion}，目前為 v${headVersion}`
+                );
+              }
+
+              const reviewedSha = pr.head.sha;
+              const reviewedBaseSha = pr.base.sha;
+              const reviewedBaseRef = pr.base.ref;
+              await waitForCodexReview(pr);
+
+              ({ data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              }));
+
+              if (pr.head.sha !== reviewedSha) {
+                throw new Error('PR 在 Codex Review 期間有新 commit，必須重新執行 CI 與 Review');
+              }
+              if (pr.state !== 'open' || pr.draft) {
+                throw new Error('PR 在 Codex Review 期間已關閉或轉為 draft，停止自動合併');
+              }
+              if (pr.base.sha !== reviewedBaseSha || pr.base.ref !== reviewedBaseRef) {
+                throw new Error('PR 在 Codex Review 期間 base 已改變，必須重新執行 CI 與 Review');
+              }
+              const refreshedQueueHead = (await getHotfixQueue())[0];
+              if (!refreshedQueueHead || refreshedQueueHead.number !== pr.number) {
+                throw new Error(`Hotfix PR #${pr.number} 在 Codex Review 後已不是版本佇列首項`);
+              }
+              if (pr.mergeable_state === 'dirty') {
+                throw new Error(`Hotfix PR #${pr.number} 有合併衝突`);
+              }
+
+              await github.graphql(`
+                mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: $mergeMethod
+                  }) {
+                    pullRequest { number }
+                  }
+                }
+              `, {
+                pullRequestId: pr.node_id,
+                mergeMethod: 'MERGE'
+              });
+
+              core.notice(`Hotfix PR #${pr.number} 已啟用 Merge commit 自動合併`);
             }
 
   notify:
-    name: Hotfix 合併通知
+    name: Hotfix 自動合併通知
     runs-on: ubuntu-latest
     needs: auto-merge-hotfix
-    # 只在 auto-merge-hotfix 實際執行時才通知（不包括被跳過的情況）
-    # Hotfix 是緊急修復，成功和失敗都要通知
-    if: |
-      always() &&
-      needs.auto-merge-hotfix.result != 'skipped' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      startsWith(github.event.workflow_run.head_branch, 'hotfix/')
+    if: always() && needs.auto-merge-hotfix.result != 'skipped'
     steps:
-      - name: 📣 發送 Hotfix 合併通知
-        uses: appleboy/telegram-action@master
+      - uses: appleboy/telegram-action@214f06cfa3d3a588c1472116889437e7c6fd29b1 # v1.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           format: markdown
           message: |
-            ${{ needs.auto-merge-hotfix.result == 'success' && '🚨 *Hotfix 自動合併成功*' || '❌ *Hotfix 自動合併失敗*' }}
+            ${{ needs.auto-merge-hotfix.result == 'success' && '🚨 *Hotfix 已通過自動合併檢查*' || '❌ *Hotfix 自動合併失敗*' }}
 
             *專案:* `${{ github.repository }}`
             *分支:* `${{ github.event.workflow_run.head_branch }} → main`
-            *觸發者:* `${{ github.event.workflow_run.actor.login }}`
-
-            ${{ needs.auto-merge-hotfix.result == 'success' && '✅ Hotfix 已合併到 main 並刪除分支
-            🔄 已觸發 sync-main-to-dev workflow' || '⚠️ 緊急修復合併失敗，請立即手動處理' }}
-
             [查看詳情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

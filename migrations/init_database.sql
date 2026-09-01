@@ -12,6 +12,8 @@
 -- 第一部分：清理現有表
 -- ==========================================
 DROP TABLE IF EXISTS identification_votes CASCADE;
+DROP TABLE IF EXISTS artifact_vote_allocations CASCADE;
+DROP TABLE IF EXISTS game_vote_submissions CASCADE;
 DROP TABLE IF EXISTS game_actions CASCADE;
 DROP TABLE IF EXISTS game_rounds CASCADE;
 DROP TABLE IF EXISTS game_artifacts CASCADE;
@@ -85,6 +87,8 @@ CREATE TABLE games (
     room_password TEXT NOT NULL,
     host_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'selecting', 'playing', 'finished', 'terminated')),
+    auto_assign_roles_and_colors BOOLEAN NOT NULL DEFAULT FALSE,
+    online_voting_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     player_count INTEGER NOT NULL DEFAULT 0 CHECK (player_count >= 0 AND player_count <= 8),
     total_score INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -169,7 +173,30 @@ CREATE TABLE game_rounds (
 CREATE INDEX game_rounds_game_id_idx ON game_rounds(game_id);
 CREATE INDEX game_rounds_phase_idx ON game_rounds(game_id, phase);
 
--- 10. 遊戲行動表
+-- 10. 線上投票提交記錄
+CREATE TABLE game_vote_submissions (
+    id SERIAL PRIMARY KEY,
+    game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    round_id INTEGER NOT NULL REFERENCES game_rounds(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+    submitted_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(round_id, player_id)
+);
+
+CREATE INDEX game_vote_submissions_game_round_idx ON game_vote_submissions(game_id, round_id);
+
+-- 11. 線上投票籌碼明細
+CREATE TABLE artifact_vote_allocations (
+    id SERIAL PRIMARY KEY,
+    submission_id INTEGER NOT NULL REFERENCES game_vote_submissions(id) ON DELETE CASCADE,
+    artifact_id INTEGER NOT NULL REFERENCES game_artifacts(id) ON DELETE CASCADE,
+    chip_count INTEGER NOT NULL CHECK (chip_count > 0),
+    UNIQUE(submission_id, artifact_id)
+);
+
+CREATE INDEX artifact_vote_allocations_artifact_idx ON artifact_vote_allocations(artifact_id);
+
+-- 12. 遊戲行動表
 CREATE TABLE game_actions (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -184,7 +211,7 @@ CREATE INDEX game_actions_round_order_idx ON game_actions(round_id, ordering);
 CREATE INDEX game_actions_player_idx ON game_actions(player_id);
 CREATE INDEX game_actions_game_id_idx ON game_actions(game_id);
 
--- 11. 鑑人階段投票記錄
+-- 13. 鑑人階段投票記錄
 CREATE TABLE identification_votes (
     id SERIAL PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,

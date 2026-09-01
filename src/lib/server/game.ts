@@ -10,6 +10,7 @@ import {
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { getNextRoundStarter } from './game-turn-order';
+import { COLOR_MAP, VALID_COLORS } from './constants';
 
 // 遊戲角色配置
 export const GAME_ROLES = {
@@ -18,14 +19,53 @@ export const GAME_ROLES = {
 		bad: ['老朝奉', '藥不然']
 	},
 	7: {
-		good: ['許愿', '黃煙煙', '方震', '木戶加奈', '姬云浮'],
-		bad: ['老朝奉', '藥不然']
+		good: ['許愿', '黃煙煙', '方震', '木戶加奈'],
+		bad: ['老朝奉', '鄭國渠', '藥不然']
 	},
 	8: {
 		good: ['許愿', '黃煙煙', '方震', '木戶加奈', '姬云浮'],
 		bad: ['老朝奉', '鄭國渠', '藥不然']
 	}
 };
+
+function shuffle<T>(items: readonly T[], random: () => number): T[] {
+	const shuffled = [...items];
+	for (let index = shuffled.length - 1; index > 0; index--) {
+		const swapIndex = Math.floor(random() * (index + 1));
+		[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+	}
+	return shuffled;
+}
+
+export function createRandomAssignments(
+	playerIds: number[],
+	availableRoles: Array<{ id: number; name: string }>,
+	random: () => number = Math.random
+) {
+	const roleConfiguration = GAME_ROLES[playerIds.length as keyof typeof GAME_ROLES];
+	if (!roleConfiguration) {
+		throw new Error('玩家人數必須為 6-8 人');
+	}
+
+	const roleByName = new Map(availableRoles.map((role) => [role.name, role.id]));
+	const roleIds = [...roleConfiguration.good, ...roleConfiguration.bad].map((roleName) => {
+		const roleId = roleByName.get(roleName);
+		if (!roleId) {
+			throw new Error(`找不到角色：${roleName}`);
+		}
+		return roleId;
+	});
+
+	const shuffledRoleIds = shuffle(roleIds, random);
+	const shuffledColors = shuffle(VALID_COLORS, random);
+
+	return playerIds.map((playerId, index) => ({
+		playerId,
+		roleId: shuffledRoleIds[index],
+		color: shuffledColors[index],
+		colorCode: COLOR_MAP[shuffledColors[index]]
+	}));
+}
 
 // 十二生肖獸首
 export const ZODIAC_ANIMALS = [
@@ -65,7 +105,13 @@ export async function generateUniqueRoomName(): Promise<string> {
 }
 
 // 創建遊戲
-export async function createGame(roomName: string, roomPassword: string, hostId: number) {
+export async function createGame(
+	roomName: string,
+	roomPassword: string,
+	hostId: number,
+	autoAssignRolesAndColors: boolean = false,
+	onlineVotingEnabled: boolean = false
+) {
 	// 檢查房間名稱是否已存在
 	const existingGame = await db
 		.select()
@@ -85,6 +131,8 @@ export async function createGame(roomName: string, roomPassword: string, hostId:
 			roomPassword,
 			hostId,
 			status: 'waiting',
+			autoAssignRolesAndColors,
+			onlineVotingEnabled,
 			playerCount: 0,
 			totalScore: 0
 		})
@@ -189,7 +237,7 @@ export async function getGameState(gameId: string) {
 
 	return {
 		game,
-		players
+		players: players.map((player) => ({ ...player, roleId: null }))
 	};
 }
 
@@ -394,6 +442,126 @@ export async function startGame(gameId: string) {
 	}
 
 	return { gameId, roundId: round.id };
+}
+
+export async function startAutoAssignedGame(gameId: string) {
+	const result = await db.transaction(async (tx) => {
+		await tx.execute(
+			sql`SELECT ${games.id} FROM ${games} WHERE ${games.id} = ${gameId} FOR UPDATE`
+		);
+
+		const [game] = await tx.select().from(games).where(eq(games.id, gameId)).limit(1);
+		if (!game) {
+			throw new Error('遊戲不存在');
+		}
+		if (!game.autoAssignRolesAndColors) {
+			throw new Error('此房間不是自動分派模式');
+		}
+		if (game.status !== 'waiting') {
+			throw new Error('遊戲已經開始');
+		}
+
+		const players = await tx
+			.select()
+			.from(gamePlayers)
+			.where(eq(gamePlayers.gameId, gameId))
+			.orderBy(gamePlayers.joinedAt);
+		if (players.length < 6 || players.length > 8) {
+			throw new Error('玩家人數必須為 6-8 人');
+		}
+		if (players.some((player) => !player.isReady)) {
+			throw new Error('所有玩家必須準備完成才能開始遊戲');
+		}
+
+		const allRoles = await tx.select({ id: roles.id, name: roles.name }).from(roles);
+		const assignments = createRandomAssignments(
+			players.map((player) => player.id),
+			allRoles
+		);
+		const roleIdByPlayer = new Map(
+			assignments.map((assignment) => [assignment.playerId, assignment.roleId])
+		);
+
+		for (const assignment of assignments) {
+			await tx
+				.update(gamePlayers)
+				.set({
+					roleId: assignment.roleId,
+					color: assignment.color,
+					colorCode: assignment.colorCode,
+					lastActiveAt: new Date()
+				})
+				.where(eq(gamePlayers.id, assignment.playerId));
+		}
+
+		await tx
+			.update(games)
+			.set({ status: 'playing', updatedAt: new Date() })
+			.where(eq(games.id, gameId));
+
+		const shuffledAnimals = shuffle(ZODIAC_ANIMALS, Math.random);
+		const artifactsToInsert: Array<{
+			gameId: string;
+			round: number;
+			animal: string;
+			isGenuine: boolean;
+			isSwapped: boolean;
+			isBlocked: boolean;
+			votes: number;
+		}> = [];
+
+		for (let roundNumber = 1; roundNumber <= 3; roundNumber++) {
+			const roundAnimals = shuffledAnimals.slice((roundNumber - 1) * 4, roundNumber * 4);
+			const genuineFlags = shuffle([true, true, false, false], Math.random);
+			roundAnimals.forEach((animal, index) => {
+				artifactsToInsert.push({
+					gameId,
+					round: roundNumber,
+					animal,
+					isGenuine: genuineFlags[index],
+					isSwapped: false,
+					isBlocked: false,
+					votes: 0
+				});
+			});
+		}
+		await tx.insert(gameArtifacts).values(artifactsToInsert);
+
+		const firstPlayerId = players[Math.floor(Math.random() * players.length)].id;
+		const [round] = await tx
+			.insert(gameRounds)
+			.values({ gameId, round: 1, phase: 'action', actionOrder: [firstPlayerId] })
+			.returning();
+
+		const specialRoleIds = new Set(
+			allRoles
+				.filter((role) => role.name === '黃煙煙' || role.name === '木戶加奈')
+				.map((role) => role.id)
+		);
+		for (const player of players) {
+			const roleId = roleIdByPlayer.get(player.id);
+			if (roleId && specialRoleIds.has(roleId)) {
+				await tx
+					.update(gamePlayers)
+					.set({ blockedRound: Math.floor(Math.random() * 3) + 1 })
+					.where(eq(gamePlayers.id, player.id));
+			}
+		}
+
+		return { game, roundId: round.id };
+	});
+
+	const { getSocketIO } = await import('./socket');
+	const io = getSocketIO();
+	if (io) {
+		io.to(result.game.roomName).emit('game-started', {
+			gameId,
+			roundId: result.roundId,
+			roomName: result.game.roomName
+		});
+	}
+
+	return { gameId, roundId: result.roundId };
 }
 
 // 踢出玩家

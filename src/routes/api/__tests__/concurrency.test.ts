@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '$lib/server/db';
 import { user, games, gamePlayers } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { API_BASE, createTestUser, createTestRoom, wait } from './helpers';
 
 describe('Concurrency and Race Conditions', () => {
@@ -128,6 +128,52 @@ describe('Concurrency and Race Conditions', () => {
 	});
 
 	describe('Concurrent Room Joining', () => {
+		it('開始遊戲先完成時應該拒絕並回滾同時加入的玩家', async () => {
+			const room = await createTestRoom(testUsers[0].token, {
+				autoAssignRolesAndColors: true
+			});
+			testGames.push(room.gameId);
+
+			let joinRequest: Promise<Response> | undefined;
+			await db.transaction(async (tx) => {
+				await tx.execute(
+					sql`SELECT ${games.id} FROM ${games} WHERE ${games.id} = ${room.gameId} FOR UPDATE`
+				);
+				joinRequest = fetch(`${API_BASE}/api/room/join`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${testUsers[1].token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ roomName: room.roomName, password: room.password })
+				});
+
+				for (let attempt = 0; attempt < 20; attempt++) {
+					const [joiningPlayer] = await db
+						.select()
+						.from(gamePlayers)
+						.where(
+							and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
+						)
+						.limit(1);
+					if (joiningPlayer) break;
+					await wait(25);
+				}
+
+				await tx.update(games).set({ status: 'playing' }).where(eq(games.id, room.gameId));
+			});
+
+			expect((await joinRequest)?.status).toBe(400);
+			const [joinedPlayer] = await db
+				.select()
+				.from(gamePlayers)
+				.where(
+					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
+				)
+				.limit(1);
+			expect(joinedPlayer).toBeUndefined();
+		});
+
 		it('應該允許多個玩家同時加入房間', async () => {
 			const room = await createTestRoom(testUsers[0].token);
 			testGames.push(room.gameId);
