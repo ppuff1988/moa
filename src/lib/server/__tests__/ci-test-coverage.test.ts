@@ -40,6 +40,9 @@ describe('CI test coverage', () => {
 
 		const unitConfig = readFileSync(unitConfigPath, 'utf8');
 		expect(unitConfig).toContain("include: ['src/lib/**/*.{test,spec}.{js,ts}']");
+		expect(unitConfig).toContain(
+			"exclude: ['node_modules/**/*', 'src/**/*.svelte.{test,spec}.{js,ts}']"
+		);
 		expect(unitConfig).not.toContain('setupFiles');
 		expect(workflow).toMatch(/^ {2}test-unit:$/m);
 		expect(workflow).toContain('run: npm run test:unit -- --run');
