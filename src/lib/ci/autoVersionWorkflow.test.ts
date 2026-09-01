@@ -42,11 +42,17 @@ describe('Auto Version Bump workflow', () => {
 	it('preserves the merged version run in a separate concurrency group', () => {
 		expect(workflow).toContain("format('auto-version-release-{0}'");
 		expect(workflow).toContain("github.event.pull_request.head.ref == 'chore/version-bump'");
+		expect(workflow).toContain(
+			'github.event.pull_request.head.repo.full_name == github.repository'
+		);
 	});
 
 	it('fails the trigger workflow when a version pull request closes unmerged', () => {
 		expect(workflow).toContain('guard-version-pr-merge:');
 		expect(workflow).toContain('github.event.pull_request.merged != true');
+		expect(workflow).toContain(
+			'github.event.pull_request.head.repo.full_name != github.repository'
+		);
 		expect(workflow).toContain('exit 1');
 	});
 

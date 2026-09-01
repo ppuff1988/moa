@@ -12,6 +12,7 @@ concurrency:
   group: >-
     ${{ github.event_name == 'pull_request' &&
         github.event.pull_request.head.ref == 'chore/version-bump' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
         format('auto-version-release-{0}', github.event.pull_request.number) ||
         'auto-version-main' }}
   # Version PR closures keep their release signal; other runs aggregate the latest main state.
@@ -24,10 +25,12 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.ref == 'chore/version-bump'
     steps:
-      - name: 拒絕未合併的版本 PR 關閉事件
-        if: github.event.pull_request.merged != true
+      - name: 拒絕非自動化版本 PR 的關閉事件
+        if: >-
+          github.event.pull_request.merged != true ||
+          github.event.pull_request.head.repo.full_name != github.repository
         run: |
-          echo "::error::版本升級 PR 未合併，不得觸發 release 或 main-to-dev sync"
+          echo "::error::只有本 repository 已合併的自動版本 PR 可以觸發 release 或 main-to-dev sync"
           exit 1
 
   check-and-bump:
