@@ -9,7 +9,7 @@
 	export let votingResult: PublishedVotingResult | null = null;
 	export let isHost: boolean = false;
 	export let currentRound: number = 1;
-	export let onNextRound: () => void = () => {};
+	export let onNextRound: () => void | Promise<void> = () => {};
 	export let isOpen: boolean = true;
 
 	let isStartingNextRound = false;
@@ -40,7 +40,7 @@
 			});
 
 			if (response.ok) {
-				onNextRound();
+				await onNextRound();
 			} else {
 				const error = await response.json();
 				addNotification(error.message || '開始下一回合失敗', 'error');
