@@ -1,0 +1,91 @@
+name: Resume Auto Merge after Codex Review
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: resume-auto-merge-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  resume:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+      contains(github.event.comment.body, 'codex-pull-request-review-summary') &&
+      contains(github.event.comment.body, '✅ **Completed**')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run successful CI for the reviewed commit
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pullNumber = context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber
+            });
+
+            if (
+              pr.state !== 'open' ||
+              pr.draft ||
+              pr.head.repo?.full_name !== context.payload.repository.full_name
+            ) {
+              core.notice(`Skip PR #${pullNumber}: it is not an open same-repository PR`);
+              return;
+            }
+
+            const shortSha = pr.head.sha.slice(0, 7);
+            if (!(context.payload.comment.body || '').includes(`\`${shortSha}\``)) {
+              core.notice(`Skip stale Codex summary for PR #${pullNumber}`);
+              return;
+            }
+
+            const resumeMarker = `<!-- moa-codex-resume sha=${pr.head.sha} -->`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pullNumber,
+              per_page: 100
+            });
+            if (comments.some((comment) => (comment.body || '').includes(resumeMarker))) {
+              core.notice(`Auto merge already resumed for ${shortSha}`);
+              return;
+            }
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci-test.yml',
+              event: 'pull_request',
+              branch: pr.head.ref,
+              status: 'completed',
+              per_page: 100
+            });
+            const ciRun = runs.find(
+              (run) => run.head_sha === pr.head.sha && run.conclusion === 'success'
+            );
+            if (!ciRun) {
+              throw new Error(`找不到 commit ${shortSha} 已成功的 CI Test，不能恢復自動合併`);
+            }
+
+            await github.rest.actions.reRunWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ciRun.id
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pullNumber,
+              body: resumeMarker
+            });
+            core.notice(`Re-ran CI Test #${ciRun.id} to resume auto merge for ${shortSha}`);

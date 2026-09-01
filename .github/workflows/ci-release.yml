@@ -209,6 +209,7 @@ jobs:
     name: 建置不可變 Docker 映像
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    environment: production
     needs: select-release
     if: needs.select-release.outputs.has_release == 'true'
     env:
@@ -333,6 +334,7 @@ jobs:
     name: 標記發布完成
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     needs: [select-release, build-docker, prepare-tag, deploy-production]
     if: needs.deploy-production.result == 'success'
     permissions:

@@ -4,13 +4,14 @@ import { gameActions, gameRounds, games } from '../db/schema';
 const { dbMock } = vi.hoisted(() => ({
 	dbMock: {
 		select: vi.fn(),
-		insert: vi.fn()
+		insert: vi.fn(),
+		update: vi.fn()
 	}
 }));
 
 vi.mock('../db', () => ({ db: dbMock }));
 
-import { startNewRound } from '../game';
+import { advanceToNextPlayer, startNewRound } from '../game';
 
 describe('startNewRound', () => {
 	beforeEach(() => {
@@ -63,5 +64,39 @@ describe('startNewRound', () => {
 
 		expect(result.firstPlayerId).toBe(1556);
 		expect(insertedRound).toMatchObject({ round: 3, actionOrder: [1556] });
+	});
+
+	it('does not record a round completion time when only the action phase ends', async () => {
+		let updatedRound: Record<string, unknown> | undefined;
+
+		dbMock.select.mockImplementation(() => ({
+			from: (table: unknown) => {
+				const rows =
+					table === gameRounds
+						? [{ id: 509, gameId: 'game-1', round: 2 }]
+						: table === gameActions
+							? []
+							: [];
+
+				return {
+					where: () => ({
+						limit: async () => rows,
+						orderBy: async () => rows
+					})
+				};
+			}
+		}));
+		dbMock.update.mockImplementation(() => ({
+			set: (values: Record<string, unknown>) => ({
+				where: async () => {
+					updatedRound = values;
+				}
+			})
+		}));
+
+		const result = await advanceToNextPlayer('game-1', 509);
+
+		expect(result).toMatchObject({ phaseChanged: true, newPhase: 'discussion' });
+		expect(updatedRound).toEqual({ phase: 'discussion' });
 	});
 });
