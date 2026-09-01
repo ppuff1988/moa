@@ -1,10 +1,9 @@
 name: Sync Main to Dev
 
 on:
-  workflow_run:
-    workflows: ['Auto Version Bump']
-    types: [completed]
-    branches: ['chore/version-bump']
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -13,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'chore/version-bump' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     permissions:
       contents: write
       pull-requests: write

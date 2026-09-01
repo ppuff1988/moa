@@ -22,8 +22,12 @@ describe('Auto Version Bump workflow', () => {
 	});
 
 	it('recomputes the latest main state on one retry-safe version pull request', () => {
-		expect(workflow).toContain("'auto-version-main'");
+		expect(workflow).toContain('push:');
+		expect(workflow).toContain('branches: [main]');
+		expect(workflow).toContain('group: auto-version-main');
 		expect(workflow).toContain('cancel-in-progress: true');
+		expect(workflow).toContain('ref: main');
+		expect(workflow).toContain('--ignore-scripts');
 		expect(workflow).toContain('VERSION_BRANCH="chore/version-bump"');
 		expect(workflow).toContain('git push --force-with-lease');
 		expect(workflow).toContain('gh pr list');
@@ -34,29 +38,24 @@ describe('Auto Version Bump workflow', () => {
 		expect(workflow).not.toContain('等待版本升級 PR 合併');
 	});
 
-	it('starts release consumers only for a merged version branch', () => {
+	it('starts release consumers only for the merged automation-owned pull request', () => {
 		for (const consumer of [releaseWorkflow, syncWorkflow]) {
-			expect(consumer).toContain("branches: ['chore/version-bump']");
-			expect(consumer).not.toContain("branches: ['chore/version-bump*']");
+			expect(consumer).toContain('pull_request:');
+			expect(consumer).toContain('types: [closed]');
+			expect(consumer).toContain('branches: [main]');
+			expect(consumer).toContain('github.event.pull_request.merged == true');
+			expect(consumer).toContain("github.event.pull_request.head.ref == 'chore/version-bump'");
+			expect(consumer).toContain(
+				'github.event.pull_request.head.repo.full_name == github.repository'
+			);
+			expect(consumer).not.toContain('workflow_run:');
 		}
-		expect(syncWorkflow).not.toContain("head_branch == 'main'");
 	});
 
-	it('preserves the merged version run in a separate concurrency group', () => {
-		expect(workflow).toContain("format('auto-version-release-{0}'");
-		expect(workflow).toContain("github.event.pull_request.head.ref == 'chore/version-bump'");
-		expect(workflow).toContain(
-			'github.event.pull_request.head.repo.full_name == github.repository'
-		);
-	});
-
-	it('fails the trigger workflow when a version pull request closes unmerged', () => {
-		expect(workflow).toContain('guard-version-pr-merge:');
-		expect(workflow).toContain('github.event.pull_request.merged != true');
-		expect(workflow).toContain(
-			'github.event.pull_request.head.repo.full_name != github.repository'
-		);
-		expect(workflow).toContain('exit 1');
+	it('runs version analysis only from the trusted main push context', () => {
+		expect(workflow).not.toContain('pull_request_target:');
+		expect(workflow).not.toContain('github.event.pull_request');
+		expect(workflow).not.toContain('guard-version-pr-merge:');
 	});
 
 	it('requires strict up-to-date checks before enabling version auto-merge', () => {
