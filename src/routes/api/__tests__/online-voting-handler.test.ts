@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { artifactVoteAllocations } from '../../../lib/server/db/schema';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const mocks = vi.hoisted(() => ({
 	transaction: vi.fn(),
@@ -61,6 +63,7 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 			chipBalance: 2,
 			completed: false,
 			votingResult: null,
+			totalPlayers: 2,
 			submittedPlayers
 		});
 		mocks.select.mockImplementation(() => {
@@ -76,7 +79,8 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		expect(mocks.select).not.toHaveBeenCalled();
 		expect(mocks.emit).toHaveBeenCalledWith('online-voting-progress', {
 			round: 1,
-			submittedPlayers
+			submittedPlayers,
+			totalPlayers: 2
 		});
 	});
 
@@ -117,6 +121,26 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
+
+	it('rejects a player who explicitly left the room', async () => {
+		mocks.verifyPlayerInRoom.mockResolvedValue({
+			game: {
+				id: '11111111-1111-1111-1111-111111111111',
+				roomName: '123456',
+				onlineVotingEnabled: true
+			},
+			player: { id: 7, leftAt: new Date() }
+		});
+
+		const response = await POST({
+			request: createRequest(),
+			params: { name: '123456' }
+		} as never);
+
+		expect(response.status).toBe(403);
+		expect(await response.json()).toEqual({ message: '您已離開此房間' });
+		expect(mocks.transaction).not.toHaveBeenCalled();
+	});
 });
 
 describe('online voting database constraints', () => {
@@ -126,5 +150,18 @@ describe('online voting database constraints', () => {
 		expect(table.checks.map((constraint) => constraint.name)).toContain(
 			'artifact_vote_allocations_chip_count_check'
 		);
+	});
+
+	it('documents that disconnected players remain in the quorum while explicit departures do not', () => {
+		const endpoint = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/online-voting/+server.ts'),
+			'utf8'
+		);
+		const rules = readFileSync(resolve(process.cwd(), 'docs/RULE.md'), 'utf8');
+
+		expect(endpoint).toContain('isOnline 不影響投票資格');
+		expect(endpoint).toContain('leftAt 不為空的玩家已主動離開');
+		expect(rules).toContain('Socket 斷線而暫時離線時，只會將 `is_online` 標記為 `false`');
+		expect(rules).toContain('主動離開房間才會設定 `left_at`');
 	});
 });

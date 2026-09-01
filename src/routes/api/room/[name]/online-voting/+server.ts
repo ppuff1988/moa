@@ -9,10 +9,9 @@ import {
 	gameRounds,
 	gameVoteSubmissions
 } from '$lib/server/db/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getSocketIO } from '$lib/server/socket';
-import { ZODIAC_ORDER } from '$lib/server/constants';
-import { getPublishedOnlineVotingResult } from '$lib/server/game-voting';
+import { finalizeOnlineVotingIfComplete, getOnlineVotingProgress } from '$lib/server/game-voting';
 
 class OnlineVotingSubmissionError extends Error {
 	constructor(
@@ -22,8 +21,6 @@ class OnlineVotingSubmissionError extends Error {
 		super(message);
 	}
 }
-
-type DatabaseExecutor = Pick<typeof db, 'select'>;
 
 async function getSpentChips(gameId: string, playerId: number) {
 	const rows = await db
@@ -38,19 +35,6 @@ async function getSpentChips(gameId: string, playerId: number) {
 	return rows.reduce((total, row) => total + row.chipCount, 0);
 }
 
-async function getSubmittedPlayers(executor: DatabaseExecutor, roundId: number) {
-	return executor
-		.select({
-			playerId: gamePlayers.id,
-			color: gamePlayers.color,
-			colorCode: gamePlayers.colorCode
-		})
-		.from(gameVoteSubmissions)
-		.innerJoin(gamePlayers, eq(gameVoteSubmissions.playerId, gamePlayers.id))
-		.where(eq(gameVoteSubmissions.roundId, roundId))
-		.orderBy(gamePlayers.id);
-}
-
 export const GET: RequestHandler = async ({ request, params }) => {
 	const verifyResult = await verifyPlayerInRoom(request, params.name!);
 	if ('error' in verifyResult) {
@@ -58,6 +42,9 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
+	if (player.leftAt) {
+		return json({ message: '您已離開此房間' }, { status: 403 });
+	}
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
@@ -92,19 +79,20 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				.where(eq(artifactVoteAllocations.submissionId, submission.id))
 		: [];
 	const spentChips = await getSpentChips(game.id, player.id);
+	const progress = await getOnlineVotingProgress(db, game.id, currentRound.id);
 
 	return json({
 		onlineVotingEnabled: true,
 		round: currentRound.round,
 		chipBalance: currentRound.round * 2 - spentChips,
-		totalPlayers: game.playerCount,
+		totalPlayers: progress.totalPlayers,
 		playerColor: player.color,
 		playerColorCode: player.colorCode,
 		hasSubmitted: Boolean(submission),
 		ownVotes: Object.fromEntries(
 			ownAllocations.map((allocation) => [allocation.artifactId, allocation.chipCount])
 		),
-		submittedPlayers: await getSubmittedPlayers(db, currentRound.id),
+		submittedPlayers: progress.submittedPlayers,
 		votingResult: null
 	});
 };
@@ -116,6 +104,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
+	if (player.leftAt) {
+		return json({ message: '您已離開此房間' }, { status: 403 });
+	}
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
@@ -141,6 +132,17 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				.for('update');
 			if (!currentRound || currentRound.phase !== 'voting') {
 				throw new OnlineVotingSubmissionError('目前不是投票階段', 409);
+			}
+
+			// 鎖定玩家列，避免驗證後與主動離房同時發生時仍寫入新投票。
+			const [activePlayer] = await tx
+				.select({ id: gamePlayers.id })
+				.from(gamePlayers)
+				.where(and(eq(gamePlayers.id, player.id), isNull(gamePlayers.leftAt)))
+				.limit(1)
+				.for('update');
+			if (!activePlayer) {
+				throw new OnlineVotingSubmissionError('您已離開此房間', 403);
 			}
 
 			const [existingSubmission] = await tx
@@ -217,73 +219,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await tx.insert(artifactVoteAllocations).values(allocations);
 			}
 
-			const submittedPlayers = await getSubmittedPlayers(tx, currentRound.id);
-			const roomPlayers = await tx
-				.select({ id: gamePlayers.id })
-				.from(gamePlayers)
-				.where(eq(gamePlayers.gameId, game.id));
-
-			const completed = submittedPlayers.length === roomPlayers.length;
-			let votingResult = null;
-			if (completed) {
-				const voteRows = await tx
-					.select({
-						artifactId: artifactVoteAllocations.artifactId,
-						chipCount: artifactVoteAllocations.chipCount
-					})
-					.from(artifactVoteAllocations)
-					.innerJoin(
-						gameVoteSubmissions,
-						eq(artifactVoteAllocations.submissionId, gameVoteSubmissions.id)
-					)
-					.where(eq(gameVoteSubmissions.roundId, currentRound.id));
-				const voteTotals = new Map<number, number>();
-				for (const voteRow of voteRows) {
-					voteTotals.set(
-						voteRow.artifactId,
-						(voteTotals.get(voteRow.artifactId) ?? 0) + voteRow.chipCount
-					);
-				}
-				const rankedArtifacts = await tx
-					.select({ id: gameArtifacts.id, animal: gameArtifacts.animal })
-					.from(gameArtifacts)
-					.where(
-						and(eq(gameArtifacts.gameId, game.id), eq(gameArtifacts.round, currentRound.round))
-					);
-				rankedArtifacts.sort((a, b) => {
-					const voteDifference = (voteTotals.get(b.id) ?? 0) - (voteTotals.get(a.id) ?? 0);
-					if (voteDifference !== 0) return voteDifference;
-					return ZODIAC_ORDER.indexOf(a.animal) - ZODIAC_ORDER.indexOf(b.animal);
-				});
-
-				for (let index = 0; index < rankedArtifacts.length; index++) {
-					const artifact = rankedArtifacts[index];
-					await tx
-						.update(gameArtifacts)
-						.set({
-							votes: voteTotals.get(artifact.id) ?? 0,
-							voteRank: index < 2 ? index + 1 : null
-						})
-						.where(eq(gameArtifacts.id, artifact.id));
-				}
-				await tx
-					.update(gameRounds)
-					.set({ phase: 'result' })
-					.where(eq(gameRounds.id, currentRound.id));
-				votingResult = await getPublishedOnlineVotingResult(
-					tx,
-					game.id,
-					currentRound.round,
-					currentRound.id
-				);
-			}
+			// 遊戲規則（docs/RULE.md「線上投票」）：暫時斷線只改 isOnline，
+			// isOnline 不影響投票資格，因此本局會等待該玩家回來。
+			// leftAt 不為空的玩家已主動離開，不再列入尚待提交的 quorum；
+			// 若他在離開前已提交，既有投票仍保留在本輪結果中。
+			const finalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
 
 			return {
 				currentRound,
 				chipBalance: availableChips - submittedChips,
-				completed,
-				votingResult,
-				submittedPlayers
+				...finalization
 			};
 		});
 
@@ -296,7 +241,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			} else {
 				getSocketIO()?.to(game.roomName).emit('online-voting-progress', {
 					round: result.currentRound.round,
-					submittedPlayers: result.submittedPlayers
+					submittedPlayers: result.submittedPlayers,
+					totalPlayers: result.totalPlayers
 				});
 			}
 		} catch (error) {
