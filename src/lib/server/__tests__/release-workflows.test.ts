@@ -181,6 +181,10 @@ describe('release workflow contracts', () => {
 			workflow.indexOf('\n  build-docker:'),
 			workflow.indexOf('\n  prepare-tag:')
 		);
+		const createReleaseJob = workflow.slice(
+			workflow.indexOf('\n  create-release:'),
+			workflow.indexOf('\n  notify:')
+		);
 
 		expect(workflow).toContain('pull_request:');
 		expect(workflow).toContain('types: [closed]');
@@ -212,6 +216,7 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('tagCommit !== releaseSha');
 		expect(workflow).toContain('generate_release_notes: true');
 		expect(buildDockerJob).toContain('    environment: production');
+		expect(createReleaseJob).toContain('    environment: production');
 		expect(workflow).not.toContain(
 			"github.rest.actions.createWorkflowDispatch({\n                owner: context.repo.owner,\n                repo: context.repo.repo,\n                workflow_id: 'cd.yml'"
 		);

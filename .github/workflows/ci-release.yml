@@ -334,6 +334,7 @@ jobs:
     name: 標記發布完成
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     needs: [select-release, build-docker, prepare-tag, deploy-production]
     if: needs.deploy-production.result == 'success'
     permissions:
