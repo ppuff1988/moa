@@ -15,6 +15,7 @@ const hotfixWorkflow = readFileSync(
 	resolve(process.cwd(), '.github/workflows/auto-merge-hotfix.yml'),
 	'utf8'
 );
+const cdWorkflow = readFileSync(resolve(process.cwd(), '.github/workflows/cd.yml'), 'utf8');
 
 describe('Auto Version Bump workflow', () => {
 	it('routes protected main changes through a CI-checked pull request', () => {
@@ -67,6 +68,13 @@ describe('Auto Version Bump workflow', () => {
 		expect(hotfixWorkflow).toContain(
 			'pr.head.repo.full_name !== context.payload.repository.full_name'
 		);
+	});
+
+	it('dispatches CD only after CI Release creates a new version', () => {
+		expect(cdWorkflow).toContain('workflow_dispatch:');
+		expect(cdWorkflow).not.toContain('workflow_run:');
+		expect(releaseWorkflow).toContain("workflow_id: 'cd.yml'");
+		expect(releaseWorkflow).toContain('createWorkflowDispatch');
 	});
 
 	it('requires strict up-to-date checks before enabling version auto-merge', () => {

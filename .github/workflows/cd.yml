@@ -2,10 +2,6 @@
 name: CD
 
 on:
-  workflow_run:
-    workflows: ['CI Release'] # 確保這個名稱和 CI Release workflow 名稱完全相同
-    types:
-      - completed
   workflow_dispatch: # 支援手動觸發部署
     inputs:
       version:
@@ -29,8 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'release' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      github.event_name == 'release'
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -264,7 +259,7 @@ jobs:
             *狀態:* ${{ needs.deploy-production.result == 'success' && '✅ 成功' || '❌ 失敗' }}
             *專案:* `${{ github.repository }}`
             *版本:* `${{ steps.get_version.outputs.version }}`
-            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || github.event_name == 'workflow_run' && 'CI Release 完成' || '手動觸發' }}`
+            *觸發方式:* `${{ github.event_name == 'release' && 'Release 發布' || '手動觸發' }}`
             *提交者:* `${{ github.actor }}`
 
             [查看工作流程](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
