@@ -11,6 +11,10 @@ const syncWorkflow = readFileSync(
 	resolve(process.cwd(), '.github/workflows/sync-main-to-dev.yml'),
 	'utf8'
 );
+const hotfixWorkflow = readFileSync(
+	resolve(process.cwd(), '.github/workflows/auto-merge-hotfix.yml'),
+	'utf8'
+);
 
 describe('Auto Version Bump workflow', () => {
 	it('routes protected main changes through a CI-checked pull request', () => {
@@ -56,6 +60,13 @@ describe('Auto Version Bump workflow', () => {
 		expect(workflow).not.toContain('pull_request_target:');
 		expect(workflow).not.toContain('github.event.pull_request');
 		expect(workflow).not.toContain('guard-version-pr-merge:');
+	});
+
+	it('uses the PAT for same-repository hotfix merges so their main push triggers workflows', () => {
+		expect(hotfixWorkflow).toContain('github-token: ${{ secrets.PAT }}');
+		expect(hotfixWorkflow).toContain(
+			'pr.head.repo.full_name !== context.payload.repository.full_name'
+		);
 	});
 
 	it('requires strict up-to-date checks before enabling version auto-merge', () => {
