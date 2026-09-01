@@ -21,16 +21,19 @@ describe('Auto Version Bump workflow', () => {
 		expect(workflow).toContain('gh pr merge --auto --squash');
 	});
 
-	it('serializes bumps and waits for the version pull request to merge', () => {
+	it('recomputes the latest main state on one retry-safe version pull request', () => {
 		expect(workflow).toContain('group: auto-version-main');
-		expect(workflow).toContain('cancel-in-progress: false');
-		expect(workflow).toContain('gh pr view "$PR_URL" --json state');
-		expect(workflow).toContain('[ "$VERSION_PR_STATE" = "MERGED" ]');
+		expect(workflow).toContain('cancel-in-progress: true');
+		expect(workflow).toContain('VERSION_BRANCH="chore/version-bump"');
+		expect(workflow).toContain('git push --force-with-lease');
+		expect(workflow).toContain('gh pr list');
+		expect(workflow).toContain('--json autoMergeRequest');
+		expect(workflow).not.toContain('等待版本升級 PR 合併');
 	});
 
 	it('starts release consumers only for a merged version branch', () => {
 		for (const consumer of [releaseWorkflow, syncWorkflow]) {
-			expect(consumer).toContain("branches: ['chore/version-bump-v*']");
+			expect(consumer).toContain("branches: ['chore/version-bump*']");
 		}
 		expect(syncWorkflow).not.toContain("head_branch == 'main'");
 	});

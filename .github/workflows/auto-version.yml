@@ -10,12 +10,12 @@ on:
 
 concurrency:
   group: auto-version-main
-  cancel-in-progress: false
+  # Newer runs recompute every commit since the latest tag, so the latest main state wins.
+  cancel-in-progress: true
 
 jobs:
   check-and-bump:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
     # 對於 PR 關閉事件：只在已合併到 main 時執行
     # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
     if: >-
@@ -109,48 +109,47 @@ jobs:
         run: |
           NEW_VERSION=${{ steps.bump.outputs.new_version }}
           BUMP_TYPE=${{ steps.bump.outputs.bump_type }}
-          VERSION_BRANCH="chore/version-bump-v${NEW_VERSION}"
+          VERSION_BRANCH="chore/version-bump"
+          PR_TITLE="chore(release): bump version to v${NEW_VERSION}"
+          PR_BODY="Automated ${BUMP_TYPE} version bump from v${{ steps.bump.outputs.old_version }} to v${NEW_VERSION}. This PR will merge after the required checks pass."
 
-          git switch -c "$VERSION_BRANCH"
+          git switch -C "$VERSION_BRANCH"
           git add package.json package-lock.json || true
-          git commit -m "chore(release): bump version to v${NEW_VERSION}" -m "Type: ${BUMP_TYPE}"
+          git commit -m "$PR_TITLE" -m "Type: ${BUMP_TYPE}"
 
-          echo "📤 推送版本分支..."
-          git push origin "$VERSION_BRANCH"
+          # Fetch the automation-owned branch so force-with-lease can reject unexpected writes.
+          git fetch origin "$VERSION_BRANCH:refs/remotes/origin/$VERSION_BRANCH" || true
+          echo "📤 建立或更新版本分支..."
+          git push --force-with-lease origin "HEAD:$VERSION_BRANCH"
 
-          PR_URL=$(gh pr create \
+          PR_URL=$(gh pr list \
             --base main \
             --head "$VERSION_BRANCH" \
-            --title "chore(release): bump version to v${NEW_VERSION}" \
-            --body "Automated ${BUMP_TYPE} version bump from v${{ steps.bump.outputs.old_version }} to v${NEW_VERSION}. This PR will merge after the required checks pass.")
+            --state open \
+            --json url \
+            --jq '.[0].url // empty')
 
-          gh pr merge --auto --squash "$PR_URL"
-
-          echo "✅ 已建立版本升級 PR: $PR_URL"
-          echo "⏳ 等待 PR 通過必要檢查並完成合併..."
-
-          VERSION_PR_STATE="OPEN"
-          for ATTEMPT in $(seq 1 120); do
-            VERSION_PR_STATE=$(gh pr view "$PR_URL" --json state --jq '.state')
-
-            if [ "$VERSION_PR_STATE" = "MERGED" ]; then
-              echo "✅ 版本升級 PR 已合併"
-              break
-            fi
-
-            if [ "$VERSION_PR_STATE" = "CLOSED" ]; then
-              echo "❌ 版本升級 PR 未合併就被關閉"
-              exit 1
-            fi
-
-            echo "   PR 狀態: $VERSION_PR_STATE ($ATTEMPT/120)"
-            sleep 15
-          done
-
-          if [ "$VERSION_PR_STATE" != "MERGED" ]; then
-            echo "❌ 等待版本升級 PR 合併逾時"
-            exit 1
+          if [ -z "$PR_URL" ]; then
+            PR_URL=$(gh pr create \
+              --base main \
+              --head "$VERSION_BRANCH" \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY")
+          else
+            PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq '.number')
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              --method PATCH \
+              --field title="$PR_TITLE" \
+              --field body="$PR_BODY" >/dev/null
           fi
+
+          AUTO_MERGE_ENABLED=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$AUTO_MERGE_ENABLED" != "true" ]; then
+            gh pr merge --auto --squash "$PR_URL"
+          fi
+
+          echo "✅ 版本升級 PR 已建立或更新: $PR_URL"
+          echo "ℹ️ 較新的 main 變更會重新計算並更新同一個 PR"
 
   notify:
     name: 版本升級通知
