@@ -189,6 +189,8 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('pull_request:');
 		expect(workflow).toContain('types: [closed]');
 		expect(workflow).toContain('schedule:');
+		expect(workflow).toContain("cron: '17 19 * * *'");
+		expect(workflow).not.toContain("cron: '*/30 * * * *'");
 		expect(workflow).toContain("pull.head.ref.startsWith('release/v')");
 		expect(workflow).toContain("pull.head.ref.startsWith('hotfix/')");
 		expect(workflow).toContain('name: 選取最舊的未發布版本');

@@ -6,10 +6,10 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '17 19 * * *'
 
-# GitHub concurrency 只保留一個 pending run，因此每次都從已合併 PR 重建狀態，
-# 並在成功後再 dispatch 一次；任一 pending scanner 都能接續同一條佇列。
+# 每日排程只作為事件漏接的保險；正常發布由 PR closed 立即觸發。
+# 成功發布後仍會 dispatch 下一次掃描，以接續同一條版本佇列。
 concurrency:
   group: production-release
   cancel-in-progress: false
