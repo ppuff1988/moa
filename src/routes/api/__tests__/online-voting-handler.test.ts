@@ -63,6 +63,7 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 			chipBalance: 2,
 			completed: false,
 			votingResult: null,
+			totalPlayers: 2,
 			submittedPlayers
 		});
 		mocks.select.mockImplementation(() => {
@@ -78,7 +79,8 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		expect(mocks.select).not.toHaveBeenCalled();
 		expect(mocks.emit).toHaveBeenCalledWith('online-voting-progress', {
 			round: 1,
-			submittedPlayers
+			submittedPlayers,
+			totalPlayers: 2
 		});
 	});
 

@@ -68,6 +68,29 @@ export async function getSubmittedOnlineVotingPlayers(
 		.orderBy(gamePlayers.id);
 }
 
+export async function getOnlineVotingProgress(
+	executor: DatabaseExecutor,
+	gameId: string,
+	roundId: number
+) {
+	const submittedPlayers = await getSubmittedOnlineVotingPlayers(executor, roundId);
+	const activePlayers = await executor
+		.select({ id: gamePlayers.id })
+		.from(gamePlayers)
+		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+	const submittedPlayerIds = new Set(
+		submittedPlayers.map((submittedPlayer) => submittedPlayer.playerId)
+	);
+	const quorumPlayerIds = new Set(submittedPlayerIds);
+	for (const activePlayer of activePlayers) quorumPlayerIds.add(activePlayer.id);
+
+	return {
+		submittedPlayers,
+		totalPlayers: quorumPlayerIds.size,
+		completed: activePlayers.every((activePlayer) => submittedPlayerIds.has(activePlayer.id))
+	};
+}
+
 /**
  * 在呼叫端已鎖定回合列的 transaction 內重新計算投票門檻並完成結算。
  * 暫時斷線玩家仍是 active；只有 leftAt 不為空的主動離房玩家退出待提交名單。
@@ -77,18 +100,10 @@ export async function finalizeOnlineVotingIfComplete(
 	gameId: string,
 	currentRound: { id: number; round: number }
 ) {
-	const submittedPlayers = await getSubmittedOnlineVotingPlayers(executor, currentRound.id);
-	const activePlayers = await executor
-		.select({ id: gamePlayers.id })
-		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
-	const submittedPlayerIds = new Set(
-		submittedPlayers.map((submittedPlayer) => submittedPlayer.playerId)
-	);
-	const completed = activePlayers.every((activePlayer) => submittedPlayerIds.has(activePlayer.id));
+	const progress = await getOnlineVotingProgress(executor, gameId, currentRound.id);
 
-	if (!completed) {
-		return { completed: false, votingResult: null, submittedPlayers };
+	if (!progress.completed) {
+		return { ...progress, votingResult: null };
 	}
 
 	const voteRows = await executor
@@ -141,7 +156,7 @@ export async function finalizeOnlineVotingIfComplete(
 		currentRound.id
 	);
 
-	return { completed: true, votingResult, submittedPlayers };
+	return { ...progress, votingResult };
 }
 
 export function buildPublishedVotingResult(

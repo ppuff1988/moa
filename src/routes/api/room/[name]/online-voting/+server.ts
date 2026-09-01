@@ -11,10 +11,7 @@ import {
 } from '$lib/server/db/schema';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getSocketIO } from '$lib/server/socket';
-import {
-	finalizeOnlineVotingIfComplete,
-	getSubmittedOnlineVotingPlayers
-} from '$lib/server/game-voting';
+import { finalizeOnlineVotingIfComplete, getOnlineVotingProgress } from '$lib/server/game-voting';
 
 class OnlineVotingSubmissionError extends Error {
 	constructor(
@@ -82,19 +79,20 @@ export const GET: RequestHandler = async ({ request, params }) => {
 				.where(eq(artifactVoteAllocations.submissionId, submission.id))
 		: [];
 	const spentChips = await getSpentChips(game.id, player.id);
+	const progress = await getOnlineVotingProgress(db, game.id, currentRound.id);
 
 	return json({
 		onlineVotingEnabled: true,
 		round: currentRound.round,
 		chipBalance: currentRound.round * 2 - spentChips,
-		totalPlayers: game.playerCount,
+		totalPlayers: progress.totalPlayers,
 		playerColor: player.color,
 		playerColorCode: player.colorCode,
 		hasSubmitted: Boolean(submission),
 		ownVotes: Object.fromEntries(
 			ownAllocations.map((allocation) => [allocation.artifactId, allocation.chipCount])
 		),
-		submittedPlayers: await getSubmittedOnlineVotingPlayers(db, currentRound.id),
+		submittedPlayers: progress.submittedPlayers,
 		votingResult: null
 	});
 };
@@ -243,7 +241,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			} else {
 				getSocketIO()?.to(game.roomName).emit('online-voting-progress', {
 					round: result.currentRound.round,
-					submittedPlayers: result.submittedPlayers
+					submittedPlayers: result.submittedPlayers,
+					totalPlayers: result.totalPlayers
 				});
 			}
 		} catch (error) {

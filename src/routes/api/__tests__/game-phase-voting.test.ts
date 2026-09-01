@@ -383,6 +383,12 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			const departedResponse = await submitOnlineVotes(room.roomName, testUsers[1].token, {});
 			expect(departedResponse.status).toBe(403);
 			expect((await departedResponse.json()).message).toContain('已離開');
+			const activeProgressResponse = await fetch(
+				`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/online-voting`,
+				{ headers: { Authorization: `Bearer ${testUsers[0].token}` } }
+			);
+			expect(activeProgressResponse.status).toBe(200);
+			expect((await activeProgressResponse.json()).totalPlayers).toBe(1);
 
 			const hostResponse = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
 			expect(hostResponse.status).toBe(200);

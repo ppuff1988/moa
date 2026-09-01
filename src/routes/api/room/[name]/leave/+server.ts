@@ -199,36 +199,42 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} else {
 		if (status === 'playing') {
-			const { remainingCount, votingFinalization } = await db.transaction(async (tx) => {
-				// 與線上投票提交維持相同鎖順序：先鎖回合，再鎖／更新玩家列。
-				const [currentRound] = await tx
-					.select()
-					.from(gameRounds)
-					.where(eq(gameRounds.gameId, game.id))
-					.orderBy(desc(gameRounds.round))
-					.limit(1)
-					.for('update');
+			const { remainingCount, votingFinalization, votingRound } = await db.transaction(
+				async (tx) => {
+					// 與線上投票提交維持相同鎖順序：先鎖回合，再鎖／更新玩家列。
+					const [currentRound] = await tx
+						.select()
+						.from(gameRounds)
+						.where(eq(gameRounds.gameId, game.id))
+						.orderBy(desc(gameRounds.round))
+						.limit(1)
+						.for('update');
 
-				await tx
-					.update(gamePlayers)
-					.set({ leftAt: new Date() })
-					.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
+					await tx
+						.update(gamePlayers)
+						.set({ leftAt: new Date() })
+						.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
 
-				const remainingPlayers = await tx
-					.select({ id: gamePlayers.id })
-					.from(gamePlayers)
-					.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
-				let votingFinalization = null;
-				if (
-					remainingPlayers.length >= 6 &&
-					game.onlineVotingEnabled &&
-					currentRound?.phase === 'voting'
-				) {
-					votingFinalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
+					const remainingPlayers = await tx
+						.select({ id: gamePlayers.id })
+						.from(gamePlayers)
+						.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+					let votingFinalization = null;
+					if (
+						remainingPlayers.length >= 6 &&
+						game.onlineVotingEnabled &&
+						currentRound?.phase === 'voting'
+					) {
+						votingFinalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
+					}
+
+					return {
+						remainingCount: remainingPlayers.length,
+						votingFinalization,
+						votingRound: currentRound?.round
+					};
 				}
-
-				return { remainingCount: remainingPlayers.length, votingFinalization };
-			});
+			);
 
 			// 如果剩餘人數少於6人，強制結束遊戲
 			if (remainingCount < 6) {
@@ -257,6 +263,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				io.to(game.roomName).emit('voting-completed', {
 					phase: 'result',
 					votingResult: votingFinalization.votingResult
+				});
+			} else if (votingFinalization && io) {
+				io.to(game.roomName).emit('online-voting-progress', {
+					round: votingRound,
+					submittedPlayers: votingFinalization.submittedPlayers,
+					totalPlayers: votingFinalization.totalPlayers
 				});
 			}
 
