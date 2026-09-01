@@ -218,6 +218,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			}
 
 			const submittedPlayers = await getSubmittedPlayers(tx, currentRound.id);
+			// 遊戲規則（docs/RULE.md「線上投票」）：進行中離席是暫時狀態，
+			// 本局會等待原玩家回來，因此 quorum 刻意包含所有 game_players。
+			// 請勿用 leftAt 過濾名單，也勿把 leftAt 當成原帳號的授權撤銷。
 			const roomPlayers = await tx
 				.select({ id: gamePlayers.id })
 				.from(gamePlayers)

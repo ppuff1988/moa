@@ -48,6 +48,11 @@ describe('CI test coverage', () => {
 		expect(workflow).toContain('run: npm run test:unit -- --run');
 	});
 
+	it('CI 另外執行 browser component tests', () => {
+		expect(workflow).toContain('run: npx playwright install --with-deps chromium');
+		expect(workflow).toContain('run: npx vitest --config vitest.config.ts --project client --run');
+	});
+
 	it('PR CI 只執行短 smoke E2E，不執行 8 人完整 game-flow', () => {
 		const smokeScript = packageJson.scripts['test:e2e:smoke'];
 		expect(smokeScript).toBeTypeOf('string');

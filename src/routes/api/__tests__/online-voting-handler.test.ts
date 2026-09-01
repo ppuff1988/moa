@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { artifactVoteAllocations } from '../../../lib/server/db/schema';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const mocks = vi.hoisted(() => ({
 	transaction: vi.fn(),
@@ -126,5 +128,18 @@ describe('online voting database constraints', () => {
 		expect(table.checks.map((constraint) => constraint.name)).toContain(
 			'artifact_vote_allocations_chip_count_check'
 		);
+	});
+
+	it('documents that temporary departures remain in the voting quorum', () => {
+		const endpoint = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/online-voting/+server.ts'),
+			'utf8'
+		);
+		const rules = readFileSync(resolve(process.cwd(), 'docs/RULE.md'), 'utf8');
+
+		expect(endpoint).toContain('quorum 刻意包含所有 game_players');
+		expect(endpoint).toContain('請勿用 leftAt 過濾名單');
+		expect(rules).toContain('遊戲會保留該玩家席位並等待本人回來');
+		expect(rules).toContain('left_at` 只記錄暫時離席狀態，不撤銷原帳號的遊戲或投票資格');
 	});
 });
