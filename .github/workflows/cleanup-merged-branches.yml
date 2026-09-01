@@ -1,0 +1,112 @@
+name: Cleanup Merged Branches
+
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: '37 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: cleanup-merged-branches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete merged head branches
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete safe merged branches
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repositoryFullName = context.payload.repository.full_name;
+            const protectedBranches = new Set(['main', 'dev', 'staging', 'production']);
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const openHeads = new Set(
+              openPulls
+                .filter((pull) => pull.head.repo?.full_name === repositoryFullName)
+                .map((pull) => pull.head.ref)
+            );
+
+            async function deleteMergedHead(pull) {
+              const branch = pull.head.ref;
+              if (
+                !pull.merged_at ||
+                pull.head.repo?.full_name !== context.payload.repository.full_name ||
+                protectedBranches.has(branch) ||
+                openHeads.has(branch)
+              ) {
+                return;
+              }
+
+              let currentRef;
+              try {
+                ({ data: currentRef } = await github.rest.git.getRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`
+                }));
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                core.info(`Branch ${branch} is already absent`);
+                return;
+              }
+
+              if (currentRef.object.sha !== pull.head.sha) {
+                core.warning(`Skip ${branch}: branch advanced after PR #${pull.number}`);
+                return;
+              }
+
+              const { data: branchInfo } = await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch
+              });
+              if (branchInfo.protected) {
+                core.info(`Skip protected branch ${branch}`);
+                return;
+              }
+
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`
+                });
+                core.notice(`Deleted merged branch ${branch} from PR #${pull.number}`);
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                core.info(`Branch ${branch} was deleted concurrently`);
+              }
+            }
+
+            if (context.eventName === 'pull_request') {
+              await deleteMergedHead(context.payload.pull_request);
+            } else {
+              // Native branch auto-delete and the PR closed event handle the normal path.
+              // The schedule only reconciles the most recently changed PRs.
+              const { data: closedPulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'closed',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100
+              });
+              for (const pull of closedPulls) {
+                await deleteMergedHead(pull);
+              }
+            }

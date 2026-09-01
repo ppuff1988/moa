@@ -6,7 +6,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 jobs:
@@ -155,9 +155,8 @@ jobs:
               ) continue;
 
               if (pr.head.sha !== context.payload.workflow_run.head_sha) {
-                throw new Error(
-                  `Hotfix PR #${pr.number} 的目前 commit 並非觸發此流程的 CI commit`
-                );
+                core.notice(`Skip stale CI for Hotfix PR #${pr.number}: ${context.payload.workflow_run.head_sha}`);
+                continue;
               }
               if (
                 pr.base.sha !== associatedPR.base.sha ||
