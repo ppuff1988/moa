@@ -522,4 +522,26 @@ exit 0
 
 		expect(workflow).toContain('sha: reviewedSha');
 	});
+
+	it('removes only safe merged head branches and reconciles missed cleanup', () => {
+		const workflow = readWorkflow('cleanup-merged-branches.yml');
+
+		expect(workflow).toContain('pull_request:');
+		expect(workflow).toContain('types: [closed]');
+		expect(workflow).toContain('schedule:');
+		expect(workflow).toContain('workflow_dispatch:');
+		expect(workflow).toContain('contents: write');
+		expect(workflow).toContain('github.event.pull_request.merged == true');
+		expect(workflow).toContain(
+			'pull.head.repo?.full_name !== context.payload.repository.full_name'
+		);
+		expect(workflow).toContain(
+			"const protectedBranches = new Set(['main', 'dev', 'staging', 'production'])"
+		);
+		expect(workflow).toContain("state: 'open'");
+		expect(workflow).toContain('currentRef.object.sha !== pull.head.sha');
+		expect(workflow).toContain('branchInfo.protected');
+		expect(workflow).toContain('github.rest.git.deleteRef');
+		expect(workflow).toContain('error.status !== 404');
+	});
 });
