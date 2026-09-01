@@ -11,8 +11,10 @@ import {
 } from '$lib/server/db/schema';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getSocketIO } from '$lib/server/socket';
-import { ZODIAC_ORDER } from '$lib/server/constants';
-import { getPublishedOnlineVotingResult } from '$lib/server/game-voting';
+import {
+	finalizeOnlineVotingIfComplete,
+	getSubmittedOnlineVotingPlayers
+} from '$lib/server/game-voting';
 
 class OnlineVotingSubmissionError extends Error {
 	constructor(
@@ -22,8 +24,6 @@ class OnlineVotingSubmissionError extends Error {
 		super(message);
 	}
 }
-
-type DatabaseExecutor = Pick<typeof db, 'select'>;
 
 async function getSpentChips(gameId: string, playerId: number) {
 	const rows = await db
@@ -36,19 +36,6 @@ async function getSpentChips(gameId: string, playerId: number) {
 		.where(and(eq(gameVoteSubmissions.gameId, gameId), eq(gameVoteSubmissions.playerId, playerId)));
 
 	return rows.reduce((total, row) => total + row.chipCount, 0);
-}
-
-async function getSubmittedPlayers(executor: DatabaseExecutor, roundId: number) {
-	return executor
-		.select({
-			playerId: gamePlayers.id,
-			color: gamePlayers.color,
-			colorCode: gamePlayers.colorCode
-		})
-		.from(gameVoteSubmissions)
-		.innerJoin(gamePlayers, eq(gameVoteSubmissions.playerId, gamePlayers.id))
-		.where(eq(gameVoteSubmissions.roundId, roundId))
-		.orderBy(gamePlayers.id);
 }
 
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -107,7 +94,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		ownVotes: Object.fromEntries(
 			ownAllocations.map((allocation) => [allocation.artifactId, allocation.chipCount])
 		),
-		submittedPlayers: await getSubmittedPlayers(db, currentRound.id),
+		submittedPlayers: await getSubmittedOnlineVotingPlayers(db, currentRound.id),
 		votingResult: null
 	});
 };
@@ -234,80 +221,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await tx.insert(artifactVoteAllocations).values(allocations);
 			}
 
-			const submittedPlayers = await getSubmittedPlayers(tx, currentRound.id);
 			// 遊戲規則（docs/RULE.md「線上投票」）：暫時斷線只改 isOnline，
 			// isOnline 不影響投票資格，因此本局會等待該玩家回來。
 			// leftAt 不為空的玩家已主動離開，不再列入尚待提交的 quorum；
 			// 若他在離開前已提交，既有投票仍保留在本輪結果中。
-			const roomPlayers = await tx
-				.select({ id: gamePlayers.id })
-				.from(gamePlayers)
-				.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
-
-			const submittedPlayerIds = new Set(
-				submittedPlayers.map((submittedPlayer) => submittedPlayer.playerId)
-			);
-			const completed = roomPlayers.every((roomPlayer) => submittedPlayerIds.has(roomPlayer.id));
-			let votingResult = null;
-			if (completed) {
-				const voteRows = await tx
-					.select({
-						artifactId: artifactVoteAllocations.artifactId,
-						chipCount: artifactVoteAllocations.chipCount
-					})
-					.from(artifactVoteAllocations)
-					.innerJoin(
-						gameVoteSubmissions,
-						eq(artifactVoteAllocations.submissionId, gameVoteSubmissions.id)
-					)
-					.where(eq(gameVoteSubmissions.roundId, currentRound.id));
-				const voteTotals = new Map<number, number>();
-				for (const voteRow of voteRows) {
-					voteTotals.set(
-						voteRow.artifactId,
-						(voteTotals.get(voteRow.artifactId) ?? 0) + voteRow.chipCount
-					);
-				}
-				const rankedArtifacts = await tx
-					.select({ id: gameArtifacts.id, animal: gameArtifacts.animal })
-					.from(gameArtifacts)
-					.where(
-						and(eq(gameArtifacts.gameId, game.id), eq(gameArtifacts.round, currentRound.round))
-					);
-				rankedArtifacts.sort((a, b) => {
-					const voteDifference = (voteTotals.get(b.id) ?? 0) - (voteTotals.get(a.id) ?? 0);
-					if (voteDifference !== 0) return voteDifference;
-					return ZODIAC_ORDER.indexOf(a.animal) - ZODIAC_ORDER.indexOf(b.animal);
-				});
-
-				for (let index = 0; index < rankedArtifacts.length; index++) {
-					const artifact = rankedArtifacts[index];
-					await tx
-						.update(gameArtifacts)
-						.set({
-							votes: voteTotals.get(artifact.id) ?? 0,
-							voteRank: index < 2 ? index + 1 : null
-						})
-						.where(eq(gameArtifacts.id, artifact.id));
-				}
-				await tx
-					.update(gameRounds)
-					.set({ phase: 'result' })
-					.where(eq(gameRounds.id, currentRound.id));
-				votingResult = await getPublishedOnlineVotingResult(
-					tx,
-					game.id,
-					currentRound.round,
-					currentRound.id
-				);
-			}
+			const finalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
 
 			return {
 				currentRound,
 				chipBalance: availableChips - submittedChips,
-				completed,
-				votingResult,
-				submittedPlayers
+				...finalization
 			};
 		});
 

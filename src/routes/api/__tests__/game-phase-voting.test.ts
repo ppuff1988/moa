@@ -10,7 +10,7 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 
 	beforeAll(async () => {
 		// 創建測試用戶
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < 8; i++) {
 			const userData = await createTestUser(`-voting-${i}`);
 			testUsers.push({
 				email: userData.email,
@@ -42,10 +42,12 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 		}
 	});
 
-	async function createVotingGame(onlineVotingEnabled: boolean = false) {
+	async function createVotingGame(onlineVotingEnabled: boolean = false, playerCount: number = 2) {
 		const room = await createTestRoom(testUsers[0].token, { onlineVotingEnabled });
 		testGames.push(room.gameId);
-		await joinTestRoom(testUsers[1].token, room.roomName, room.password);
+		for (let index = 1; index < playerCount; index++) {
+			await joinTestRoom(testUsers[index].token, room.roomName, room.password);
+		}
 		if (onlineVotingEnabled) {
 			await Promise.all([
 				db
@@ -385,6 +387,31 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			const hostResponse = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
 			expect(hostResponse.status).toBe(200);
 			expect((await hostResponse.json()).completed).toBe(true);
+		});
+
+		it('七人局最後一位待投玩家主動離開時立即完成投票', async () => {
+			const room = await createVotingGame(true, 7);
+			for (let index = 0; index < 6; index++) {
+				const response = await submitOnlineVotes(room.roomName, testUsers[index].token, {});
+				expect(response.status).toBe(200);
+				expect((await response.json()).completed).toBe(false);
+			}
+
+			const leaveResponse = await fetch(
+				`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/leave`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${testUsers[6].token}`,
+						'Content-Type': 'application/json'
+					}
+				}
+			);
+			expect(leaveResponse.status).toBe(200);
+			expect((await leaveResponse.json()).votingCompleted).toBe(true);
+
+			const [round] = await db.select().from(gameRounds).where(eq(gameRounds.gameId, room.gameId));
+			expect(round.phase).toBe('result');
 		});
 
 		it('未開啟線上投票的房間拒絕玩家投票端點', async () => {
