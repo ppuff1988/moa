@@ -2,11 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	select: vi.fn(),
+	transaction: vi.fn(),
+	updateSet: vi.fn(),
+	insertValues: vi.fn(),
 	verifyHostPermission: vi.fn()
 }));
 
 vi.mock('$lib/server/db', () => ({
-	db: { select: mocks.select }
+	db: {
+		select: mocks.select,
+		transaction: mocks.transaction
+	}
+}));
+
+vi.mock('$lib/server/socket', () => ({
+	getSocketIO: () => null
 }));
 
 vi.mock('$lib/server/api-helpers', () => ({
@@ -51,6 +61,9 @@ describe('POST /api/room/[name]/start round transition', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.select.mockReset();
+		mocks.transaction.mockReset();
+		mocks.updateSet.mockReset();
+		mocks.insertValues.mockReset();
 		mocks.verifyHostPermission.mockResolvedValue({
 			game: { id: '11111111-1111-1111-1111-111111111111', status: 'playing' }
 		});
@@ -85,4 +98,50 @@ describe('POST /api/room/[name]/start round transition', () => {
 			expect(mocks.select).toHaveBeenCalledTimes(2);
 		}
 	);
+
+	it('completes the previous result round when starting the next round', async () => {
+		mocks.select
+			.mockImplementationOnce(() => selectResult([{ id: 7 }]))
+			.mockImplementationOnce(() =>
+				limitedSelectResult([
+					{
+						id: 22,
+						round: 2,
+						phase: 'result',
+						completedAt: null,
+						actionOrder: [2394, 2398, 2400]
+					}
+				])
+			)
+			.mockImplementationOnce(() => limitedSelectResult([]));
+
+		mocks.updateSet.mockReturnValue({ where: () => Promise.resolve() });
+		mocks.insertValues.mockReturnValue({
+			returning: () => Promise.resolve([{ id: 33 }])
+		});
+		mocks.transaction.mockImplementation(async (callback) =>
+			callback({
+				update: () => ({ set: mocks.updateSet }),
+				insert: () => ({ values: mocks.insertValues })
+			})
+		);
+
+		const response = await POST({
+			request: createRequest(3),
+			params: { name: '123456' }
+		} as never);
+
+		expect(response.status).toBe(200);
+		expect(mocks.transaction).toHaveBeenCalledOnce();
+		expect(mocks.updateSet).toHaveBeenCalledWith({
+			phase: 'completed',
+			completedAt: expect.any(Date)
+		});
+		expect(mocks.insertValues).toHaveBeenCalledWith({
+			gameId: '11111111-1111-1111-1111-111111111111',
+			round: 3,
+			phase: 'action',
+			actionOrder: [2394]
+		});
+	});
 });

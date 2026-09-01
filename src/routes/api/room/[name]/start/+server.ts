@@ -232,8 +232,7 @@ export const POST: RequestHandler = async (event) => {
 				return json({ message: `找不到第 ${previousRoundNumber} 回合` }, { status: 404 });
 			}
 
-			// 只有投票結果已公布才能開始下一回合。completedAt 在行動結束時就會寫入，
-			// 不能用它判斷討論或投票是否完成。
+			// 只有投票結果已公布才能開始下一回合。
 			if (previousRound.phase !== 'result') {
 				return json(
 					{ message: `第 ${previousRoundNumber} 回合尚未完成投票結果公布` },
@@ -257,16 +256,23 @@ export const POST: RequestHandler = async (event) => {
 				return json({ message: '上一回合沒有有效的行動順序' }, { status: 400 });
 			}
 
-			// 創建新回合，上一回合最後輪到的玩家成為新回合的起始玩家
-			const [newRound] = await db
-				.insert(gameRounds)
-				.values({
-					gameId: game.id,
-					round: nextRoundNumber,
-					phase: 'action',
-					actionOrder: [lastPlayerId] // 上一輪最後的玩家為新一輪的起始玩家
-				})
-				.returning();
+			// 完成上一回合並建立新回合；任一步驟失敗時一起回滾。
+			const [newRound] = await db.transaction(async (transaction) => {
+				await transaction
+					.update(gameRounds)
+					.set({ phase: 'completed', completedAt: new Date() })
+					.where(eq(gameRounds.id, previousRound.id));
+
+				return transaction
+					.insert(gameRounds)
+					.values({
+						gameId: game.id,
+						round: nextRoundNumber,
+						phase: 'action',
+						actionOrder: [lastPlayerId] // 上一輪最後的玩家為新一輪的起始玩家
+					})
+					.returning();
+			});
 
 			// 通過 Socket.IO 通知所有玩家
 			try {

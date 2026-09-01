@@ -55,12 +55,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		// 如果真品數達到6分，許愿陣營直接獲勝
 		if (genuineCount === 6) {
+			const finishedAt = new Date();
 			await db
 				.update(games)
 				.set({
 					status: 'finished',
 					totalScore: 6,
-					finishedAt: new Date()
+					finishedAt
 				})
 				.where(eq(games.id, game.id));
 
@@ -82,7 +83,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			// 更新回合狀態為completed
 			await db
 				.update(gameRounds)
-				.set({ phase: 'completed' })
+				.set({ phase: 'completed', completedAt: finishedAt })
 				.where(eq(gameRounds.id, currentRound[0].id));
 
 			const finalResult = {

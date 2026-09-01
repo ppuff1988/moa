@@ -770,13 +770,9 @@ export async function advanceToNextPlayer(gameId: string, currentRoundId: number
 
 	// 如果找不到可以行動的玩家，代表本回合行動階段結束
 	if (nextPlayerId === null) {
-		// 標記回合完成時間
 		await db
 			.update(gameRounds)
-			.set({
-				phase: 'discussion',
-				completedAt: new Date()
-			})
+			.set({ phase: 'discussion' })
 			.where(eq(gameRounds.id, currentRoundId));
 
 		return {
