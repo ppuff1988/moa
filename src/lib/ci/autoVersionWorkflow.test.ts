@@ -64,4 +64,10 @@ describe('Auto Version Bump workflow', () => {
 		expect(workflow).toContain('STRICT_CHECKS_REQUIRED');
 		expect(workflow).toContain('gh pr merge --disable-auto');
 	});
+
+	it('describes the pre-merge version notification as pending', () => {
+		expect(workflow).toContain('版本升級 PR 已建立或更新');
+		expect(workflow).toContain('等待 required checks 與自動合併');
+		expect(workflow).not.toContain('🚀 *版本自動升級*');
+	});
 });

@@ -184,21 +184,22 @@ jobs:
           echo "ℹ️ 較新的 main 變更會重新計算並更新同一個 PR"
 
   notify:
-    name: 版本升級通知
+    name: 版本升級 PR 通知
     runs-on: ubuntu-latest
     needs: check-and-bump
     if: needs.check-and-bump.outputs.version_changed == 'true'
     steps:
-      - name: 📣 發送版本升級通知
+      - name: 📣 發送版本升級 PR 通知
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           format: markdown
           message: |
-            🚀 *版本自動升級*
+            📝 *版本升級 PR 已建立或更新*
             *專案:* `${{ github.repository }}`
-            *版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
+            *預計版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
             *類型:* `${{ needs.check-and-bump.outputs.bump_type }}`
-            *合併者:* `${{ github.actor }}`
+            *狀態:* 等待 required checks 與自動合併
+            *建立者:* `${{ github.actor }}`
             [查看 Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
