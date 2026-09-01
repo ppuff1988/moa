@@ -570,6 +570,9 @@ exit 0
 		expect(workflow).toContain('pr.head.sha.slice(0, 7)');
 		expect(workflow).toContain('moa-codex-resume');
 		expect(workflow).toContain('github.rest.actions.reRunWorkflow');
+		expect(workflow.indexOf('await github.rest.actions.reRunWorkflow')).toBeLessThan(
+			workflow.indexOf('await github.rest.issues.createComment')
+		);
 	});
 
 	it('removes only safe merged head branches and reconciles missed cleanup', () => {

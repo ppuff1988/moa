@@ -77,15 +77,15 @@ jobs:
               throw new Error(`找不到 commit ${shortSha} 已成功的 CI Test，不能恢復自動合併`);
             }
 
+            await github.rest.actions.reRunWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ciRun.id
+            });
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: pullNumber,
               body: resumeMarker
-            });
-            await github.rest.actions.reRunWorkflow({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: ciRun.id
             });
             core.notice(`Re-ran CI Test #${ciRun.id} to resume auto merge for ${shortSha}`);
