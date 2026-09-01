@@ -13,6 +13,9 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
+	if (game.status !== 'playing' && game.status !== 'finished') {
+		return json({ message: '遊戲尚未開始' }, { status: 400 });
+	}
 
 	try {
 		// 獲取當前玩家的角色

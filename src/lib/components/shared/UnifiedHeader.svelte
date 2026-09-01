@@ -9,6 +9,8 @@
 	// 遊戲頁面屬性
 	export let currentUserNickname: string | undefined = undefined;
 	export let currentPlayerRole: string | null = null;
+	export let currentPlayerColor: string | null | undefined = undefined;
+	export let currentPlayerColorCode: string | undefined = undefined;
 	export let teammateInfo: { roleName: string; nickname: string; colorCode: string } | null = null;
 	export let onOpenHistory: (() => void) | undefined = undefined;
 
@@ -17,6 +19,8 @@
 	export let maxPlayers: number = 8;
 	export let minPlayers: number = 6;
 	export let isHost: boolean = false;
+	export let autoAssignRolesAndColors: boolean = false;
+	export let onlineVotingEnabled: boolean = false;
 	export let allPlayersReady: boolean = false;
 	export let players: Player[] = [];
 	export let onStartSelection: (() => void) | undefined = undefined;
@@ -28,6 +32,25 @@
 
 	// Lobby 模式的計算
 	$: readyCount = players.filter((p) => p.isReady).length;
+
+	const colorNames: Record<string, string> = {
+		'#EF4444': '紅',
+		'#F97316': '橙',
+		'#EAB308': '黃',
+		'#22C55E': '綠',
+		'#3B82F6': '藍',
+		'#A855F7': '紫',
+		'#1F2937': '黑',
+		'#F3F4F6': '白'
+	};
+
+	function formatColorName(name?: string | null, code?: string): string | null {
+		const resolvedName = name?.trim() || (code ? colorNames[code.toUpperCase()] : undefined);
+		return resolvedName ? `${resolvedName.replace(/色$/, '')}色` : null;
+	}
+
+	$: currentColorName = formatColorName(currentPlayerColor, currentPlayerColorCode);
+	$: teammateColorName = formatColorName(null, teammateInfo?.colorCode);
 </script>
 
 <div class="unified-header">
@@ -58,35 +81,62 @@
 			</div>
 
 			{#if isGameMode}
-				<!-- 遊戲模式：顯示玩家、角色、隊友資訊 -->
-				{#if currentUserNickname}
-					<div class="info-section">
-						<span class="label">玩家</span>
-						<span class="value player-name">{currentUserNickname}</span>
-					</div>
-				{/if}
+				<!-- 遊戲模式：將玩家名稱、角色與籌碼顏色綁定為清楚的身分群組 -->
+				<div class="identity-cluster">
+					<section class="identity-card self-identity" aria-label="你的身分">
+						<span class="identity-owner">你</span>
+						<div class="identity-copy">
+							<strong class="identity-name">{currentUserNickname ?? '玩家'}</strong>
+							<div class="identity-details">
+								{#if currentPlayerRole}
+									<span class="identity-role">角色 · {currentPlayerRole}</span>
+								{/if}
+								{#if currentColorName && currentPlayerColorCode}
+									<span class="identity-color" aria-label={`你的籌碼顏色：${currentColorName}`}>
+										<span class="color-swatch" style:background-color={currentPlayerColorCode}
+										></span>
+										{currentColorName}
+									</span>
+								{/if}
+							</div>
+						</div>
+					</section>
 
-				{#if currentPlayerRole}
-					<div class="info-section">
-						<span class="label">角色</span>
-						<span class="value role-name role-highlight">{currentPlayerRole}</span>
-					</div>
-				{/if}
-
-				{#if teammateInfo}
-					<div class="info-section teammate-section">
-						<span class="label teammate-label">{teammateInfo.roleName}</span>
-						<span class="value teammate-name" style="color: {teammateInfo.colorCode}"
-							>{teammateInfo.nickname}</span
-						>
-					</div>
-				{/if}
+					{#if teammateInfo}
+						<div class="team-connector" aria-label="同隊"><span>同隊</span></div>
+						<section class="identity-card teammate-identity" aria-label="隊友身分">
+							<span class="identity-owner">隊友</span>
+							<div class="identity-copy">
+								<strong class="identity-name">{teammateInfo.nickname}</strong>
+								<div class="identity-details">
+									<span class="identity-role">角色 · {teammateInfo.roleName}</span>
+									{#if teammateColorName}
+										<span class="identity-color" aria-label={`隊友籌碼顏色：${teammateColorName}`}>
+											<span class="color-swatch" style:background-color={teammateInfo.colorCode}
+											></span>
+											{teammateColorName}
+										</span>
+									{/if}
+								</div>
+							</div>
+						</section>
+					{/if}
+				</div>
 			{:else if isLobbyMode}
 				<!-- Lobby 模式：顯示玩家數量和狀態 -->
 				<div class="info-section">
 					<span class="label">玩家數</span>
 					<span class="value player-count">{playerCount}/{maxPlayers}</span>
 				</div>
+
+				{#if autoAssignRolesAndColors}
+					<div class="mode-badge" title="角色與顏色會在遊戲開始時隨機分派">自動分派</div>
+				{/if}
+				{#if onlineVotingEnabled}
+					<div class="mode-badge voting-mode-badge" title="所有玩家將自行提交投票籌碼">
+						線上投票
+					</div>
+				{/if}
 
 				{#if gameStatus === 'waiting'}
 					<div class="info-section status-section">
@@ -113,6 +163,7 @@
 		{playerCount}
 		{minPlayers}
 		{isHost}
+		{autoAssignRolesAndColors}
 		{allPlayersReady}
 		{onStartSelection}
 		{onStartGame}
@@ -219,32 +270,121 @@
 		line-height: 1.3;
 	}
 
-	/* 遊戲模式樣式 */
-	.player-name {
-		color: rgba(255, 255, 255, 0.95);
+	/* 遊戲模式：玩家、角色、籌碼顏色需被讀成同一組資料 */
+	.identity-cluster {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
 	}
 
-	.role-name {
-		color: #fbbf24;
-		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+	.identity-card {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		min-width: 0;
+		padding: 0.425rem 0.625rem;
+		border: 1px solid rgba(229, 216, 194, 0.16);
+		border-radius: 0.75rem;
+		background: rgba(20, 18, 16, 0.2);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+	}
+
+	.self-identity {
+		border-color: rgba(214, 188, 118, 0.27);
+	}
+
+	.identity-owner {
+		display: grid;
+		place-items: center;
+		min-width: 1.75rem;
+		height: 1.75rem;
+		padding-inline: 0.375rem;
+		border-radius: 0.45rem;
+		background: rgba(214, 188, 118, 0.13);
+		color: #d6bc76;
+		font-size: 0.6875rem;
 		font-weight: 700;
+		letter-spacing: 0.04em;
+		white-space: nowrap;
 	}
 
-	.teammate-section {
-		padding-left: 0.75rem;
-		border-left: 2px solid rgba(239, 68, 68, 0.3);
+	.teammate-identity .identity-owner {
+		background: rgba(197, 185, 170, 0.1);
+		color: #c5b9aa;
 	}
 
-	.teammate-label {
-		color: #ef4444;
-		font-weight: 700;
-		font-size: 0.75rem;
+	.identity-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		min-width: 0;
 	}
 
-	.teammate-name {
-		font-weight: 700;
-		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+	.identity-name {
+		overflow: hidden;
+		color: #f4eee3;
 		font-size: 0.875rem;
+		font-weight: 650;
+		line-height: 1.15;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.identity-details {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.identity-role,
+	.identity-color {
+		color: #c5b9aa;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		line-height: 1.2;
+		white-space: nowrap;
+	}
+
+	.identity-role {
+		color: #d6bc76;
+	}
+
+	.identity-color {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.color-swatch {
+		width: 0.625rem;
+		height: 0.625rem;
+		border: 1px solid rgba(255, 255, 255, 0.62);
+		border-radius: 50%;
+		box-shadow:
+			0 0 0 1px rgba(0, 0, 0, 0.46),
+			0 1px 4px rgba(0, 0, 0, 0.32);
+		flex-shrink: 0;
+	}
+
+	.team-connector {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		color: rgba(214, 188, 118, 0.68);
+		font-size: 0.625rem;
+		font-weight: 650;
+		letter-spacing: 0.06em;
+		white-space: nowrap;
+	}
+
+	.team-connector::before,
+	.team-connector::after {
+		content: '';
+		width: 0.625rem;
+		height: 1px;
+		background: rgba(214, 188, 118, 0.28);
 	}
 
 	/* Lobby 模式樣式 */
@@ -270,6 +410,23 @@
 	.status-selecting {
 		color: #a855f7;
 		font-weight: 700;
+	}
+
+	.mode-badge {
+		padding: 0.25rem 0.55rem;
+		border: 1px solid rgba(251, 191, 36, 0.45);
+		border-radius: 999px;
+		background: rgba(251, 191, 36, 0.12);
+		color: #fbbf24;
+		font-size: 0.75rem;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+
+	.voting-mode-badge {
+		border-color: rgba(96, 165, 250, 0.5);
+		background: rgba(96, 165, 250, 0.14);
+		color: #93c5fd;
 	}
 
 	@media (max-width: 1024px) {
@@ -342,7 +499,6 @@
 			padding: 0.3rem 0; /* 從 0.5rem 縮小到 0.3rem */
 		}
 
-		.teammate-section,
 		.status-section {
 			padding-left: 0;
 			padding-top: 0.4rem; /* 從 0.625rem 縮小到 0.4rem */
@@ -356,6 +512,21 @@
 
 		.status-section {
 			border-top-color: rgba(96, 165, 250, 0.3);
+		}
+
+		.identity-cluster {
+			display: grid;
+			grid-template-columns: 1fr;
+			width: 100%;
+			gap: 0.375rem;
+		}
+
+		.identity-card {
+			width: 100%;
+		}
+
+		.team-connector {
+			display: none;
 		}
 	}
 </style>

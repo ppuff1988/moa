@@ -15,6 +15,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game } = verifyResult;
+	if (game.autoAssignRolesAndColors) {
+		return json({ message: '自動分派房間不使用選角階段' }, { status: 400 });
+	}
 
 	// 檢查玩家數量 (最少需要6人)
 	if (game.playerCount < MIN_PLAYERS) {

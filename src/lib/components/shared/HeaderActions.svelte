@@ -8,6 +8,7 @@
 	export let playerCount: number = 0;
 	export let minPlayers: number = 2;
 	export let isHost: boolean = false;
+	export let autoAssignRolesAndColors: boolean = false;
 	export let allPlayersReady: boolean = false;
 	export let onStartSelection: (() => void) | undefined = undefined;
 	export let onStartGame: (() => void) | undefined = undefined;
@@ -41,7 +42,16 @@
 
 	<!-- 房主專屬按鈕 -->
 	{#if isHost}
-		{#if gameStatus === 'waiting' && onStartSelection}
+		{#if gameStatus === 'waiting' && autoAssignRolesAndColors && onStartGame}
+			<ActionButton
+				size="compact"
+				variant="primary"
+				title="開始遊戲"
+				subtitle=""
+				disabled={playerCount < minPlayers || !allPlayersReady}
+				onClick={onStartGame}
+			/>
+		{:else if gameStatus === 'waiting' && onStartSelection}
 			<ActionButton
 				size="compact"
 				variant="primary"

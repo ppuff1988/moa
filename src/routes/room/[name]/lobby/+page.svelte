@@ -17,10 +17,24 @@
 
 	// 使用 composable 管理房間邏輯 - 只创建一次
 	const roomLobby = useRoomLobby(roomName);
-	const { currentUser, players, isLoading, isHost, gameStatus, allPlayersReady } = roomLobby;
+	const {
+		currentUser,
+		players,
+		isLoading,
+		isHost,
+		gameStatus,
+		autoAssignRolesAndColors,
+		onlineVotingEnabled,
+		allPlayersReady
+	} = roomLobby;
 
 	// 計算底部裝飾文字
-	$: footerText = $players.length < minPlayers ? '等待更多玩家加入' : '等待房主開始遊戲';
+	$: footerText =
+		$players.length < minPlayers
+			? '等待更多玩家加入'
+			: $autoAssignRolesAndColors && !$allPlayersReady
+				? '等待所有玩家準備'
+				: '等待房主開始遊戲';
 
 	// 同步遊戲狀態到通知系統
 	$: if ($gameStatus) {
@@ -62,19 +76,30 @@
 			{maxPlayers}
 			{minPlayers}
 			isHost={$isHost}
+			autoAssignRolesAndColors={$autoAssignRolesAndColors}
+			onlineVotingEnabled={$onlineVotingEnabled}
 			allPlayersReady={$allPlayersReady}
 			players={$players}
 			onStartSelection={roomLobby.startSelection}
 			onStartGame={roomLobby.startGame}
 		/>
 
+		{#if $onlineVotingEnabled}
+			<div class="online-voting-notice" role="note">
+				<strong>本房間採線上投票</strong>
+				<span>每輪每人獲得 2 枚籌碼，未使用可累積；第三輪必須全部投出。</span>
+			</div>
+		{/if}
+
 		<PlayersGrid
 			players={$players}
 			currentUserId={$currentUser?.id}
 			isHost={$isHost}
 			gameStatus={$gameStatus}
+			autoAssignRolesAndColors={$autoAssignRolesAndColors}
 			{roomName}
 			onKickPlayer={roomLobby.kickPlayer}
+			onToggleReady={roomLobby.setReady}
 		/>
 
 		<div class="footer-wrapper">
@@ -102,6 +127,28 @@
 		display: flex;
 		justify-content: center;
 		width: 100%;
+	}
+
+	.online-voting-notice {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid hsl(var(--secondary) / 0.45);
+		border-radius: var(--radius);
+		background: hsl(var(--secondary) / 0.1);
+		color: hsl(var(--foreground));
+		line-height: 1.5;
+	}
+
+	.online-voting-notice strong {
+		white-space: nowrap;
+		color: hsl(var(--secondary));
+	}
+
+	.online-voting-notice span {
+		color: hsl(var(--muted-foreground));
 	}
 
 	.footer-text {
@@ -133,6 +180,12 @@
 	@media (max-width: 768px) {
 		.lobby-container {
 			padding: 1rem;
+		}
+
+		.online-voting-notice {
+			align-items: flex-start;
+			flex-direction: column;
+			gap: 0.25rem;
 		}
 	}
 </style>

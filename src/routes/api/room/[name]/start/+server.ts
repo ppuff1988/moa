@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { startGame, startRoleSelection } from '$lib/server/game';
+import { startAutoAssignedGame, startGame, startRoleSelection } from '$lib/server/game';
 import { verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
@@ -38,6 +38,24 @@ export const POST: RequestHandler = async (event) => {
 
 		// 如果遊戲在等待階段，開始選角
 		if (game.status === 'waiting') {
+			if (game.autoAssignRolesAndColors) {
+				try {
+					const result = await startAutoAssignedGame(game.id);
+					return json({
+						message: '遊戲開始成功',
+						status: 'playing',
+						gameId: result.gameId,
+						roundId: result.roundId,
+						round: 1
+					});
+				} catch (error) {
+					return json(
+						{ message: error instanceof Error ? error.message : '開始遊戲失敗' },
+						{ status: 400 }
+					);
+				}
+			}
+
 			// 開始選角階段（startRoleSelection 會檢查玩家人數）
 			try {
 				await startRoleSelection(game.id);

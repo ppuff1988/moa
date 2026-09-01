@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '$lib/server/db';
 import { user, games, gamePlayers } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { API_BASE, createTestUser, createTestRoom, joinTestRoom } from './helpers';
 
 describe('Room Ready Status API', () => {
@@ -183,6 +183,82 @@ describe('Room Ready Status API', () => {
 			});
 
 			expect([403, 404]).toContain(response.status);
+		});
+	});
+
+	describe('PATCH /api/room/[name]/ready', () => {
+		it('應該等待房間交易鎖後才更新準備狀態', async () => {
+			const room = await createTestRoom(testUsers[0].token, {
+				autoAssignRolesAndColors: true
+			});
+			testGames.push(room.gameId);
+
+			let requestSettled = false;
+			let readyRequest: Promise<Response> | undefined;
+			await db.transaction(async (tx) => {
+				await tx.execute(
+					sql`SELECT ${games.id} FROM ${games} WHERE ${games.id} = ${room.gameId} FOR UPDATE`
+				);
+				readyRequest = fetch(`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/ready`, {
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${testUsers[0].token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ isReady: true })
+				}).then((response) => {
+					requestSettled = true;
+					return response;
+				});
+
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				expect(requestSettled).toBe(false);
+			});
+
+			expect((await readyRequest)?.status).toBe(200);
+		});
+
+		it('應該允許自動分派房間的玩家準備及取消準備', async () => {
+			const room = await createTestRoom(testUsers[0].token, {
+				autoAssignRolesAndColors: true
+			});
+			testGames.push(room.gameId);
+
+			for (const isReady of [true, false]) {
+				const response = await fetch(
+					`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/ready`,
+					{
+						method: 'PATCH',
+						headers: {
+							Authorization: `Bearer ${testUsers[0].token}`,
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({ isReady })
+					}
+				);
+
+				expect(response.status).toBe(200);
+				expect((await response.json()).isReady).toBe(isReady);
+			}
+		});
+
+		it('應該拒絕手動選角房間使用準備切換', async () => {
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+
+			const response = await fetch(
+				`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/ready`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${testUsers[0].token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ isReady: true })
+				}
+			);
+
+			expect(response.status).toBe(400);
 		});
 	});
 });

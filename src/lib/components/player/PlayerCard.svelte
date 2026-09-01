@@ -6,8 +6,10 @@
 	export let isCurrentUser: boolean = false;
 	export let onKick: (() => void) | undefined = undefined;
 	export let gameStatus: string = 'waiting';
+	export let autoAssignRolesAndColors: boolean = false;
 	export let roomName: string = '';
 	export let playerCount: number = 0;
+	export let onToggleReady: ((isReady: boolean) => void) | undefined = undefined;
 
 	// 可選的角色列表（從 API 獲取）
 	let availableRoles: Array<{ id: number; name: string; camp: string }> = [];
@@ -289,7 +291,16 @@
 			{/if}
 		</div>
 
-		{#if gameStatus === 'waiting'}
+		{#if gameStatus === 'waiting' && autoAssignRolesAndColors}
+			<div class="player-role">
+				狀態：<span class:ready-status={player.isReady} class="role-color">
+					{player.isReady ? '已準備' : '未準備'}
+				</span>
+			</div>
+			{#if isCurrentUser}
+				<div class="auto-assignment-note">角色與顏色將於遊戲開始時揭曉</div>
+			{/if}
+		{:else if gameStatus === 'waiting'}
 			<!-- 等待階段：顯示未選角色 -->
 			<div class="player-role">
 				角色: <span class="role-color">未選角色</span>
@@ -372,7 +383,15 @@
 
 	<!-- 操作按鈕區域 -->
 	<div class="player-actions">
-		{#if gameStatus === 'selecting' && isCurrentUser}
+		{#if gameStatus === 'waiting' && autoAssignRolesAndColors && isCurrentUser && onToggleReady}
+			<button
+				class="confirm-btn"
+				class:locked={player.isReady}
+				on:click={() => onToggleReady?.(!player.isReady)}
+			>
+				{player.isReady ? '取消準備' : '準備好了'}
+			</button>
+		{:else if gameStatus === 'selecting' && isCurrentUser}
 			<button
 				class="confirm-btn"
 				class:locked={isLocked}
@@ -567,6 +586,16 @@
 
 	.role-color {
 		font-weight: 600;
+	}
+
+	.ready-status {
+		color: #22c55e;
+	}
+
+	.auto-assignment-note {
+		font-size: 0.78rem;
+		line-height: 1.4;
+		color: hsl(var(--muted-foreground));
 	}
 
 	.color-display {

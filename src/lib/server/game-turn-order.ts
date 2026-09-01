@@ -25,3 +25,38 @@ export function getAttackedRound(
 ): number {
 	return hasPlayerTakenTurn(actionOrder, targetPlayerId) ? currentRound + 1 : currentRound;
 }
+
+interface OrderedPlayerSource {
+	id: number;
+	nickname: string;
+	color: string | null;
+	colorCode: string | null;
+}
+
+export interface RoundPlayerOrderItem {
+	playerId: number;
+	nickname: string;
+	color: string | null;
+	colorCode: string | null;
+	position: number;
+}
+
+export function buildRoundPlayerOrder(
+	actionOrder: unknown,
+	players: OrderedPlayerSource[]
+): RoundPlayerOrderItem[] {
+	if (!Array.isArray(actionOrder)) return [];
+
+	const playersById = new Map(players.map((player) => [player.id, player]));
+	return [...actionOrder]
+		.reverse()
+		.map((playerId) => playersById.get(Number(playerId)))
+		.filter((player): player is OrderedPlayerSource => Boolean(player))
+		.map((player, index) => ({
+			playerId: player.id,
+			nickname: player.nickname,
+			color: player.color,
+			colorCode: player.colorCode,
+			position: index + 1
+		}));
+}

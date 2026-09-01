@@ -6,6 +6,8 @@
 
 	let roomName = '';
 	let roomPassword = '';
+	let autoAssignRolesAndColors = false;
+	let onlineVotingEnabled = false;
 	let error = '';
 	let isLoading = false;
 
@@ -47,7 +49,7 @@
 			const apiEndpoint = mode === 'create' ? '/api/room/create' : '/api/room/join';
 			const body =
 				mode === 'create'
-					? { password: roomPassword }
+					? { password: roomPassword, autoAssignRolesAndColors, onlineVotingEnabled }
 					: { roomName: roomName.trim(), password: roomPassword };
 
 			const response = await fetch(apiEndpoint, {
@@ -107,6 +109,24 @@
 				disabled={isLoading}
 				autocomplete="new-password"
 			/>
+
+			{#if mode === 'create'}
+				<label class="checkbox-field">
+					<input type="checkbox" bind:checked={autoAssignRolesAndColors} disabled={isLoading} />
+					<span>
+						<strong>自動分派角色與顏色</strong>
+						<small>所有玩家準備後，系統會在遊戲開始時隨機分派。</small>
+					</span>
+				</label>
+
+				<label class="checkbox-field">
+					<input type="checkbox" bind:checked={onlineVotingEnabled} disabled={isLoading} />
+					<span>
+						<strong>線上投票</strong>
+						<small>每位玩家自行分配籌碼；未使用可累積，第三輪必須全部投出。</small>
+					</span>
+				</label>
+			{/if}
 
 			{#if mode === 'create'}
 				<div class="info-message">
@@ -208,6 +228,42 @@
 	input:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
+	}
+
+	.checkbox-field {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.875rem 1rem;
+		border: 1px solid hsl(var(--border));
+		border-radius: var(--radius);
+		background: hsl(var(--muted) / 0.25);
+		cursor: pointer;
+	}
+
+	.checkbox-field input {
+		width: 1.1rem;
+		height: 1.1rem;
+		margin-top: 0.15rem;
+		accent-color: hsl(var(--secondary));
+		flex-shrink: 0;
+	}
+
+	.checkbox-field span {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.checkbox-field strong {
+		color: hsl(var(--card-foreground));
+		font-size: 0.95rem;
+	}
+
+	.checkbox-field small {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.8rem;
+		line-height: 1.4;
 	}
 
 	.error-message {

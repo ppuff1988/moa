@@ -6,8 +6,10 @@
 	export let currentUserId: number | undefined;
 	export let isHost: boolean;
 	export let gameStatus: string;
+	export let autoAssignRolesAndColors: boolean = false;
 	export let roomName: string;
 	export let onKickPlayer: ((userId: number) => void) | undefined;
+	export let onToggleReady: ((isReady: boolean) => void) | undefined;
 
 	// 排序玩家列表：當前玩家排第一，其他玩家保持原順序
 	$: sortedPlayers = [...players].sort((a, b) => {
@@ -32,7 +34,9 @@
 					? () => onKickPlayer(player.userId)
 					: undefined}
 				{gameStatus}
+				{autoAssignRolesAndColors}
 				{roomName}
+				onToggleReady={player.userId === currentUserId ? onToggleReady : undefined}
 				playerCount={players.length}
 			/>
 		{/each}

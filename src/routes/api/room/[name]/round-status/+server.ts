@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { verifyPlayerInRoom, getCurrentRoundOrError } from '$lib/server/api-helpers';
-import { getPublishedVotingResult } from '$lib/server/game-voting';
+import { getPublishedOnlineVotingResult, getPublishedVotingResult } from '$lib/server/game-voting';
 import { db } from '$lib/server/db';
 
 // 獲取當前回合狀態
@@ -44,7 +44,9 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		const currentRound = roundResult.round;
 		const votingResult =
 			currentRound.phase === 'result'
-				? await getPublishedVotingResult(db, game.id, currentRound.round)
+				? game.onlineVotingEnabled
+					? await getPublishedOnlineVotingResult(db, game.id, currentRound.round, currentRound.id)
+					: await getPublishedVotingResult(db, game.id, currentRound.round)
 				: null;
 
 		if (currentRound.phase === 'result' && !votingResult) {

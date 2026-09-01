@@ -134,10 +134,12 @@
 		<!-- svelte-ignore a11y-click-events-have-key-events -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div class="modal-backdrop" on:click={handleBackdropClick} on:touchmove={handleTouchMove}>
-			<div class="modal-container">
-				<!-- 標題 -->
-				<div class="modal-header">
-					<h2>戰績統計</h2>
+			<div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="history-title">
+				<header class="modal-header">
+					<div>
+						<p class="modal-eyebrow">個人檔案</p>
+						<h2 id="history-title">歷史戰績</h2>
+					</div>
 					<button class="close-btn" on:click={onClose} aria-label="關閉">
 						<svg
 							width="20"
@@ -151,104 +153,150 @@
 							<line x1="6" y1="6" x2="18" y2="18"></line>
 						</svg>
 					</button>
-				</div>
+				</header>
 
-				<!-- 內容 -->
 				<div class="modal-content">
 					{#if isLoading}
-						<div class="loading">
-							<div class="spinner"></div>
-							<p>載入中...</p>
+						<div class="loading" role="status" aria-label="正在載入歷史戰績">
+							<div class="skeleton skeleton-hero"></div>
+							<div class="skeleton skeleton-line"></div>
+							<div class="skeleton skeleton-line short"></div>
+							<span>載入戰績中</span>
 						</div>
 					{:else if error}
-						<div class="error-message">
+						<div class="error-message" role="alert">
+							<span aria-hidden="true">×</span>
 							<p>{error}</p>
+							<button on:click={loadStats}>重新載入</button>
 						</div>
 					{:else if stats}
-						<!-- 總覽統計 -->
-						<div class="stats-grid">
-							<div class="stat-card">
-								<div class="stat-label">總場次</div>
-								<div class="stat-value">{stats.totalGames}</div>
+						<section class="performance-overview" aria-labelledby="performance-title">
+							<div class="win-rate-panel" aria-label={`整體勝率 ${stats.winRate}%`}>
+								<div>
+									<p>整體勝率</p>
+									<h3 id="performance-title">生涯表現</h3>
+								</div>
+								<strong>{stats.winRate}<span>%</span></strong>
+								<div
+									class="win-rate-track"
+									role="progressbar"
+									aria-label="勝率"
+									aria-valuenow={stats.winRate}
+									aria-valuemin="0"
+									aria-valuemax="100"
+								>
+									<span style:width={`${stats.winRate}%`}></span>
+								</div>
 							</div>
-							<div class="stat-card">
-								<div class="stat-label">勝場</div>
-								<div class="stat-value highlight">{stats.totalWins}</div>
-							</div>
-							<div class="stat-card">
-								<div class="stat-label">勝率</div>
-								<div class="stat-value highlight">{stats.winRate}%</div>
-							</div>
-						</div>
+							<dl class="record-ledger">
+								<div>
+									<dt>完成對局</dt>
+									<dd>{stats.totalGames} 場</dd>
+								</div>
+								<div>
+									<dt>累計勝場</dt>
+									<dd>{stats.totalWins} 勝</dd>
+								</div>
+							</dl>
+						</section>
 
-						<!-- 陣營統計 -->
-						<div class="section">
-							<h3>陣營戰績</h3>
+						<section class="stats-section" aria-labelledby="camp-record-title">
+							<header class="section-heading">
+								<span>01</span>
+								<div>
+									<p>紅黑雙方</p>
+									<h3 id="camp-record-title">陣營勝場</h3>
+								</div>
+							</header>
 							<div class="camp-grid">
-								<div class="camp-item xuyuan">
-									<div class="camp-name">許愿陣營</div>
-									<div class="camp-value">{stats.xuYuanWins} 勝</div>
-								</div>
-								<div class="camp-item laochaofeng">
-									<div class="camp-name">老朝奉陣營</div>
-									<div class="camp-value">{stats.laoChaoFengWins} 勝</div>
-								</div>
+								<article class="camp-item" data-faction-color="red">
+									<span class="camp-emblem" aria-hidden="true">👼</span>
+									<div>
+										<small>紅方</small>
+										<h4>許愿陣營</h4>
+									</div>
+									<strong>{stats.xuYuanWins}<span>勝</span></strong>
+								</article>
+								<article class="camp-item" data-faction-color="black">
+									<span class="camp-emblem" aria-hidden="true">😈</span>
+									<div>
+										<small>黑方</small>
+										<h4>老朝奉陣營</h4>
+									</div>
+									<strong>{stats.laoChaoFengWins}<span>勝</span></strong>
+								</article>
 							</div>
-						</div>
+						</section>
 
-						<!-- 角色統計 -->
-						<div class="section">
-							<h3>角色使用</h3>
+						<section class="stats-section" aria-labelledby="role-record-title">
+							<header class="section-heading">
+								<span>02</span>
+								<div>
+									<p>出場次數</p>
+									<h3 id="role-record-title">角色使用</h3>
+								</div>
+							</header>
 							{#if stats.roleStats.length > 0}
-								<div class="role-list">
-									{#each stats.roleStats as role (role.name)}
-										<div class="role-row">
+								<ol class="role-list">
+									{#each stats.roleStats as role, roleIndex (role.name)}
+										<li class="role-row">
+											<span class="role-rank">{String(roleIndex + 1).padStart(2, '0')}</span>
 											<span class="role-name">{role.name}</span>
-											<div class="role-bar-bg">
-												<div
-													class="role-bar"
-													style="width: {(role.count / stats.totalGames) * 100}%"
-												></div>
+											<div class="role-bar-bg" aria-label={`${role.name}出場 ${role.count} 次`}>
+												<span style:width={`${(role.count / stats.totalGames) * 100}%`}></span>
 											</div>
-											<span class="role-count">{role.count}</span>
-										</div>
+											<span class="role-count">{role.count} 次</span>
+										</li>
 									{/each}
-								</div>
-							{:else}
-								<div class="empty">尚無角色資料</div>
-							{/if}
-						</div>
-
-						<!-- 近期記錄 -->
-						<div class="section">
-							<h3>近期戰績</h3>
-							{#if stats.recentGames.length > 0}
-								<div class="game-list">
-									{#each stats.recentGames as game (game.gameId)}
-										<div class="game-item" class:win={game.result === '勝利'}>
-											<div class="game-result">
-												<span class="result-badge" class:victory={game.result === '勝利'}>
-													{game.result === '勝利' ? '勝' : '敗'}
-												</span>
-											</div>
-											<div class="game-details">
-												<div class="game-role">{game.roleName}</div>
-												<div class="game-meta">
-													<span class="game-camp">{game.camp}</span>
-													<span class="game-divider">•</span>
-													<span class="game-score">{game.score} 分</span>
-												</div>
-											</div>
-											<div class="game-date">{formatDate(game.finishedAt)}</div>
-										</div>
-									{/each}
-								</div>
+								</ol>
 							{:else}
 								<div class="empty">
+									<span aria-hidden="true">—</span>
+									<p>尚無角色使用資料</p>
+								</div>
+							{/if}
+						</section>
+
+						<section class="stats-section recent-section" aria-labelledby="recent-record-title">
+							<header class="section-heading">
+								<span>03</span>
+								<div>
+									<p>最近五場</p>
+									<h3 id="recent-record-title">對局紀錄</h3>
+								</div>
+							</header>
+							{#if stats.recentGames.length > 0}
+								<ol class="game-list">
+									{#each stats.recentGames as game (game.gameId)}
+										<li
+											class="game-item"
+											class:win={game.result === '勝利'}
+											data-faction={game.camp === '許愿陣營' ? 'red' : 'black'}
+										>
+											<span class="result-badge" class:victory={game.result === '勝利'}
+												>{game.result}</span
+											>
+											<div class="game-details">
+												<div class="game-role">
+													<strong>{game.roleName}</strong><span>{game.score} 分</span>
+												</div>
+												<div class="game-meta">
+													<span class="game-camp">{game.camp}</span>
+												</div>
+											</div>
+											<time class="game-date" datetime={game.finishedAt || undefined}
+												>{formatDate(game.finishedAt)}</time
+											>
+										</li>
+									{/each}
+								</ol>
+							{:else}
+								<div class="empty">
+									<span aria-hidden="true">—</span>
 									<p>尚無完成的遊戲記錄</p>
 								</div>
 							{/if}
-						</div>
+						</section>
 					{/if}
 				</div>
 			</div>
@@ -259,493 +307,712 @@
 <style>
 	.modal-backdrop {
 		position: fixed;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background: rgba(0, 0, 0, 0.5);
-		backdrop-filter: blur(4px);
+		inset: 0;
+		z-index: 9999;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 9999;
-		animation: fadeIn 0.15s ease;
+		height: 100dvh;
 		padding: 1rem;
-		pointer-events: auto;
+		background: rgba(10, 8, 6, 0.78);
+		backdrop-filter: blur(10px);
 		overscroll-behavior: contain;
+		pointer-events: auto;
 		touch-action: none;
+		animation: fade-in 180ms ease-out;
 	}
 
-	@keyframes fadeIn {
+	.modal-container {
+		--history-gold: #d6bc76;
+		--history-gold-bright: #ead99f;
+		--history-text: #f5efe6;
+		--history-muted: #b9afa3;
+		--history-line: rgba(214, 188, 118, 0.18);
+		--faction-red: #a9433b;
+		--faction-red-light: #dc887f;
+		--faction-black: #0c0c0b;
+		--faction-silver: #aaa39a;
+		display: flex;
+		flex-direction: column;
+		width: min(100%, 58rem);
+		max-height: min(90dvh, 58rem);
+		overflow: hidden;
+		color: var(--history-text);
+		background:
+			radial-gradient(circle at 12% 0%, rgba(162, 100, 54, 0.15), transparent 30%),
+			linear-gradient(155deg, #292722 0%, #181714 100%);
+		border: 1px solid rgba(214, 188, 118, 0.3);
+		border-radius: 1rem 1rem 0.45rem 0.45rem;
+		box-shadow:
+			0 2rem 6rem rgba(7, 5, 3, 0.62),
+			inset 0 1px 0 rgba(255, 248, 232, 0.07);
+		overscroll-behavior: contain;
+		touch-action: pan-y;
+		animation: rise-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	@keyframes fade-in {
 		from {
 			opacity: 0;
 		}
 	}
 
-	.modal-container {
-		background: hsl(var(--background));
-		border: 1px solid hsl(var(--border));
-		border-radius: 12px;
-		width: 100%;
-		max-width: 700px;
-		max-height: 90vh;
-		display: flex;
-		flex-direction: column;
-		box-shadow:
-			0 20px 25px -5px rgba(0, 0, 0, 0.1),
-			0 10px 10px -5px rgba(0, 0, 0, 0.04);
-		animation: slideUp 0.2s ease;
-		overscroll-behavior: contain;
-		touch-action: pan-y;
-	}
-
-	@keyframes slideUp {
+	@keyframes rise-in {
 		from {
 			opacity: 0;
-			transform: translateY(10px);
+			transform: translateY(0.8rem) scale(0.985);
 		}
 	}
 
 	.modal-header {
 		display: flex;
+		flex: 0 0 auto;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1.25rem 1.5rem;
-		border-bottom: 1px solid hsl(var(--border));
+		padding: 1.35rem clamp(1.25rem, 3vw, 2rem);
+		background: rgba(255, 248, 232, 0.025);
+		border-bottom: 1px solid var(--history-line);
+	}
+
+	.modal-eyebrow {
+		margin: 0 0 0.25rem;
+		color: var(--history-gold);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
 	}
 
 	h2 {
 		margin: 0;
-		font-size: 1.25rem;
+		color: var(--history-text);
+		font-family: 'Noto Serif TC', 'Songti TC', 'Microsoft JhengHei', serif;
+		font-size: clamp(1.35rem, 3vw, 1.75rem);
 		font-weight: 600;
-		color: hsl(var(--foreground));
+		letter-spacing: -0.03em;
 	}
 
 	.close-btn {
-		background: transparent;
-		border: none;
-		color: hsl(var(--muted-foreground));
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		padding: 0;
+		color: #cfc5b8;
+		background: rgba(255, 248, 232, 0.055);
+		border: 1px solid rgba(255, 248, 232, 0.13);
+		border-radius: 0.45rem;
 		cursor: pointer;
-		padding: 0.5rem;
-		border-radius: 6px;
-		transition: all 0.15s;
-		display: flex;
-		align-items: center;
+		transition:
+			color 180ms ease,
+			background-color 180ms ease,
+			border-color 180ms ease,
+			transform 180ms ease;
 	}
 
 	.close-btn:hover {
-		background: hsl(var(--accent));
-		color: hsl(var(--accent-foreground));
+		color: var(--history-text);
+		background: rgba(214, 188, 118, 0.1);
+		border-color: rgba(214, 188, 118, 0.4);
+	}
+
+	.close-btn:active {
+		transform: scale(0.96);
+	}
+	.close-btn:focus-visible,
+	.error-message button:focus-visible {
+		outline: 2px solid var(--history-gold);
+		outline-offset: 3px;
 	}
 
 	.modal-content {
 		flex: 1;
+		padding: clamp(1.25rem, 3vw, 2rem);
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		padding: 0.75rem 1.5rem 1.5rem 1.5rem;
+		scrollbar-color: rgba(214, 188, 118, 0.34) rgba(0, 0, 0, 0.18);
 	}
 
-	/* Loading */
 	.loading {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
-		gap: 1rem;
+		display: grid;
+		gap: 0.75rem;
+		padding: 1rem 0 3rem;
 	}
 
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid hsl(var(--border));
-		border-top-color: hsl(var(--primary));
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
+	.loading > span {
+		color: var(--history-muted);
+		font-size: 0.75rem;
 	}
 
-	@keyframes spin {
+	.skeleton {
+		overflow: hidden;
+		background: rgba(255, 248, 232, 0.06);
+		border-radius: 0.4rem;
+	}
+
+	.skeleton::after {
+		display: block;
+		width: 45%;
+		height: 100%;
+		background: linear-gradient(90deg, transparent, rgba(214, 188, 118, 0.12), transparent);
+		content: '';
+		animation: skeleton-sweep 1.4s ease-in-out infinite;
+	}
+
+	.skeleton-hero {
+		height: 12rem;
+	}
+	.skeleton-line {
+		height: 3.5rem;
+	}
+	.skeleton-line.short {
+		width: 72%;
+	}
+
+	@keyframes skeleton-sweep {
+		from {
+			transform: translateX(-120%);
+		}
 		to {
-			transform: rotate(360deg);
+			transform: translateX(240%);
 		}
 	}
 
-	.loading p {
-		color: hsl(var(--muted-foreground));
-		font-size: 0.875rem;
-	}
-
-	/* Error */
 	.error-message {
-		padding: 3rem 2rem;
-		text-align: center;
-		color: hsl(var(--destructive));
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 2rem;
+		background: rgba(169, 67, 59, 0.08);
+		border-left: 2px solid var(--faction-red);
+		border-radius: 0.25rem 0.7rem 0.7rem 0.25rem;
 	}
 
-	/* Stats Grid */
-	.stats-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+	.error-message > span {
+		color: var(--faction-red-light);
+		font-size: 1.5rem;
+		line-height: 1;
 	}
 
-	.stat-card {
+	.error-message p {
+		margin: 0;
+		color: #dfd4c7;
+	}
+
+	.error-message button {
+		padding: 0.55rem 0.8rem;
+		color: var(--history-text);
 		background: transparent;
-		border: 1px solid hsl(var(--border));
-		border-radius: 8px;
-		padding: 1.25rem;
-		text-align: center;
+		border: 1px solid rgba(214, 188, 118, 0.32);
+		border-radius: 0.35rem;
+		cursor: pointer;
 	}
 
-	.stat-label {
-		font-size: 0.875rem;
-		color: hsl(var(--muted-foreground));
-		margin-bottom: 0.5rem;
+	.performance-overview {
+		display: grid;
+		grid-template-columns: minmax(0, 1.25fr) minmax(13rem, 0.75fr);
+		gap: 1px;
+		margin-bottom: clamp(3rem, 6vw, 4.5rem);
+		overflow: hidden;
+		background: var(--history-line);
+		border: 1px solid var(--history-line);
+		border-radius: 0.45rem 1rem 0.45rem 0.45rem;
 	}
 
-	.stat-value {
-		font-size: 2rem;
+	.win-rate-panel {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: end;
+		gap: 1rem;
+		min-height: 11rem;
+		padding: clamp(1.4rem, 3vw, 2rem);
+		background:
+			radial-gradient(circle at 0% 0%, rgba(174, 106, 55, 0.18), transparent 42%), #24211d;
+	}
+
+	.win-rate-panel p,
+	.section-heading p {
+		margin: 0;
+		color: var(--history-gold);
+		font-size: 0.68rem;
 		font-weight: 700;
-		color: hsl(var(--foreground));
+		letter-spacing: 0.13em;
 	}
 
-	.stat-value.highlight {
-		color: #22c55e;
+	.win-rate-panel h3 {
+		margin: 0.3rem 0 0;
+		font-family: 'Noto Serif TC', 'Songti TC', 'Microsoft JhengHei', serif;
+		font-size: clamp(1.25rem, 3vw, 1.8rem);
+		font-weight: 600;
 	}
 
-	/* Section */
-	.section {
-		margin-bottom: 1.5rem;
+	.win-rate-panel > strong {
+		color: var(--history-gold-bright);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: clamp(3.5rem, 8vw, 5.5rem);
+		font-weight: 600;
+		letter-spacing: -0.1em;
+		line-height: 0.85;
+		font-variant-numeric: tabular-nums;
 	}
 
-	.section:last-child {
+	.win-rate-panel > strong span {
+		margin-left: 0.15em;
+		font-size: 0.28em;
+		letter-spacing: 0;
+	}
+
+	.win-rate-track {
+		grid-column: 1 / -1;
+		height: 0.25rem;
+		overflow: hidden;
+		background: rgba(255, 248, 232, 0.1);
+		border-radius: 999px;
+	}
+
+	.win-rate-track span {
+		display: block;
+		height: 100%;
+		background: var(--history-gold);
+		border-radius: inherit;
+	}
+
+	.record-ledger {
+		display: grid;
+		grid-template-rows: repeat(2, 1fr);
+		margin: 0;
+		background: #201e1a;
+	}
+
+	.record-ledger > div {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding: 1.25rem 1.5rem;
+		border-bottom: 1px solid var(--history-line);
+	}
+
+	.record-ledger > div:last-child {
+		border-bottom: 0;
+	}
+	.record-ledger dt {
+		margin-bottom: 0.3rem;
+		color: var(--history-muted);
+		font-size: 0.7rem;
+	}
+
+	.record-ledger dd {
+		margin: 0;
+		color: var(--history-text);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 1.4rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.stats-section {
+		margin-bottom: clamp(2.75rem, 5vw, 4rem);
+	}
+	.stats-section:last-child {
 		margin-bottom: 0;
 	}
 
-	.section h3 {
-		font-size: 1rem;
-		font-weight: 600;
-		color: hsl(var(--foreground));
-		margin: 0 0 1rem 0;
+	.section-heading {
+		display: grid;
+		grid-template-columns: 2.25rem minmax(0, 1fr);
+		gap: 0.85rem;
+		margin-bottom: 1.1rem;
+		padding-bottom: 0.8rem;
+		border-bottom: 1px solid var(--history-line);
 	}
 
-	/* Camp */
+	.section-heading > span {
+		padding-top: 0.15rem;
+		color: rgba(214, 188, 118, 0.58);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.68rem;
+	}
+
+	.section-heading p {
+		font-size: 0.65rem;
+		letter-spacing: 0.12em;
+	}
+	.section-heading h3 {
+		margin: 0.2rem 0 0;
+		color: var(--history-text);
+		font-family: 'Noto Serif TC', 'Songti TC', 'Microsoft JhengHei', serif;
+		font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+		font-weight: 600;
+		letter-spacing: -0.025em;
+	}
+
 	.camp-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.75rem;
 	}
 
 	.camp-item {
-		background: transparent;
-		border: 2px solid hsl(var(--border));
-		border-radius: 8px;
-		padding: 1.25rem;
-		text-align: center;
-		transition: all 0.2s ease;
+		display: grid;
+		grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 0.85rem;
+		min-width: 0;
+		padding: 1rem;
+		border-top: 3px solid transparent;
+		border-radius: 0.3rem 0.3rem 0.75rem 0.75rem;
 	}
 
-	.camp-item:hover {
-		transform: translateY(-2px);
+	.camp-item[data-faction-color='red'] {
+		background:
+			radial-gradient(circle at 0% 0%, rgba(169, 67, 59, 0.2), transparent 42%),
+			rgba(255, 248, 232, 0.045);
+		border-top-color: var(--faction-red);
 	}
 
-	.camp-item.xuyuan {
-		border-color: #dc2626;
-		background: rgba(220, 38, 38, 0.05);
+	.camp-item[data-faction-color='black'] {
+		background:
+			radial-gradient(circle at 0% 0%, rgba(170, 163, 154, 0.11), transparent 42%),
+			rgba(7, 7, 6, 0.44);
+		border-top-color: var(--faction-black);
+		box-shadow: inset 0 1px 0 rgba(170, 163, 154, 0.19);
 	}
 
-	.camp-item.laochaofeng {
-		border-color: #6b7280;
-		background: rgba(107, 114, 128, 0.05);
+	.camp-emblem {
+		display: grid;
+		place-items: center;
+		width: 2.6rem;
+		height: 2.6rem;
+		font-size: 1.2rem;
+		background: var(--faction-red);
+		border: 1px solid rgba(226, 154, 145, 0.45);
+		border-radius: 0.28rem;
+		box-shadow: inset 0 0 0 0.3rem rgba(52, 10, 8, 0.14);
 	}
 
-	.camp-name {
-		font-size: 0.875rem;
-		color: hsl(var(--muted-foreground));
-		margin-bottom: 0.5rem;
-		display: block;
-		font-weight: 500;
+	.camp-item[data-faction-color='black'] .camp-emblem {
+		background: var(--faction-black);
+		border-color: rgba(170, 163, 154, 0.42);
+		box-shadow: inset 0 0 0 0.3rem rgba(255, 255, 255, 0.025);
 	}
 
-	.camp-item.xuyuan .camp-name {
-		color: #dc2626;
-	}
-
-	.camp-item.laochaofeng .camp-name {
-		color: #6b7280;
-	}
-
-	.camp-value {
-		font-size: 1.5rem;
+	.camp-item small {
+		color: var(--faction-red-light);
+		font-size: 0.64rem;
 		font-weight: 700;
-		color: hsl(var(--foreground));
+		letter-spacing: 0.1em;
 	}
 
-	.camp-item.xuyuan .camp-value {
-		color: #dc2626;
+	.camp-item[data-faction-color='black'] small {
+		color: var(--faction-silver);
+	}
+	.camp-item h4 {
+		margin: 0.15rem 0 0;
+		overflow: hidden;
+		font-size: 0.88rem;
+		font-weight: 600;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.camp-item.laochaofeng .camp-value {
-		color: #4b5563;
-	}
-
-	/* Role List */
-	.role-list {
+	.camp-item > strong {
 		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+		align-items: baseline;
+		gap: 0.2rem;
+		color: var(--history-text);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 1.6rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 
+	.camp-item > strong span {
+		color: var(--history-muted);
+		font-size: 0.65rem;
+	}
+
+	.role-list,
+	.game-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.role-list {
+		border-top: 1px solid rgba(255, 248, 232, 0.08);
+	}
 	.role-row {
 		display: grid;
-		grid-template-columns: 100px 1fr 50px;
-		gap: 1rem;
+		grid-template-columns: 2rem minmax(5rem, 0.35fr) minmax(8rem, 1fr) 3.5rem;
 		align-items: center;
-		padding: 0.75rem;
-		background: transparent;
-		border: 1px solid hsl(var(--border));
-		border-radius: 6px;
+		gap: 0.8rem;
+		min-height: 3.25rem;
+		border-bottom: 1px solid rgba(255, 248, 232, 0.08);
+	}
+
+	.role-rank {
+		color: rgba(214, 188, 118, 0.52);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.65rem;
 	}
 
 	.role-name {
-		font-weight: 500;
-		color: hsl(var(--foreground));
+		overflow: hidden;
+		color: var(--history-text);
+		font-size: 0.82rem;
+		font-weight: 600;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.role-bar-bg {
-		height: 8px;
-		background: hsl(var(--muted));
-		border-radius: 4px;
+		height: 0.3rem;
 		overflow: hidden;
+		background: rgba(255, 248, 232, 0.08);
+		border-radius: 999px;
 	}
 
-	.role-bar {
+	.role-bar-bg span {
+		display: block;
 		height: 100%;
-		background: hsl(var(--primary));
-		border-radius: 4px;
-		transition: width 0.3s ease;
+		background: var(--history-gold);
+		border-radius: inherit;
+		transition: width 260ms ease;
 	}
 
 	.role-count {
+		color: var(--history-muted);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.68rem;
 		text-align: right;
-		font-size: 0.875rem;
-		color: hsl(var(--muted-foreground));
-		font-weight: 500;
+		font-variant-numeric: tabular-nums;
 	}
 
-	/* Game List */
 	.game-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+		position: relative;
+	}
+	.game-list::before {
+		position: absolute;
+		top: 1rem;
+		bottom: 1rem;
+		left: 2.1rem;
+		width: 1px;
+		background: rgba(214, 188, 118, 0.17);
+		content: '';
 	}
 
 	.game-item {
-		background: transparent;
-		border: 1px solid hsl(var(--border));
-		border-radius: 8px;
-		padding: 1rem;
+		position: relative;
 		display: grid;
-		grid-template-columns: 50px 1fr auto;
+		grid-template-columns: 4.25rem minmax(0, 1fr) auto;
+		align-items: center;
 		gap: 1rem;
-		align-items: center;
-		transition: all 0.15s;
+		min-height: 5rem;
+		padding: 0.85rem 0.9rem 0.85rem 0;
+		border-bottom: 1px solid rgba(255, 248, 232, 0.08);
+		transition: background-color 180ms ease;
 	}
 
+	.game-item:last-child {
+		border-bottom: 0;
+	}
 	.game-item:hover {
-		background: hsl(var(--accent) / 0.05);
-		border-color: hsl(var(--primary) / 0.5);
-	}
-
-	.game-result {
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		background: rgba(214, 188, 118, 0.045);
 	}
 
 	.result-badge {
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.875rem;
+		position: relative;
+		z-index: 1;
+		justify-self: center;
+		min-width: 2.8rem;
+		padding: 0.35rem 0.4rem;
+		color: #d8a29b;
+		background: #2b1e1b;
+		border: 1px solid rgba(169, 67, 59, 0.4);
+		border-radius: 0.25rem;
+		font-size: 0.68rem;
 		font-weight: 700;
-		background: #ef4444;
-		color: white;
-		line-height: 1;
-		padding-top: 1px;
+		text-align: center;
 	}
 
 	.result-badge.victory {
-		background: #22c55e;
+		color: var(--history-gold-bright);
+		background: #302819;
+		border-color: rgba(214, 188, 118, 0.42);
 	}
 
 	.game-details {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 0.3rem;
+		min-width: 0;
 	}
 
 	.game-role {
-		font-weight: 600;
-		color: hsl(var(--foreground));
+		display: flex;
+		align-items: baseline;
+		gap: 0.55rem;
+		min-width: 0;
+	}
+
+	.game-role strong {
+		overflow: hidden;
+		font-size: 0.9rem;
+		font-weight: 650;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.game-role > span {
+		flex: 0 0 auto;
+		color: var(--history-gold-bright);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.7rem;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.game-meta {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-		font-size: 0.875rem;
-		color: hsl(var(--muted-foreground));
+		color: var(--history-muted);
+		font-size: 0.7rem;
 	}
 
-	.game-divider {
-		color: hsl(var(--muted-foreground) / 0.5);
+	.game-camp::before {
+		display: inline-block;
+		width: 0.45rem;
+		height: 0.45rem;
+		margin-right: 0.4rem;
+		vertical-align: 0.02rem;
+		background: var(--faction-red);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 0.1rem;
+		content: '';
+	}
+
+	.game-item[data-faction='black'] .game-camp::before {
+		background: var(--faction-black);
+		border-color: rgba(170, 163, 154, 0.5);
 	}
 
 	.game-date {
-		font-size: 0.75rem;
-		color: hsl(var(--muted-foreground));
+		max-width: 10rem;
+		color: #91887c;
+		font-size: 0.68rem;
+		line-height: 1.35;
 		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 
-	/* Empty */
 	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: hsl(var(--muted-foreground));
-		font-size: 0.875rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-height: 5rem;
+		padding: 1rem;
+		color: var(--history-muted);
+		background: rgba(255, 248, 232, 0.025);
+		border-left: 2px solid rgba(214, 188, 118, 0.32);
 	}
 
-	/* Responsive */
-	@media (max-width: 768px) {
+	.empty span {
+		color: var(--history-gold);
+		font-size: 1.2rem;
+	}
+	.empty p {
+		margin: 0;
+		font-size: 0.78rem;
+	}
+
+	@media (max-width: 720px) {
 		.modal-backdrop {
-			padding: 0;
 			align-items: flex-end;
+			padding: 0;
 		}
-
 		.modal-container {
-			max-height: 90vh;
-			border-radius: 16px 16px 0 0;
-			margin: 0;
 			width: 100%;
+			max-height: 92dvh;
+			border-right: 0;
+			border-bottom: 0;
+			border-left: 0;
+			border-radius: 1rem 1rem 0 0;
 		}
-
 		.modal-header {
-			padding: 1rem;
+			padding: 1rem 1.1rem;
 		}
-
 		.modal-content {
-			padding: 0.5rem 1rem 1rem 1rem;
+			padding: 1.1rem;
 		}
-
-		h2 {
-			font-size: 1.125rem;
-		}
-
-		.stats-grid {
+		.performance-overview {
 			grid-template-columns: 1fr;
-			gap: 0.75rem;
-			margin-bottom: 0.75rem;
+			margin-bottom: 3rem;
 		}
-
-		.stat-card {
-			padding: 0.75rem;
+		.win-rate-panel {
+			min-height: 9rem;
 		}
-
-		.stat-value {
-			font-size: 1.75rem;
+		.record-ledger {
+			grid-template-columns: repeat(2, 1fr);
+			grid-template-rows: auto;
 		}
-
-		.section {
-			margin-bottom: 0.75rem;
+		.record-ledger > div {
+			padding: 1rem;
+			border-right: 1px solid var(--history-line);
+			border-bottom: 0;
 		}
-
-		.section h3 {
-			font-size: 0.9rem;
-			margin-bottom: 0.5rem;
+		.record-ledger > div:last-child {
+			border-right: 0;
 		}
-
 		.camp-grid {
 			grid-template-columns: 1fr;
-			gap: 0.75rem;
 		}
-
-		.camp-item {
-			padding: 0.75rem;
-		}
-
-		.camp-value {
-			font-size: 1.25rem;
-		}
-
-		.role-list {
-			gap: 0.5rem;
-		}
-
 		.role-row {
-			grid-template-columns: 80px 1fr 40px;
-			gap: 0.75rem;
-			padding: 0.625rem;
-		}
-
-		.role-name {
-			font-size: 0.875rem;
-		}
-
-		.role-bar-bg {
-			height: 6px;
-		}
-
-		.role-count {
-			font-size: 0.8rem;
-		}
-
-		.game-list {
+			grid-template-columns: 1.5rem minmax(4.5rem, 0.55fr) minmax(5rem, 1fr) 3rem;
 			gap: 0.5rem;
 		}
-
 		.game-item {
-			grid-template-columns: 40px 1fr;
+			grid-template-columns: 3.7rem minmax(0, 1fr);
 			gap: 0.75rem;
-			padding: 0.75rem;
-			align-items: center;
 		}
-
-		.game-result {
-			display: flex;
-			align-items: center;
-			justify-content: center;
+		.game-list::before {
+			left: 1.85rem;
 		}
-
-		.result-badge {
-			width: 32px;
-			height: 32px;
-			font-size: 0.75rem;
-		}
-
-		.game-role {
-			font-size: 0.9rem;
-		}
-
-		.game-meta {
-			font-size: 0.8rem;
-			gap: 0.375rem;
-		}
-
 		.game-date {
 			grid-column: 2;
+			max-width: none;
+			margin-top: -0.35rem;
 			text-align: left;
-			font-size: 0.7rem;
-			margin-top: 0.25rem;
 		}
+	}
 
-		.empty {
-			padding: 1.5rem;
-			font-size: 0.8rem;
+	@media (max-width: 430px) {
+		.win-rate-panel {
+			grid-template-columns: 1fr;
+		}
+		.win-rate-panel > strong {
+			font-size: 3.75rem;
+		}
+		.role-row {
+			grid-template-columns: 1.4rem minmax(0, 1fr) 3rem;
+		}
+		.role-bar-bg {
+			display: none;
+		}
+		.camp-item {
+			grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+		}
+		.camp-emblem {
+			width: 2.4rem;
+			height: 2.4rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.modal-backdrop,
+		.modal-container,
+		.skeleton::after,
+		.close-btn,
+		.role-bar-bg span,
+		.game-item {
+			animation: none;
+			transition: none;
 		}
 	}
 </style>

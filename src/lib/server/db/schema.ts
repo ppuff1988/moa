@@ -6,9 +6,12 @@ import {
 	boolean,
 	json,
 	index,
+	check,
+	uniqueIndex,
 	serial,
 	uuid
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
@@ -72,6 +75,8 @@ export const games = pgTable(
 			.notNull()
 			.references(() => user.id),
 		status: text('status').notNull().default('waiting'), // waiting: 等待玩家, selecting: 選角階段, playing: 遊戲中, finished: 正常結束, terminated: 強制結束
+		autoAssignRolesAndColors: boolean('auto_assign_roles_and_colors').notNull().default(false),
+		onlineVotingEnabled: boolean('online_voting_enabled').notNull().default(false),
 		playerCount: integer('player_count').notNull().default(0),
 		totalScore: integer('total_score').default(0), // 許愿陣營總分
 		createdAt: timestamp('created_at').defaultNow(),
@@ -147,6 +152,55 @@ export const gameRounds = pgTable('game_rounds', {
 	completedAt: timestamp('completed_at')
 });
 
+export const gameVoteSubmissions = pgTable(
+	'game_vote_submissions',
+	{
+		id: serial('id').primaryKey(),
+		gameId: uuid('game_id')
+			.notNull()
+			.references(() => games.id, { onDelete: 'cascade' }),
+		roundId: integer('round_id')
+			.notNull()
+			.references(() => gameRounds.id, { onDelete: 'cascade' }),
+		playerId: integer('player_id')
+			.notNull()
+			.references(() => gamePlayers.id, { onDelete: 'cascade' }),
+		submittedAt: timestamp('submitted_at').defaultNow()
+	},
+	(table) => ({
+		roundPlayerIdx: uniqueIndex('game_vote_submissions_round_player_idx').on(
+			table.roundId,
+			table.playerId
+		),
+		gameRoundIdx: index('game_vote_submissions_game_round_idx').on(table.gameId, table.roundId)
+	})
+);
+
+export const artifactVoteAllocations = pgTable(
+	'artifact_vote_allocations',
+	{
+		id: serial('id').primaryKey(),
+		submissionId: integer('submission_id')
+			.notNull()
+			.references(() => gameVoteSubmissions.id, { onDelete: 'cascade' }),
+		artifactId: integer('artifact_id')
+			.notNull()
+			.references(() => gameArtifacts.id, { onDelete: 'cascade' }),
+		chipCount: integer('chip_count').notNull()
+	},
+	(table) => ({
+		chipCountCheck: check(
+			'artifact_vote_allocations_chip_count_check',
+			sql`${table.chipCount} > 0`
+		),
+		submissionArtifactIdx: uniqueIndex('artifact_vote_allocations_submission_artifact_idx').on(
+			table.submissionId,
+			table.artifactId
+		),
+		artifactIdx: index('artifact_vote_allocations_artifact_idx').on(table.artifactId)
+	})
+);
+
 export const gameActions = pgTable('game_actions', {
 	id: serial('id').primaryKey(),
 	gameId: uuid('game_id')
@@ -185,6 +239,8 @@ export type Game = typeof games.$inferSelect;
 export type GamePlayer = typeof gamePlayers.$inferSelect;
 export type GameRound = typeof gameRounds.$inferSelect;
 export type GameAction = typeof gameActions.$inferSelect;
+export type GameVoteSubmission = typeof gameVoteSubmissions.$inferSelect;
+export type ArtifactVoteAllocation = typeof artifactVoteAllocations.$inferSelect;
 export type IdentificationVote = typeof identificationVotes.$inferSelect;
 export type OAuthAccount = typeof oauthAccount.$inferSelect;
 export type Session = typeof session.$inferSelect;

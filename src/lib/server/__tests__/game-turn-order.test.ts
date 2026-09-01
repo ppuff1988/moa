@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getAttackedRound, getNextRoundStarter, hasPlayerTakenTurn } from '../game-turn-order';
+import * as gameTurnOrder from '../game-turn-order';
 
 describe('game turn order', () => {
 	it('uses the last player in turn order as the next round starter', () => {
@@ -42,5 +43,37 @@ describe('game turn order', () => {
 	it('handles an absent or malformed action order conservatively', () => {
 		expect(getAttackedRound(2, null, 1465)).toBe(2);
 		expect(getAttackedRound(2, {}, 1465)).toBe(2);
+	});
+
+	it('resolves the stored reverse action order into named players in actual turn order', () => {
+		const buildRoundPlayerOrder = (
+			gameTurnOrder as unknown as {
+				buildRoundPlayerOrder?: (
+					actionOrder: unknown,
+					players: Array<{
+						id: number;
+						nickname: string;
+						color: string | null;
+						colorCode: string | null;
+					}>
+				) => unknown;
+			}
+		).buildRoundPlayerOrder;
+
+		expect(buildRoundPlayerOrder).toBeTypeOf('function');
+		expect(
+			buildRoundPlayerOrder?.(
+				[3, 2, 1],
+				[
+					{ id: 1, nickname: '許愿', color: '紅', colorCode: '#EF4444' },
+					{ id: 2, nickname: '方震', color: '藍', colorCode: '#3B82F6' },
+					{ id: 3, nickname: '藥不然', color: '紫', colorCode: '#A855F7' }
+				]
+			)
+		).toEqual([
+			{ playerId: 1, nickname: '許愿', color: '紅', colorCode: '#EF4444', position: 1 },
+			{ playerId: 2, nickname: '方震', color: '藍', colorCode: '#3B82F6', position: 2 },
+			{ playerId: 3, nickname: '藥不然', color: '紫', colorCode: '#A855F7', position: 3 }
+		]);
 	});
 });
