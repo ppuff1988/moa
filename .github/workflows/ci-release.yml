@@ -4,13 +4,13 @@ on:
   workflow_run:
     workflows: ['Auto Version Bump']
     types: [completed]
+    branches: ['chore/version-bump-v*']
   workflow_dispatch:
 
 jobs:
   build-docker:
     runs-on: ubuntu-latest
-    # 只在版本升級成功或手動觸發時執行
-    # Auto Version Bump 只會在 PR 合併到 main 時執行，所以不需要檢查分支
+    # 只在版本升級 PR 合併後或手動觸發時執行
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&

@@ -8,9 +8,14 @@ on:
     workflows: ['Auto Merge Hotfix']
     types: [completed]
 
+concurrency:
+  group: auto-version-main
+  cancel-in-progress: false
+
 jobs:
   check-and-bump:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     # 對於 PR 關閉事件：只在已合併到 main 時執行
     # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
     if: >-
@@ -122,7 +127,30 @@ jobs:
           gh pr merge --auto --squash "$PR_URL"
 
           echo "✅ 已建立版本升級 PR: $PR_URL"
-          echo "ℹ️ PR 將在必要檢查通過後自動合併"
+          echo "⏳ 等待 PR 通過必要檢查並完成合併..."
+
+          VERSION_PR_STATE="OPEN"
+          for ATTEMPT in $(seq 1 120); do
+            VERSION_PR_STATE=$(gh pr view "$PR_URL" --json state --jq '.state')
+
+            if [ "$VERSION_PR_STATE" = "MERGED" ]; then
+              echo "✅ 版本升級 PR 已合併"
+              break
+            fi
+
+            if [ "$VERSION_PR_STATE" = "CLOSED" ]; then
+              echo "❌ 版本升級 PR 未合併就被關閉"
+              exit 1
+            fi
+
+            echo "   PR 狀態: $VERSION_PR_STATE ($ATTEMPT/120)"
+            sleep 15
+          done
+
+          if [ "$VERSION_PR_STATE" != "MERGED" ]; then
+            echo "❌ 等待版本升級 PR 合併逾時"
+            exit 1
+          fi
 
   notify:
     name: 版本升級通知
