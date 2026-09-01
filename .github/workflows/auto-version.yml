@@ -631,6 +631,7 @@ jobs:
           HEAD_BRANCH: ${{ steps.queue.outputs.branch }}
           SELECTED_SHA: ${{ steps.queue.outputs.checkout_sha }}
           SELECTED_MAIN_SHA: ${{ steps.queue.outputs.main_sha }}
+          PULL_NUMBER: ${{ steps.queue.outputs.number }}
         with:
           github-token: ${{ secrets.PAT }}
           script: |
@@ -646,6 +647,29 @@ jobs:
               const indent = source.match(/\n([ \t]+)"/)?.[1] || '\t';
               const trailingNewline = source.endsWith('\n') ? '\n' : '';
               return `${JSON.stringify(value, null, indent)}${trailingNewline}`;
+            }
+
+            async function requestCodexReview(sha) {
+              const pullNumber = Number(process.env.PULL_NUMBER);
+              if (!Number.isSafeInteger(pullNumber) || pullNumber <= 0) {
+                throw new Error(`無效的 Hotfix PR number: ${process.env.PULL_NUMBER}`);
+              }
+
+              const reviewMarker = `<!-- moa-codex-review sha=${sha} -->`;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pullNumber,
+                per_page: 100
+              });
+              if (comments.some((comment) => (comment.body || '').includes(reviewMarker))) return;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pullNumber,
+                body: `@codex review\n\n${reviewMarker}`
+              });
             }
 
             const branch = process.env.HEAD_BRANCH;
@@ -717,6 +741,7 @@ jobs:
               throw new Error(`Hotfix 版本檔不一致或不是預期版本: ${currentVersions.join(', ')}`);
             }
             if (currentVersions[0] === expectedVersion) {
+              await requestCodexReview(selectedSha);
               core.notice(`Hotfix branch ${branch} 已是 v${expectedVersion}`);
               return;
             }
@@ -770,6 +795,7 @@ jobs:
               sha: versionCommit.sha,
               force: false
             });
+            await requestCodexReview(versionCommit.sha);
             core.notice(`Hotfix branch ${branch} 已更新到 v${expectedVersion}`);
 
       - name: 提交到 Release 分支

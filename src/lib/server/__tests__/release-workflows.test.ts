@@ -439,7 +439,7 @@ exit 0
 		const workflow = readWorkflow('auto-merge-hotfix.yml');
 
 		expect(workflow).toContain(
-			'group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}'
+			'group: auto-merge-hotfix-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}-${{ github.event.workflow_run.head_sha }}'
 		);
 		expect(workflow.match(/await getHotfixQueue\(\)/g)).toHaveLength(2);
 		expect(workflow).toContain('cancel-in-progress: true');
@@ -498,7 +498,7 @@ exit 0
 			expect(workflow).toContain('pr.base.ref !== reviewedBaseRef');
 			expect(workflow).toContain("pr.state !== 'open' || pr.draft");
 			expect(workflow).toContain(
-				'${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}'
+				'${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}-${{ github.event.workflow_run.head_sha }}'
 			);
 			expect(workflow).toContain('statuses: write');
 			expect(workflow).toContain('github.rest.repos.createCommitStatus');
@@ -523,6 +523,55 @@ exit 0
 		expect(workflow).toContain('sha: reviewedSha');
 	});
 
+	it.each(['auto-merge-dev.yml', 'auto-merge-release.yml', 'auto-merge-hotfix.yml'])(
+		'ignores stale successful CI without cancelling the current head in %s',
+		(workflowName) => {
+			const workflow = readWorkflow(workflowName);
+
+			expect(workflow).toContain('github.event.workflow_run.head_sha');
+			expect(workflow).toContain('core.notice(`Skip stale CI');
+			expect(workflow).toContain('continue;');
+		}
+	);
+
+	it('cancels superseded CI runs before they can race current-head automation', () => {
+		const workflow = readWorkflow('ci-test.yml');
+
+		expect(workflow).toContain('group: ci-test-${{ github.event.pull_request.number }}');
+		expect(workflow).toContain('cancel-in-progress: true');
+	});
+
+	it('completes the required Codex check for manual main pull requests', () => {
+		const workflow = readWorkflow('auto-merge-dev.yml');
+
+		expect(workflow).toContain("['dev', 'main'].includes(pr.base.ref)");
+		expect(workflow).toContain("pr.base.ref === 'main'");
+		expect(workflow).toContain('Codex Review 已完成，保留手動合併');
+	});
+
+	it('requests a new Codex review after the automation changes a hotfix head', () => {
+		const workflow = readWorkflow('auto-version.yml');
+
+		expect(workflow).toContain('PULL_NUMBER: ${{ steps.queue.outputs.number }}');
+		expect(workflow).toContain('@codex review');
+		expect(workflow).toContain('moa-codex-review');
+		expect(workflow).toContain('versionCommit.sha');
+	});
+
+	it('resumes current-head CI after Codex completes asynchronously', () => {
+		const workflow = readWorkflow('resume-auto-merge-after-codex.yml');
+
+		expect(workflow).toContain('issue_comment:');
+		expect(workflow).toContain('types: [created, edited]');
+		expect(workflow).toContain('actions: write');
+		expect(workflow).toContain('chatgpt-codex-connector[bot]');
+		expect(workflow).toContain('codex-pull-request-review-summary');
+		expect(workflow).toContain('✅ **Completed**');
+		expect(workflow).toContain('pr.head.sha.slice(0, 7)');
+		expect(workflow).toContain('moa-codex-resume');
+		expect(workflow).toContain('github.rest.actions.reRunWorkflow');
+	});
+
 	it('removes only safe merged head branches and reconciles missed cleanup', () => {
 		const workflow = readWorkflow('cleanup-merged-branches.yml');
 
@@ -543,5 +592,7 @@ exit 0
 		expect(workflow).toContain('branchInfo.protected');
 		expect(workflow).toContain('github.rest.git.deleteRef');
 		expect(workflow).toContain('error.status !== 404');
+		expect(workflow).toContain('const { data: closedPulls } = await github.rest.pulls.list');
+		expect(workflow).not.toContain('closedPulls = await github.paginate');
 	});
 });

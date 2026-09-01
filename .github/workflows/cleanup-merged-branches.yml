@@ -96,7 +96,9 @@ jobs:
             if (context.eventName === 'pull_request') {
               await deleteMergedHead(context.payload.pull_request);
             } else {
-              const closedPulls = await github.paginate(github.rest.pulls.list, {
+              // Native branch auto-delete and the PR closed event handle the normal path.
+              // The schedule only reconciles the most recently changed PRs.
+              const { data: closedPulls } = await github.rest.pulls.list({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 state: 'closed',
