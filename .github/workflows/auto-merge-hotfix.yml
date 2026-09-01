@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/github-script@v8
         with:
+          github-token: ${{ secrets.PAT }}
           script: |
             const associatedPRs = context.payload.workflow_run.pull_requests;
 
@@ -41,9 +42,14 @@ jobs:
                 pull_number: associatedPR.number
               });
 
-              // 只處理 hotfix 分支且目標是 main 的 PR
-              if (!pr.head.ref.startsWith('hotfix/') || pr.base.ref !== 'main' || pr.draft) {
-                console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (hotfix/* → main, 非 draft)`);
+              // 只處理本 repository 的 hotfix 分支且目標是 main 的 PR
+              if (
+                !pr.head.ref.startsWith('hotfix/') ||
+                pr.base.ref !== 'main' ||
+                pr.draft ||
+                pr.head.repo.full_name !== context.payload.repository.full_name
+              ) {
+                console.log(`⏭️ 跳過 PR #${pr.number}: 不符合 hotfix PR 條件 (同 repository hotfix/* → main, 非 draft)`);
                 continue;
               }
 

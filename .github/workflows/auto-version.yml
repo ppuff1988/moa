@@ -1,25 +1,20 @@
 name: Auto Version Bump
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
-  workflow_run:
-    workflows: ['Auto Merge Hotfix']
-    types: [completed]
+
+concurrency:
+  group: auto-version-main
+  # Newer pushes recompute every commit since the latest tag, so the latest main state wins.
+  cancel-in-progress: true
 
 jobs:
   check-and-bump:
     runs-on: ubuntu-latest
-    # 對於 PR 關閉事件：只在已合併到 main 時執行
-    # 對於 Auto Merge Hotfix：只在成功完成且在 main 分支時執行
-    if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      (github.event_name == 'workflow_run' && 
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
     permissions:
       contents: write
+      pull-requests: write
     outputs:
       version_changed: ${{ steps.bump.outputs.version_changed }}
       new_version: ${{ steps.bump.outputs.new_version }}
@@ -29,8 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}
           persist-credentials: true
 
       - uses: actions/setup-node@v6
@@ -89,47 +85,92 @@ jobs:
             exit 0
           fi
 
-          NEW_VERSION=$(npm version $BUMP_TYPE --no-git-tag-version | sed 's/v//')
+          NEW_VERSION=$(npm version $BUMP_TYPE --no-git-tag-version --ignore-scripts | sed 's/v//')
           echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
           echo "version_changed=true" >> $GITHUB_OUTPUT
           echo "✅ 版本升級為: $NEW_VERSION"
 
-      - name: 提交與推送變更
+      - name: 提交並建立版本升級 PR
         if: steps.bump.outputs.version_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
         run: |
           NEW_VERSION=${{ steps.bump.outputs.new_version }}
           BUMP_TYPE=${{ steps.bump.outputs.bump_type }}
+          VERSION_BRANCH="chore/version-bump"
+          PR_TITLE="chore(release): bump version to v${NEW_VERSION}"
+          PR_BODY="Automated ${BUMP_TYPE} version bump from v${{ steps.bump.outputs.old_version }} to v${NEW_VERSION}. This PR will merge after the required checks pass."
 
+          git switch -C "$VERSION_BRANCH"
           git add package.json package-lock.json || true
-          git commit -m "chore(release): bump version to v${NEW_VERSION}" -m "Type: ${BUMP_TYPE}"
+          git commit -m "$PR_TITLE" -m "Type: ${BUMP_TYPE}"
 
-          echo "🔄 確保 main 最新..."
-          git pull --rebase origin main || true
+          # Fetch the automation-owned branch so force-with-lease can reject unexpected writes.
+          git fetch origin "$VERSION_BRANCH:refs/remotes/origin/$VERSION_BRANCH" || true
+          echo "📤 建立或更新版本分支..."
+          git push --force-with-lease origin "HEAD:$VERSION_BRANCH"
 
-          echo "📤 推送到 main..."
-          git push origin main || (echo "⚠️ 第一次推送失敗，重試..." && git pull --rebase origin main && git push origin main)
+          PR_URL=$(gh pr list \
+            --base main \
+            --head "$VERSION_BRANCH" \
+            --state open \
+            --limit 100 \
+            --json url,isCrossRepository,headRepository,headRepositoryOwner \
+            --jq '[.[] | select(.isCrossRepository == false and (.headRepositoryOwner.login + "/" + .headRepository.name) == env.GITHUB_REPOSITORY)] | .[0].url // empty')
 
-          echo "✅ 版本升級完成，tag 將由 CI Release workflow 創建"
-          echo "ℹ️ Sync Main to Dev workflow 將自動建立同步 PR"
+          if [ -z "$PR_URL" ]; then
+            PR_URL=$(gh pr create \
+              --base main \
+              --head "$VERSION_BRANCH" \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY")
+          else
+            PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq '.number')
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              --method PATCH \
+              --field title="$PR_TITLE" \
+              --field body="$PR_BODY" >/dev/null
+          fi
+
+          # Auto-merge is safe only while main requires PR heads to be up to date.
+          STRICT_CHECKS_REQUIRED=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/rules/branches/main" \
+            --jq 'any(.[]; .type == "required_status_checks" and .parameters.strict_required_status_checks_policy == true)')
+          AUTO_MERGE_ENABLED=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$STRICT_CHECKS_REQUIRED" != "true" ]; then
+            if [ "$AUTO_MERGE_ENABLED" = "true" ]; then
+              gh pr merge --disable-auto "$PR_URL"
+            fi
+            echo "::error::main 必須啟用 strict required status checks 才能自動合併版本 PR"
+            exit 1
+          fi
+
+          if [ "$AUTO_MERGE_ENABLED" != "true" ]; then
+            gh pr merge --auto --squash "$PR_URL"
+          fi
+
+          echo "✅ 版本升級 PR 已建立或更新: $PR_URL"
+          echo "ℹ️ 較新的 main 變更會重新計算並更新同一個 PR"
 
   notify:
-    name: 版本升級通知
+    name: 版本升級 PR 通知
     runs-on: ubuntu-latest
     needs: check-and-bump
     if: needs.check-and-bump.outputs.version_changed == 'true'
     steps:
-      - name: 📣 發送版本升級通知
+      - name: 📣 發送版本升級 PR 通知
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           format: markdown
           message: |
-            🚀 *版本自動升級*
+            📝 *版本升級 PR 已建立或更新*
             *專案:* `${{ github.repository }}`
-            *版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
+            *預計版本:* `v${{ needs.check-and-bump.outputs.old_version }}` → `v${{ needs.check-and-bump.outputs.new_version }}`
             *類型:* `${{ needs.check-and-bump.outputs.bump_type }}`
-            *合併者:* `${{ github.actor }}`
+            *狀態:* 等待 required checks 與自動合併
+            *建立者:* `${{ github.actor }}`
             [查看 Actions](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
