@@ -34,7 +34,10 @@
 			const response = await requestNextRound({
 				roomName,
 				currentRound,
-				onNextRound
+				onNextRound,
+				onSynchronizationError: () => {
+					addNotification('下一回合已開始，但畫面同步失敗，請重新整理', 'warning');
+				}
 			});
 
 			if (!response.ok) {
