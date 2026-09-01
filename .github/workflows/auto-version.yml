@@ -14,6 +14,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  guard-version-pr-merge:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.event.pull_request.head.ref, 'chore/version-bump')
+    steps:
+      - name: 拒絕未合併的版本 PR 關閉事件
+        if: github.event.pull_request.merged != true
+        run: |
+          echo "::error::版本升級 PR 未合併，不得觸發 release 或 main-to-dev sync"
+          exit 1
+
   check-and-bump:
     runs-on: ubuntu-latest
     # 對於 PR 關閉事件：只在已合併到 main 時執行
@@ -143,7 +155,19 @@ jobs:
               --field body="$PR_BODY" >/dev/null
           fi
 
+          # Auto-merge is safe only while main requires PR heads to be up to date.
+          STRICT_CHECKS_REQUIRED=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/rules/branches/main" \
+            --jq 'any(.[]; .type == "required_status_checks" and .parameters.strict_required_status_checks_policy == true)')
           AUTO_MERGE_ENABLED=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$STRICT_CHECKS_REQUIRED" != "true" ]; then
+            if [ "$AUTO_MERGE_ENABLED" = "true" ]; then
+              gh pr merge --disable-auto "$PR_URL"
+            fi
+            echo "::error::main 必須啟用 strict required status checks 才能自動合併版本 PR"
+            exit 1
+          fi
+
           if [ "$AUTO_MERGE_ENABLED" != "true" ]; then
             gh pr merge --auto --squash "$PR_URL"
           fi

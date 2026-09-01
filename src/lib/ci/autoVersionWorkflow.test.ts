@@ -37,4 +37,16 @@ describe('Auto Version Bump workflow', () => {
 		}
 		expect(syncWorkflow).not.toContain("head_branch == 'main'");
 	});
+
+	it('fails the trigger workflow when a version pull request closes unmerged', () => {
+		expect(workflow).toContain('guard-version-pr-merge:');
+		expect(workflow).toContain('github.event.pull_request.merged != true');
+		expect(workflow).toContain('exit 1');
+	});
+
+	it('requires strict up-to-date checks before enabling version auto-merge', () => {
+		expect(workflow).toContain('strict_required_status_checks_policy');
+		expect(workflow).toContain('STRICT_CHECKS_REQUIRED');
+		expect(workflow).toContain('gh pr merge --disable-auto');
+	});
 });
