@@ -4,13 +4,14 @@
 	import VotingChip from '$lib/components/ui/VotingChip.svelte';
 	import { addNotification } from '$lib/stores/notifications';
 	import type { PublishedVotingResult } from '$lib/types/game';
+	import { requestNextRound } from '$lib/utils/nextRound';
 	import { chineseNumeral } from '$lib/utils/round';
 
 	export let roomName: string;
 	export let votingResult: PublishedVotingResult | null = null;
 	export let isHost: boolean = false;
 	export let currentRound: number = 1;
-	export let onNextRound: () => void = () => {};
+	export let onNextRound: () => void | Promise<void> = () => {};
 	export let isOpen: boolean = true;
 
 	let isStartingNextRound = false;
@@ -30,19 +31,13 @@
 		isStartingNextRound = true;
 
 		try {
-			const nextRound = currentRound + 1;
-			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/start`, {
-				method: 'POST',
-				credentials: 'include',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ round: nextRound })
+			const response = await requestNextRound({
+				roomName,
+				currentRound,
+				onNextRound
 			});
 
-			if (response.ok) {
-				onNextRound();
-			} else {
+			if (!response.ok) {
 				const error = await response.json();
 				addNotification(error.message || '開始下一回合失敗', 'error');
 			}

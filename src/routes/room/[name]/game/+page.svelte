@@ -1023,6 +1023,9 @@
 							currentRound.set(data.round);
 						}
 
+						roundStatusRequests.invalidate();
+						roundPhase.set('action');
+
 						// Reset game state for new round - 清除舊回合的所有狀態
 						gameState.resetForNewRound();
 
@@ -1358,10 +1361,12 @@
 						isHost={$isHost}
 						currentRound={$currentRound}
 						onNextRound={async () => {
+							roundStatusRequests.invalidate();
+							roundPhase.set('action');
+							gameState.resetForNewRound();
 							await fetchArtifacts();
 							await updatePlayersAndRound();
 							await fetchRoundStatus();
-							gameState.resetForNewRound();
 						}}
 					/>
 				{:else if $roundPhase === 'identification'}
