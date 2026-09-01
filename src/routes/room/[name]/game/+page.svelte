@@ -5,6 +5,7 @@
 	import { createGameState } from '$lib/stores/gameState';
 	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
 	import { createLatestRequestTracker } from '$lib/utils/latestRequest';
+	import { synchronizeNextRound } from '$lib/utils/nextRound';
 	import { disconnectSocket, initSocket } from '$lib/utils/socket';
 	import type { Socket } from 'socket.io-client';
 	import { onDestroy, onMount } from 'svelte';
@@ -169,8 +170,10 @@
 
 	// ==================== Data Fetching ====================
 
-	async function fetchArtifacts() {
+	async function fetchArtifacts(): Promise<boolean> {
 		const artifacts = await gameService.fetchArtifacts();
+		if (artifacts.length === 0) return false;
+
 		if (artifacts.length > 0) {
 			// 私人鑑定結果不屬於 artifacts API，刷新結構資料時保留在
 			// identifiedIsGenuine，避免與公開投票結果共用欄位。
@@ -187,6 +190,7 @@
 			}
 			beastHeads.set(artifacts);
 		}
+		return true;
 	}
 
 	async function fetchMyRole() {
@@ -221,9 +225,9 @@
 		}
 	}
 
-	async function updatePlayersAndRound() {
+	async function updatePlayersAndRound(): Promise<boolean> {
 		const data = await gameService.updatePlayersAndRound();
-		if (!data) return;
+		if (!data) return false;
 
 		if (data.players) {
 			players.set(data.players);
@@ -248,19 +252,20 @@
 		if (isMyTurn && !$hasLoadedSkills) {
 			await fetchMyRole();
 		}
+		return true;
 	}
 
-	async function fetchRoundStatus() {
+	async function fetchRoundStatus(): Promise<boolean> {
 		const requestSequence = roundStatusRequests.start();
 		// 如果遊戲已結束，不再更新狀態
-		if ($isGameFinished) return;
+		if ($isGameFinished) return true;
 
 		try {
 			const data = await gameService.fetchRoundStatus();
-			if (!roundStatusRequests.isLatest(requestSequence)) return;
+			if (!roundStatusRequests.isLatest(requestSequence)) return true;
 			if (!data) {
 				console.warn('[fetchRoundStatus] API 返回空數據，跳過更新');
-				return;
+				return false;
 			}
 
 			// 公開結果必須先於 result phase 寫入，避免面板以舊資料渲染。
@@ -284,10 +289,11 @@
 			if (data.isHost !== undefined) {
 				isHost.set(data.isHost);
 			}
+			return true;
 		} catch (error) {
 			// 捕獲錯誤但不阻止遊戲載入
 			console.error('[fetchRoundStatus] 獲取回合狀態失敗:', error);
-			// 不拋出錯誤，讓遊戲繼續載入
+			return false;
 		}
 	}
 
@@ -1364,9 +1370,11 @@
 							roundStatusRequests.invalidate();
 							roundPhase.set('action');
 							gameState.resetForNewRound();
-							await fetchArtifacts();
-							await updatePlayersAndRound();
-							await fetchRoundStatus();
+							await synchronizeNextRound({
+								fetchArtifacts,
+								updatePlayersAndRound,
+								fetchRoundStatus
+							});
 						}}
 					/>
 				{:else if $roundPhase === 'identification'}

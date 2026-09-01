@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { requestNextRound } from './nextRound';
+import { requestNextRound, synchronizeNextRound } from './nextRound';
 
 describe('requestNextRound', () => {
 	it('waits for game-state synchronization after the server starts the round', async () => {
@@ -61,5 +61,18 @@ describe('requestNextRound', () => {
 			})
 		).resolves.toMatchObject({ ok: true });
 		expect(onSynchronizationError).toHaveBeenCalledWith(synchronizationError);
+	});
+
+	it('rejects synchronization when a refresh reports an unsuccessful result', async () => {
+		const fetchArtifacts = vi.fn().mockResolvedValue(true);
+		const updatePlayersAndRound = vi.fn().mockResolvedValue(false);
+		const fetchRoundStatus = vi.fn().mockResolvedValue(true);
+
+		await expect(
+			synchronizeNextRound({ fetchArtifacts, updatePlayersAndRound, fetchRoundStatus })
+		).rejects.toThrow('下一回合資料同步失敗');
+		expect(fetchArtifacts).toHaveBeenCalledOnce();
+		expect(updatePlayersAndRound).toHaveBeenCalledOnce();
+		expect(fetchRoundStatus).toHaveBeenCalledOnce();
 	});
 });
