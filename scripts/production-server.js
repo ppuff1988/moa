@@ -78,6 +78,7 @@ try {
 		});
 	}
 	global.__moaEnqueuePresenceTransition = enqueuePresenceTransition;
+
 	function addRoomConnection(roomName, userId, socketId) {
 		let userConnections = roomConnections.get(roomName);
 		if (!userConnections) {
@@ -103,6 +104,13 @@ try {
 		if (userConnections?.size === 0) roomConnections.delete(roomName);
 		return remainingConnections;
 	}
+
+	function clearRoomConnections(roomName, userId) {
+		const userConnections = roomConnections.get(roomName);
+		userConnections?.delete(userId);
+		if (userConnections?.size === 0) roomConnections.delete(roomName);
+	}
+	global.__moaClearRoomConnections = clearRoomConnections;
 
 	function hasRoomConnection(roomName, userId) {
 		return (roomConnections.get(roomName)?.get(userId)?.size ?? 0) > 0;
@@ -163,6 +171,28 @@ try {
 				]);
 				const nickname = userResult.rows[0]?.nickname || `玩家${userId}`;
 				const avatar = userResult.rows[0]?.avatar || null;
+
+				// 同一 socket 切換房間時，先釋放舊房間的連線追蹤與在線狀態。
+				const previousRoomName = socket.data.roomName;
+				if (previousRoomName && previousRoomName !== roomName) {
+					await enqueuePresenceTransition(previousRoomName, userId, async () => {
+						const remainingConnections = removeRoomConnection(previousRoomName, userId, socket.id);
+						if (remainingConnections !== 0 || hasRoomConnection(previousRoomName, userId)) return;
+
+						const previousGameResult = await pool.query(
+							'SELECT id FROM games WHERE room_name = $1',
+							[previousRoomName]
+						);
+						if (previousGameResult.rows.length > 0) {
+							await pool.query(
+								'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+								[previousGameResult.rows[0].id, userId]
+							);
+						}
+					});
+					socket.leave(previousRoomName);
+					socket.data.roomName = null;
+				}
 
 				// 加入 Socket.IO 房間
 				socket.join(roomName);
@@ -435,6 +465,7 @@ server.listen(port, () => {
 process.on('SIGTERM', async () => {
 	console.log('收到 SIGTERM 信號，正在關閉...');
 	delete global.__moaEnqueuePresenceTransition;
+	delete global.__moaClearRoomConnections;
 	await pool.end();
 	server.close();
 });

@@ -19,6 +19,8 @@ type PresenceTransition = <T>(
 	transition: () => Promise<T>
 ) => Promise<T>;
 
+type RoomConnectionClearer = (roomName: string, userId: number) => void;
+
 export function enqueuePresenceTransition<T>(
 	roomName: string,
 	userId: number,
@@ -66,6 +68,20 @@ function removeRoomConnection(roomName: string, userId: number, socketId: string
 	if (remainingConnections === 0) userConnections?.delete(userId);
 	if (userConnections?.size === 0) roomConnections.delete(roomName);
 	return remainingConnections;
+}
+
+/** Remove every tracked socket for a player that was forcibly removed from a room. */
+export function clearRoomConnections(roomName: string, userId: number): void {
+	const sharedClearer = (globalThis as { __moaClearRoomConnections?: RoomConnectionClearer })
+		.__moaClearRoomConnections;
+	if (sharedClearer && sharedClearer !== clearRoomConnections) {
+		sharedClearer(roomName, userId);
+		return;
+	}
+
+	const userConnections = roomConnections.get(roomName);
+	userConnections?.delete(userId);
+	if (userConnections?.size === 0) roomConnections.delete(roomName);
 }
 
 function hasRoomConnection(roomName: string, userId: number): boolean {
@@ -221,6 +237,26 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				// 獲取用戶暱稱和頭像
 				const { user } = await import('./db/schema');
 				const [userInfo] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
+
+				// 同一 socket 切換房間時，先釋放舊房間的連線追蹤與在線狀態。
+				const previousRoomName = socket.data.roomName;
+				if (previousRoomName && previousRoomName !== roomName) {
+					await enqueuePresenceTransition(previousRoomName, userId, async () => {
+						const remainingConnections = removeRoomConnection(previousRoomName, userId, socket.id);
+						if (remainingConnections !== 0 || hasRoomConnection(previousRoomName, userId)) return;
+
+						const [previousGame] = await db
+							.select()
+							.from(games)
+							.where(eq(games.roomName, previousRoomName))
+							.limit(1);
+						if (previousGame) {
+							await updatePlayerOnlineStatus(previousGame.id, userId, false);
+						}
+					});
+					socket.leave(previousRoomName);
+					socket.data.roomName = null;
+				}
 
 				// 加入 Socket.IO 房間
 				socket.join(roomName);

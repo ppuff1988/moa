@@ -102,4 +102,33 @@ describe('Socket 多分頁在線狀態', () => {
 
 		expect(source).toContain('__moaEnqueuePresenceTransition');
 	});
+
+	it.each(socketServers)('%s 強制移除玩家時清除所有房間連線追蹤', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+
+		expect(source).toContain('clearRoomConnections');
+		expect(source).toContain('__moaClearRoomConnections');
+	});
+
+	it('踢出玩家時清除 Socket.IO 房間與連線追蹤', () => {
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/kick/+server.ts'),
+			'utf8'
+		);
+
+		expect(source).toContain('enqueuePresenceTransition');
+		expect(source).toContain('clearRoomConnections(roomName, targetUserId)');
+		expect(source).toContain('socket.data.roomName = null');
+	});
+
+	it.each(socketServers)('%s 切換房間時清理舊房間連線追蹤', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+		const joinStart = source.indexOf("socket.on('join-room'");
+		const joinEnd = source.indexOf("socket.on('leave-room'", joinStart);
+		const joinHandler = source.slice(joinStart, joinEnd);
+
+		expect(joinHandler).toMatch(
+			/socket\.data\.roomName[\s\S]*(?:handleLeaveRoom|removeRoomConnection|clearRoomConnections)/
+		);
+	});
 });

@@ -4,8 +4,28 @@ import { verifyHostWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { games, gamePlayers, user } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { getSocketIO } from '$lib/server/socket';
+import { clearRoomConnections, enqueuePresenceTransition, getSocketIO } from '$lib/server/socket';
 import { getGameState } from '$lib/server/game';
+
+async function removeKickedPlayerSockets(
+	io: NonNullable<ReturnType<typeof getSocketIO>>,
+	roomName: string,
+	targetUserId: number
+): Promise<void> {
+	await enqueuePresenceTransition(roomName, targetUserId, async () => {
+		// 清掉 fetchSockets 找不到的殘留 ID，避免多分頁踢除後仍被判定在線。
+		clearRoomConnections(roomName, targetUserId);
+		const socketsInRoom = await io.in(roomName).fetchSockets();
+		for (const socket of socketsInRoom) {
+			if (socket.data.userId === targetUserId) {
+				socket.leave(roomName);
+				if (socket.data.roomName === roomName) {
+					socket.data.roomName = null;
+				}
+			}
+		}
+	});
+}
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const verifyResult = await verifyHostWithStatus(request, params.name!, ['waiting', 'selecting']);
@@ -85,13 +105,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				nickname: kickedUser?.nickname
 			});
 
-			// 讓被踢玩家離開房間
-			const socketsInRoom = await io.in(game.roomName).fetchSockets();
-			for (const socket of socketsInRoom) {
-				if (socket.data.userId === targetUserId) {
-					socket.leave(game.roomName);
-				}
-			}
+			// 讓被踢玩家離開房間並清除所有連線追蹤
+			await removeKickedPlayerSockets(io, game.roomName, targetUserId);
 
 			// 獲取更新後的遊戲狀態
 			const gameState = await getGameState(game.id);
@@ -157,13 +172,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				nickname: kickedUser?.nickname
 			});
 
-			// 讓被踢玩家離開房間（從 Socket.IO 房間中移除）
-			const socketsInRoom = await io.in(game.roomName).fetchSockets();
-			for (const socket of socketsInRoom) {
-				if (socket.data.userId === targetUserId) {
-					socket.leave(game.roomName);
-				}
-			}
+			// 讓被踢玩家離開房間並清除所有連線追蹤
+			await removeKickedPlayerSockets(io, game.roomName, targetUserId);
 
 			// 獲取更新後的遊戲狀態
 			const gameState = await getGameState(game.id);
