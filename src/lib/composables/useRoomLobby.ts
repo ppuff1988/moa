@@ -107,6 +107,12 @@ export function useRoomLobby(roomName: string) {
 		}
 	}
 
+	function joinRoomSocket() {
+		if (socket?.connected) {
+			socket.emit('join-room', roomName);
+		}
+	}
+
 	// Initialize room
 	async function initialize() {
 		try {
@@ -124,28 +130,23 @@ export function useRoomLobby(roomName: string) {
 
 			// Initialize socket connection first
 			socket = initSocket();
+			const wasConnected = socket.connected;
 
 			// Set up socket event listeners
 			setupSocketListeners();
 
-			// Wait for socket to be connected before joining room
-			await new Promise<void>((resolve) => {
-				if (socket?.connected) {
-					// Already connected
-					resolve();
-				} else {
-					// Wait for connection
-					socket?.once('connect', () => {
-						resolve();
-					});
+			if (wasConnected) {
+				// An already-connected shared socket does not emit connect again.
+				joinRoomSocket();
+			} else {
+				// The persistent connect listener joins after the initial connection or any reconnect.
+				await new Promise<void>((resolve) => {
+					socket?.once('connect', resolve);
 
-					// Fallback: if already connecting but not yet marked as connected
-					setTimeout(() => resolve(), 1000);
-				}
-			});
-
-			// Join the room via socket (this will trigger server-side join)
-			socket.emit('join-room', roomName);
+					// Fallback: do not block room loading if the socket is still connecting.
+					setTimeout(resolve, 1000);
+				});
+			}
 
 			// Wait a bit for socket join to complete, then fetch room state
 			// The socket event will populate most data, but we fetch to ensure consistency
@@ -180,6 +181,7 @@ export function useRoomLobby(roomName: string) {
 
 		listenersSetup = true;
 		console.log('[useRoomLobby] 設置 socket 監聽器');
+		socket.on('connect', joinRoomSocket);
 
 		// Room update event
 		socket.on('room-update', (data: { game: GameData; players: Player[] }) => {
@@ -487,6 +489,7 @@ export function useRoomLobby(roomName: string) {
 			socket.off('room-closed');
 			socket.off('game-force-ended');
 			socket.off('error');
+			socket.off('connect', joinRoomSocket);
 			listenersSetup = false;
 		}
 	}

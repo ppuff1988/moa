@@ -7,6 +7,7 @@ import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
 import { getNextRoundStarter } from '$lib/server/game-turn-order';
 import { eq, and } from 'drizzle-orm';
 import { chineseNumeral } from '$lib/utils/round';
+import { getSocketIO } from '$lib/server/socket';
 
 export const POST: RequestHandler = async (event) => {
 	// 驗證房主權限
@@ -186,7 +187,15 @@ export const POST: RequestHandler = async (event) => {
 			if ('error' in transition) return transition.error;
 			const result = transition.data;
 
-			// 注意：game-started 事件已經在 startGame 函數內部廣播，不需要在這裡重複發送
+			// Transaction 已提交後才通知客戶端，避免客戶端讀到舊的遊戲狀態。
+			const io = getSocketIO();
+			if (io) {
+				io.to(game.roomName).emit('game-started', {
+					gameId: result.gameId,
+					roundId: result.roundId,
+					roomName: game.roomName
+				});
+			}
 
 			return json(
 				{

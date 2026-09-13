@@ -117,7 +117,7 @@ try {
 			UPDATE game_players AS gp
 			SET is_online = false, last_active_at = NOW()
 			FROM games AS g
-			WHERE gp.game_id = g.id AND g.status = 'playing'
+			WHERE gp.game_id = g.id AND g.status IN ('waiting', 'selecting', 'playing')
 		`);
 	}
 

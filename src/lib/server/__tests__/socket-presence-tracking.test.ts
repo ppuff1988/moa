@@ -21,6 +21,14 @@ describe('Socket 多分頁在線狀態', () => {
 		expect(source).toContain('resetActivePlayerPresence');
 	});
 
+	it.each(socketServers)('%s 啟動時清除可恢復房間的殘留在線狀態', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+		const resetStart = source.indexOf('resetActivePlayerPresence');
+		const resetBody = source.slice(resetStart, resetStart + 1200);
+
+		expect(resetBody).toMatch(/waiting[\s\S]*selecting[\s\S]*playing/);
+	});
+
 	it.each(socketServers)('%s 加入房間途中斷線時不留下幽靈在線狀態', (file) => {
 		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
 		const joinStart = source.indexOf("socket.on('join-room'");

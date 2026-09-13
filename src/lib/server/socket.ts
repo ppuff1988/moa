@@ -83,7 +83,10 @@ async function resetActivePlayerPresence(): Promise<void> {
 		.where(
 			inArray(
 				gamePlayers.gameId,
-				db.select({ id: games.id }).from(games).where(eq(games.status, 'playing'))
+				db
+					.select({ id: games.id })
+					.from(games)
+					.where(inArray(games.status, ['waiting', 'selecting', 'playing']))
 			)
 		);
 }

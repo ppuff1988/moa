@@ -60,4 +60,15 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 
 		expect(source).toContain('requireAllPlayersOnline(gameId, tx, true)');
 	});
+
+	it('手動開始遊戲在 transaction commit 後才廣播 game-started', () => {
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/start/+server.ts'),
+			'utf8'
+		);
+
+		expect(source).toMatch(
+			/const transition = await runAllPlayersOnlineTransaction\(game\.id,[\s\S]*?const result = transition\.data[\s\S]*?getSocketIO[\s\S]*?emit\('game-started'/
+		);
+	});
 });

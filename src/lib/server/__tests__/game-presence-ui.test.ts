@@ -55,4 +55,14 @@ describe('遊戲頁離線暫停提示', () => {
 		expect(resumeEndpoint).toContain('finalizeOnlineVotingIfComplete');
 		expect(resumeEndpoint).toContain("emitToRoom(game.roomName, 'voting-completed'");
 	});
+
+	it('lobby socket 自動重連後重新加入房間', () => {
+		const lobbySource = readFileSync(
+			resolve(process.cwd(), 'src/lib/composables/useRoomLobby.ts'),
+			'utf8'
+		);
+
+		expect(lobbySource).toContain("socket.on('connect', joinRoomSocket)");
+		expect(lobbySource).toContain("socket.off('connect', joinRoomSocket)");
+	});
 });

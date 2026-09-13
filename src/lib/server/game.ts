@@ -440,18 +440,19 @@ export async function startGame(gameId: string, executor: GameExecutor = db) {
 			.where(eq(gamePlayers.id, player.id));
 	}
 
-	// 通知房間內所有玩家遊戲已開始
-	const { getSocketIO } = await import('./socket');
-	const io = getSocketIO();
-	if (io) {
-		io.to(game.roomName).emit('game-started', {
-			gameId,
-			roundId: round.id,
-			roomName: game.roomName
-		});
+	const result = { gameId, roundId: round.id, roomName: game.roomName };
+
+	// A transaction caller emits only after commit; direct callers preserve the
+	// historical behavior of emitting once setup has completed.
+	if (executor === db) {
+		const { getSocketIO } = await import('./socket');
+		const io = getSocketIO();
+		if (io) {
+			io.to(game.roomName).emit('game-started', result);
+		}
 	}
 
-	return { gameId, roundId: round.id };
+	return result;
 }
 
 export async function startAutoAssignedGame(gameId: string) {
