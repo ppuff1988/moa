@@ -160,6 +160,9 @@
 			{/if}
 		</div>
 
+		<a class="leaderboard-link" href="/leaderboard"
+			>玩家排行榜 · 八席名家 <span aria-hidden="true">↗</span></a
+		>
 		<p class="footer-text">傳承千年智慧，品鑑古董真偽</p>
 	</div>
 {:else}
@@ -167,6 +170,17 @@
 {/if}
 
 <style>
+	.leaderboard-link {
+		color: hsl(var(--secondary));
+		font-size: 0.9375rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid hsl(var(--secondary) / 0.3);
+		border-radius: 0.25rem;
+	}
+	.leaderboard-link:focus-visible {
+		outline: 2px solid hsl(var(--secondary));
+		outline-offset: 4px;
+	}
 	/* 已登入用戶的樣式（保持原有） */
 	.main-content {
 		display: flex;

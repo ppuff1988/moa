@@ -106,6 +106,7 @@
 				<a href="#features" onclick={closeMenu}>遊戲特色</a>
 				<a href="#how-to-play" onclick={closeMenu}>如何開始</a>
 				<a href="#faq" onclick={closeMenu}>常見問題</a>
+				<a href="/leaderboard" onclick={closeMenu}>玩家排行榜</a>
 				<a href="/auth/login" class="nav-login" onclick={closeMenu}
 					>登入／註冊 <span aria-hidden="true">↗</span></a
 				>
