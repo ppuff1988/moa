@@ -99,7 +99,9 @@
 		})
 	);
 	const attackablePlayers = $derived($players.filter((player) => player.id !== currentUserId));
-	const offlinePlayers = $derived($players.filter((player) => !player.isOnline));
+	const offlinePlayers = $derived(
+		$players.filter((player) => player.leftAt == null && !player.isOnline)
+	);
 
 	// Update gameStatus based on roundPhase
 	let gameStatus = $derived($roundPhase === 'finished' ? 'finished' : 'playing');
@@ -258,7 +260,11 @@
 	}
 
 	async function resumePausedGameIfReady(roomPlayers: Player[]) {
-		if (isResumingPausedGame || roomPlayers.length === 0 || roomPlayers.some((p) => !p.isOnline)) {
+		if (
+			isResumingPausedGame ||
+			roomPlayers.length === 0 ||
+			roomPlayers.some((p) => p.leftAt == null && !p.isOnline)
+		) {
 			return;
 		}
 

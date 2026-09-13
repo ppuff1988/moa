@@ -1,5 +1,4 @@
 export interface LeaderboardEntry {
-	userId: number;
 	nickname: string;
 	rank: number;
 	wins: number;
@@ -8,7 +7,6 @@ export interface LeaderboardEntry {
 }
 
 export interface AwardWinner {
-	userId: number;
 	nickname: string;
 }
 

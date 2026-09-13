@@ -10,4 +10,49 @@
 		<changefreq>monthly</changefreq>
 		<priority>0.7</priority>
 	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.8</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/1</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/2</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/3</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/4</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/5</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/6</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/7</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
+	<url>
+		<loc>https://moa.sportify.tw/leaderboard/roles/8</loc>
+		<changefreq>daily</changefreq>
+		<priority>0.7</priority>
+	</url>
 </urlset>

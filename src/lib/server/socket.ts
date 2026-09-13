@@ -57,6 +57,23 @@ export function getSocketIO(): SocketIOServer | null {
 	return io || (globalThis as { io?: SocketIOServer }).io || null;
 }
 
+/**
+ * 檢查指定玩家是否仍有 Socket 連線在房間內。
+ * API 路由在更新 presence 前使用同一個查詢，避免多分頁時誤標記離線。
+ */
+export async function hasPlayerSocket(roomName: string, userId: number): Promise<boolean> {
+	const socketIO = getSocketIO();
+	if (!socketIO) return false;
+
+	try {
+		const sockets = await socketIO.in(roomName).fetchSockets();
+		return sockets.some((socket) => socket.data.userId === userId);
+	} catch (error) {
+		console.error('[hasPlayerSocket] 查詢房間連線失敗:', error);
+		return false;
+	}
+}
+
 // 初始化 Socket.IO
 export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServer> {
 	if (io) {
@@ -172,7 +189,7 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				addRoomConnection(roomName, userId, socket.id);
 
 				// 更新玩家在線狀態
-				await updatePlayerOnlineStatus(game.id, userId, true);
+				await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');
 				if (!socket.connected) {
 					removeRoomConnection(roomName, userId, socket.id);
 					await updatePlayerOnlineStatus(game.id, userId, false);

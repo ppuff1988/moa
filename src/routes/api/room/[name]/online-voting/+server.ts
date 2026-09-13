@@ -20,7 +20,8 @@ import { finalizeOnlineVotingIfComplete, getOnlineVotingProgress } from '$lib/se
 class OnlineVotingSubmissionError extends Error {
 	constructor(
 		message: string,
-		readonly status: number = 400
+		readonly status: number = 400,
+		readonly code?: string
 	) {
 		super(message);
 	}
@@ -129,6 +130,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 	try {
 		const result = await db.transaction(async (tx) => {
+			const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+			if (pauseResponse) {
+				throw new OnlineVotingSubmissionError(
+					'有玩家離線，請等待所有玩家重新連線',
+					409,
+					'GAME_PAUSED'
+				);
+			}
+
 			const [currentRound] = await tx
 				.select()
 				.from(gameRounds)
@@ -262,7 +272,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} catch (error) {
 		if (error instanceof OnlineVotingSubmissionError) {
-			return json({ message: error.message }, { status: error.status });
+			return json(
+				error.code
+					? { success: false, code: error.code, message: error.message }
+					: { message: error.message },
+				{ status: error.status }
+			);
 		}
 
 		console.error('提交線上投票失敗:', error);

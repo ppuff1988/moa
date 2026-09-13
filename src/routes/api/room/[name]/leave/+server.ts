@@ -2,7 +2,7 @@ import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, games, user } from '$lib/server/db/schema';
 import { getGameState } from '$lib/server/game';
-import { getSocketIO } from '$lib/server/socket';
+import { getSocketIO, hasPlayerSocket } from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
@@ -198,12 +198,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} else {
 		if (status === 'playing') {
-			await db
-				.update(gamePlayers)
-				.set({ isOnline: false, lastActiveAt: new Date() })
-				.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
+			const hasActiveSocket = await hasPlayerSocket(game.roomName, currentUser.id);
+			if (!hasActiveSocket) {
+				await db
+					.update(gamePlayers)
+					.set({ isOnline: false, lastActiveAt: new Date() })
+					.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
+			}
 
-			if (io) {
+			if (io && !hasActiveSocket) {
 				io.to(game.roomName).emit('player-offline', {
 					userId: currentUser.id,
 					nickname: currentUser.nickname

@@ -60,6 +60,7 @@ export async function POST({ request }: RequestEvent) {
 			await db.insert(user).values({
 				email: normalizedEmail,
 				nickname: nickname,
+				isTest: true,
 				passwordHash: passwordHash,
 				emailVerified: true, // 直接設為已驗證
 				emailVerificationToken: null,

@@ -45,7 +45,8 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			roleName: roles.name,
 			isHost: gamePlayers.isHost,
 			isReady: gamePlayers.isReady,
-			isOnline: gamePlayers.isOnline
+			isOnline: gamePlayers.isOnline,
+			leftAt: gamePlayers.leftAt
 		})
 		.from(gamePlayers)
 		.innerJoin(user, eq(gamePlayers.userId, user.id))
@@ -65,6 +66,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		isHost: player.isHost,
 		isReady: player.isReady,
 		isOnline: player.isOnline,
+		leftAt: player.leftAt,
 		isCurrentAction: currentActionPlayerId === player.id,
 		hasActioned: actionedPlayersInOrder.includes(player.id)
 	}));

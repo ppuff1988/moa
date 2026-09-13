@@ -41,8 +41,11 @@ test('公開排行榜 API 僅回傳排行所需資訊並拒絕無效參數', asy
 	expect(body).toHaveProperty('roles');
 	for (const row of body.entries) {
 		expect(Object.keys(row).sort()).toEqual(
-			['games', 'nickname', 'rank', 'userId', 'winRate', 'wins'].sort()
+			['games', 'nickname', 'rank', 'winRate', 'wins'].sort()
 		);
+	}
+	for (const winner of body.leaders) {
+		expect(Object.keys(winner)).toEqual(['nickname']);
 	}
 	for (const query of ['?page=-1', '?page=1.5', '?role=abc', '?role=1%20OR%201=1']) {
 		expect((await request.get(`/api/leaderboard${query}`)).status()).toBe(400);

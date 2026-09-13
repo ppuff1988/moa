@@ -1,18 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { gamePlayers } from '../db/schema';
 
-const { dbMock, forceEndGameMock, getSocketIOMock, playerUpdates, verifyPlayerInRoomMock } =
-	vi.hoisted(() => ({
-		dbMock: {
-			select: vi.fn(),
-			update: vi.fn(),
-			transaction: vi.fn()
-		},
-		forceEndGameMock: vi.fn(),
-		getSocketIOMock: vi.fn(() => null),
-		playerUpdates: [] as Array<Record<string, unknown>>,
-		verifyPlayerInRoomMock: vi.fn()
-	}));
+const {
+	dbMock,
+	emitMock,
+	forceEndGameMock,
+	getSocketIOMock,
+	hasPlayerSocketMock,
+	playerUpdates,
+	verifyPlayerInRoomMock
+} = vi.hoisted(() => ({
+	dbMock: {
+		select: vi.fn(),
+		update: vi.fn(),
+		transaction: vi.fn()
+	},
+	emitMock: vi.fn(),
+	forceEndGameMock: vi.fn(),
+	getSocketIOMock: vi.fn(() => null),
+	hasPlayerSocketMock: vi.fn(),
+	playerUpdates: [] as Array<Record<string, unknown>>,
+	verifyPlayerInRoomMock: vi.fn()
+}));
 
 vi.mock('../db', () => ({ db: dbMock }));
 vi.mock('../api-helpers', () => ({ verifyPlayerInRoom: verifyPlayerInRoomMock }));
@@ -21,7 +30,10 @@ vi.mock('../game', () => ({
 	getGameState: vi.fn()
 }));
 vi.mock('../game-voting', () => ({ finalizeOnlineVotingIfComplete: vi.fn() }));
-vi.mock('../socket', () => ({ getSocketIO: getSocketIOMock }));
+vi.mock('../socket', () => ({
+	getSocketIO: getSocketIOMock,
+	hasPlayerSocket: hasPlayerSocketMock
+}));
 
 import { POST } from '../../../routes/api/room/[name]/leave/+server';
 
@@ -29,6 +41,10 @@ describe('playing game leave presence', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		playerUpdates.length = 0;
+		hasPlayerSocketMock.mockResolvedValue(false);
+		getSocketIOMock.mockReturnValue({
+			to: vi.fn(() => ({ emit: emitMock }))
+		} as never);
 		verifyPlayerInRoomMock.mockResolvedValue({
 			user: { id: 8, nickname: '暫離玩家' },
 			game: {
@@ -82,5 +98,18 @@ describe('playing game leave presence', () => {
 		expect(playerUpdates).toContainEqual(expect.objectContaining({ isOnline: false }));
 		expect(playerUpdates.some((values) => 'leftAt' in values)).toBe(false);
 		expect(forceEndGameMock).not.toHaveBeenCalled();
+	});
+
+	it('同一玩家仍有其他 Socket 連線時不標記為離線', async () => {
+		hasPlayerSocketMock.mockResolvedValue(true);
+
+		const response = await POST({
+			request: new Request('http://localhost/api/room/123456/leave', { method: 'POST' }),
+			params: { name: '123456' }
+		} as never);
+
+		expect(response.status).toBe(200);
+		expect(playerUpdates.some((values) => values.isOnline === false)).toBe(false);
+		expect(emitMock).not.toHaveBeenCalled();
 	});
 });

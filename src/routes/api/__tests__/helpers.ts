@@ -37,6 +37,7 @@ export async function createTestUser(suffix: string = '') {
 	await db
 		.update(user)
 		.set({
+			isTest: true,
 			emailVerified: true,
 			emailVerificationToken: null,
 			emailVerificationTokenExpiresAt: null

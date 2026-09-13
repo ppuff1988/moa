@@ -69,6 +69,29 @@ test.describe('SEO metadata', () => {
 		);
 	});
 
+	test('排行榜總榜與角色榜可索引並輸出排名結構化資料', async ({ page }) => {
+		await page.goto(testUrl('/leaderboard/roles/1'));
+
+		await expect(page).toHaveTitle(/許愿勝場榜/);
+		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+			'href',
+			`${SITE_URL}/leaderboard/roles/1`
+		);
+		await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+			'content',
+			'index, follow, max-image-preview:large'
+		);
+		const schemas = await page.locator('script[type="application/ld+json"]').allTextContents();
+		const leaderboardSchema = schemas
+			.map((schema) => JSON.parse(schema))
+			.find((schema) => schema['@type'] === 'CollectionPage');
+		expect(leaderboardSchema).toMatchObject({
+			'@type': 'CollectionPage',
+			url: `${SITE_URL}/leaderboard/roles/1`,
+			mainEntity: { '@type': 'ItemList' }
+		});
+	});
+
 	for (const route of [
 		{ path: '/auth/login', title: '登入｜古董局中局' },
 		{ path: '/auth/register', title: '註冊｜古董局中局' },
@@ -97,6 +120,9 @@ test.describe('SEO metadata', () => {
 		const sitemap = await response.text();
 		expect(sitemap).toContain(`<loc>${SITE_URL}/</loc>`);
 		expect(sitemap).toContain(`<loc>${SITE_URL}/terms</loc>`);
+		expect(sitemap).toContain(`<loc>${SITE_URL}/leaderboard</loc>`);
+		expect(sitemap).toContain(`<loc>${SITE_URL}/leaderboard/roles/1</loc>`);
+		expect(sitemap).toContain(`<loc>${SITE_URL}/leaderboard/roles/8</loc>`);
 		expect(sitemap).not.toContain('/auth/');
 	});
 

@@ -118,14 +118,32 @@ const ErrorResponses = {
  */
 export async function requireAllPlayersOnline(
 	gameId: string,
-	executor: PresenceExecutor = db
+	executor: PresenceExecutor = db,
+	lockRows = false
 ): Promise<Response | null> {
-	const activePlayers = await executor
+	const presenceQuery = executor
 		.select({ isOnline: gamePlayers.isOnline })
 		.from(gamePlayers)
 		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+	const activePlayers = lockRows ? await presenceQuery.for('update') : await presenceQuery;
 
 	return activePlayers.some((player) => !player.isOnline) ? ErrorResponses.gamePaused() : null;
+}
+
+/**
+ * 將在線狀態檢查與會改變遊戲階段的操作放在同一個 transaction。
+ * 交易內會鎖定仍在場的玩家列，讓斷線更新與階段更新能被明確排序。
+ */
+export async function runAllPlayersOnlineTransaction<T>(
+	gameId: string,
+	action: (transaction: ActionTransaction) => Promise<T>
+): Promise<{ data: T } | { error: Response }> {
+	return db.transaction(async (transaction) => {
+		const pauseResponse = await requireAllPlayersOnline(gameId, transaction, true);
+		if (pauseResponse) return { error: pauseResponse };
+
+		return { data: await action(transaction) };
+	});
 }
 
 // ==================== 輔助函數 ====================

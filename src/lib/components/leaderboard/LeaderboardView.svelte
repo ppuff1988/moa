@@ -136,7 +136,7 @@
 							></thead
 						>
 						<tbody>
-							{#each leaderboard.entries as entry (entry.userId)}
+							{#each leaderboard.entries as entry, index (`${entry.nickname}-${entry.rank}-${index}`)}
 								<tr class:top-rank={entry.rank <= 3 && entry.wins > 0}>
 									<td class="rank"
 										><span class:rank-seal={entry.rank === 1 && entry.wins > 0}

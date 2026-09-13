@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAllPlayersOnline, verifyHostInRoom } from '$lib/server/api-helpers';
+import { runAllPlayersOnlineTransaction, verifyHostInRoom } from '$lib/server/api-helpers';
 import { completeVotingPhase } from '$lib/server/game';
+import { getSocketIO } from '$lib/server/socket';
 
 // 完成投票階段，自動進入下一回合或結束遊戲
 export const POST: RequestHandler = async ({ request, params }) => {
@@ -11,8 +12,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game } = verifyResult;
-	const pauseResponse = await requireAllPlayersOnline(game.id);
-	if (pauseResponse) return pauseResponse;
 
 	// 解析請求體以獲取當前回合數
 	const body = await request.json();
@@ -28,7 +27,26 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	try {
-		const result = await completeVotingPhase(game.id, round);
+		const transactionResult = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+			completeVotingPhase(game.id, round, transaction)
+		);
+		if ('error' in transactionResult) return transactionResult.error;
+		const result = transactionResult.data;
+
+		if (result.nextRound) {
+			try {
+				getSocketIO()?.to(game.roomName).emit('round-started', {
+					gameId: game.id,
+					roundId: result.nextRound.roundId,
+					round: result.nextRound.round,
+					phase: 'action',
+					firstPlayerId: result.nextRound.firstPlayerId,
+					roomName: game.roomName
+				});
+			} catch (error) {
+				console.error('發送 Socket 事件失敗:', error);
+			}
+		}
 
 		return json({
 			success: true,

@@ -13,7 +13,7 @@ async function withFixture(
 ) {
 	await db.transaction(async (tx) => {
 		await tx.execute(
-			sql`CREATE TEMP TABLE users (id integer, nickname text, email text) ON COMMIT DROP`
+			sql`CREATE TEMP TABLE users (id integer, nickname text, email text, is_test boolean NOT NULL DEFAULT false) ON COMMIT DROP`
 		);
 		await tx.execute(
 			sql`CREATE TEMP TABLE roles (id integer, name text, camp text) ON COMMIT DROP`
@@ -25,8 +25,9 @@ async function withFixture(
 			sql`CREATE TEMP TABLE game_players (id integer, game_id text, user_id integer, role_id integer, left_at timestamp) ON COMMIT DROP`
 		);
 		await tx.execute(
-			sql`INSERT INTO users VALUES (1, '青禾', 'private-one@example.com'), (2, '墨竹', 'private-two@example.com'), (3, '知秋', 'private-three@example.com'), (4, '未入局', 'private-four@example.com')`
+			sql`INSERT INTO users (id, nickname, email) VALUES (1, '青禾', 'private-one@example.com'), (2, '墨竹', 'private-two@example.com'), (3, '知秋', 'private-three@example.com'), (4, '未入局', 'private-four@example.com'), (5, '測試玩家', 'test-player@example.com')`
 		);
+		await tx.execute(sql`UPDATE users SET is_test = true WHERE id = 5`);
 		await tx.execute(
 			sql`INSERT INTO roles VALUES (1, '許愿', 'good'), (2, '老朝奉', 'bad'), (3, '方震', 'good'), (4, 'test', 'good'), (5, '錯誤陣營', 'unknown')`
 		);
@@ -40,7 +41,8 @@ async function withFixture(
 			(7, 'seven', 1, 1, NULL), (8, 'seven', 2, 1, NULL),
 			(9, 'playing', 3, 1, NULL), (10, 'terminated', 3, 1, NULL),
 			(11, 'invalid', 3, 2, NULL), (12, 'six', 4, NULL, NULL),
-			(13, 'five', 4, 4, NULL), (14, 'seven', 4, 5, NULL)`);
+			(13, 'five', 4, 4, NULL), (14, 'seven', 4, 5, NULL),
+			(15, 'six', 5, 1, NULL)`);
 		await run(async (roleId = null, page = 1) => {
 			const rows = await tx.execute(buildLeaderboardQuery({ roleId, page }));
 			return rows[0] as unknown as LeaderboardResult;
@@ -53,9 +55,9 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 		await withFixture(async (query) => {
 			const result = await query();
 			expect(result.entries).toEqual([
-				{ userId: 1, nickname: '青禾', wins: 2, games: 3, rank: 1, winRate: 66.7 },
-				{ userId: 2, nickname: '墨竹', wins: 2, games: 3, rank: 1, winRate: 66.7 },
-				{ userId: 3, nickname: '知秋', wins: 1, games: 1, rank: 3, winRate: 100 }
+				{ nickname: '青禾', wins: 2, games: 3, rank: 1, winRate: 66.7 },
+				{ nickname: '墨竹', wins: 2, games: 3, rank: 1, winRate: 66.7 },
+				{ nickname: '知秋', wins: 1, games: 1, rank: 3, winRate: 100 }
 			]);
 			expect(result).toMatchObject({
 				totalPlayers: 3,
@@ -63,10 +65,7 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 				totalWins: 5,
 				leaderWins: 2,
 				leaderCount: 2,
-				leaders: [
-					{ userId: 1, nickname: '青禾' },
-					{ userId: 2, nickname: '墨竹' }
-				],
+				leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }],
 				page: 1,
 				totalPages: 1
 			});
@@ -79,19 +78,19 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 		await withFixture(async (query) => {
 			const result = await query(2);
 			expect(result.entries).toEqual([
-				{ userId: 2, nickname: '墨竹', wins: 1, games: 2, rank: 1, winRate: 50 }
+				{ nickname: '墨竹', wins: 1, games: 2, rank: 1, winRate: 50 }
 			]);
 			expect(result).toMatchObject({ totalGames: 2, totalWins: 1 });
 			expect(result.roles.find((role) => role.id === 2)).toMatchObject({
 				leaderWins: 1,
 				leaderCount: 1,
-				leaders: [{ userId: 2, nickname: '墨竹' }]
+				leaders: [{ nickname: '墨竹' }]
 			});
 			const good = await query(1);
-			expect(good.entries.map(({ userId, wins, games }) => ({ userId, wins, games }))).toEqual([
-				{ userId: 1, wins: 2, games: 3 },
-				{ userId: 2, wins: 1, games: 1 },
-				{ userId: 3, wins: 1, games: 1 }
+			expect(good.entries.map(({ nickname, wins, games }) => ({ nickname, wins, games }))).toEqual([
+				{ nickname: '青禾', wins: 2, games: 3 },
+				{ nickname: '墨竹', wins: 1, games: 1 },
+				{ nickname: '知秋', wins: 1, games: 1 }
 			]);
 		});
 	});
@@ -115,7 +114,9 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 
 	it('paginates after computing global ranks and preserves equal ranks across pages', async () => {
 		await db.transaction(async (tx) => {
-			await tx.execute(sql`CREATE TEMP TABLE users (id integer, nickname text) ON COMMIT DROP`);
+			await tx.execute(
+				sql`CREATE TEMP TABLE users (id integer, nickname text, is_test boolean NOT NULL DEFAULT false) ON COMMIT DROP`
+			);
 			await tx.execute(
 				sql`CREATE TEMP TABLE roles (id integer, name text, camp text) ON COMMIT DROP`
 			);
@@ -125,7 +126,9 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 			await tx.execute(
 				sql`CREATE TEMP TABLE game_players (id integer, game_id text, user_id integer, role_id integer) ON COMMIT DROP`
 			);
-			await tx.execute(sql`INSERT INTO users SELECT n, '玩家' || n FROM generate_series(1, 23) n`);
+			await tx.execute(
+				sql`INSERT INTO users (id, nickname) SELECT n, '玩家' || n FROM generate_series(1, 23) n`
+			);
 			await tx.execute(sql`INSERT INTO roles VALUES (1, '許愿', 'good')`);
 			await tx.execute(
 				sql`INSERT INTO games SELECT 'game' || n, 'finished', CASE WHEN n <= 21 THEN 6 ELSE 5 END, '2026-09-01'::timestamp FROM generate_series(1, 23) n`
@@ -136,15 +139,15 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 			const [result] = await tx.execute(buildLeaderboardQuery({ roleId: null, page: 2 }));
 			expect(result).toMatchObject({ page: 2, totalPages: 2, totalPlayers: 23 });
 			expect(
-				(result.entries as LeaderboardResult['entries']).map(({ userId, rank, wins }) => ({
-					userId,
+				(result.entries as LeaderboardResult['entries']).map(({ nickname, rank, wins }) => ({
+					nickname,
 					rank,
 					wins
 				}))
 			).toEqual([
-				{ userId: 21, rank: 1, wins: 1 },
-				{ userId: 22, rank: 22, wins: 0 },
-				{ userId: 23, rank: 22, wins: 0 }
+				{ nickname: '玩家21', rank: 1, wins: 1 },
+				{ nickname: '玩家22', rank: 22, wins: 0 },
+				{ nickname: '玩家23', rank: 22, wins: 0 }
 			]);
 		});
 	});

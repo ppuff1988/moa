@@ -27,10 +27,12 @@ describe('Socket 多分頁在線狀態', () => {
 		const joinEnd = source.indexOf("socket.on('leave-room'", joinStart);
 		const joinHandler = source.slice(joinStart, joinEnd);
 
+		const onlineUpdateIndex = joinHandler.indexOf('is_online = true');
+		const updatePlayerOnlineStatusIndex = joinHandler.indexOf(
+			'updatePlayerOnlineStatus(game.id, userId, true'
+		);
 		expect(joinHandler.indexOf('addRoomConnection(roomName, userId, socket.id)')).toBeLessThan(
-			joinHandler.indexOf('is_online = true') >= 0
-				? joinHandler.indexOf('is_online = true')
-				: joinHandler.indexOf('updatePlayerOnlineStatus(game.id, userId, true)')
+			onlineUpdateIndex >= 0 ? onlineUpdateIndex : updatePlayerOnlineStatusIndex
 		);
 		expect(joinHandler).toContain('if (!socket.connected)');
 	});

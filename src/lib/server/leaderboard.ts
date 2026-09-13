@@ -3,6 +3,10 @@ import { db } from './db';
 import { buildLeaderboardQuery } from './leaderboard-query';
 import type { LeaderboardResult } from '$lib/types/leaderboard';
 
+const LEADERBOARD_CACHE_TTL_MS = 10_000;
+const LEADERBOARD_CACHE_MAX_ENTRIES = 48;
+const leaderboardCache = new Map<string, { result: LeaderboardResult; expiresAt: number }>();
+
 function positiveInteger(value: string | null, fallback: number | null): number | null {
 	if (value === null) return fallback;
 	if (!/^[1-9]\d*$/.test(value) || Number(value) > 2147483647) {
@@ -14,6 +18,13 @@ function positiveInteger(value: string | null, fallback: number | null): number 
 export async function getLeaderboard(role: string | null, requestedPage: string | null) {
 	const roleId = positiveInteger(role, null);
 	const page = positiveInteger(requestedPage, 1)!;
+	const cacheKey = `${roleId ?? 'all'}:${page}`;
+	const cached = leaderboardCache.get(cacheKey);
+	if (cached && cached.expiresAt > Date.now()) {
+		return { ...cached.result, selectedRoleId: roleId };
+	}
+	if (cached) leaderboardCache.delete(cacheKey);
+
 	let result: LeaderboardResult;
 	try {
 		const rows = await db.execute(buildLeaderboardQuery({ roleId, page }));
@@ -25,5 +36,13 @@ export async function getLeaderboard(role: string | null, requestedPage: string 
 	if (roleId !== null && !result.roles.some((item) => item.id === roleId)) {
 		error(404, '找不到這個角色的排行榜');
 	}
+	if (leaderboardCache.size >= LEADERBOARD_CACHE_MAX_ENTRIES) {
+		const oldestKey = leaderboardCache.keys().next().value;
+		if (oldestKey) leaderboardCache.delete(oldestKey);
+	}
+	leaderboardCache.set(cacheKey, {
+		result,
+		expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS
+	});
 	return { ...result, selectedRoleId: roleId };
 }

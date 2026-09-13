@@ -150,8 +150,8 @@ try {
 
 				// 更新玩家在線狀態
 				await pool.query(
-					'UPDATE game_players SET is_online = true, left_at = NULL, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
-					[gameId, userId]
+					'UPDATE game_players SET is_online = true, left_at = CASE WHEN $3::boolean THEN NULL ELSE left_at END, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+					[gameId, userId, game.status === 'playing']
 				);
 				if (!socket.connected) {
 					removeRoomConnection(roomName, userId, socket.id);
@@ -176,6 +176,7 @@ try {
 						gp.is_host,
 						gp.is_ready,
 						gp.is_online,
+						gp.left_at,
 						gp.can_action,
 						gp.joined_at,
 						gp.last_active_at,
@@ -210,6 +211,7 @@ try {
 						isHost: p.is_host,
 						isReady: p.is_ready,
 						isOnline: p.is_online,
+						leftAt: p.left_at,
 						canAction: p.can_action,
 						joinedAt: p.joined_at,
 						lastActiveAt: p.last_active_at,
@@ -272,6 +274,7 @@ try {
 							gp.is_host,
 							gp.is_ready,
 							gp.is_online,
+							gp.left_at,
 							gp.can_action,
 							gp.joined_at,
 							gp.last_active_at,
@@ -309,6 +312,7 @@ try {
 							isHost: p.is_host,
 							isReady: p.is_ready,
 							isOnline: p.is_online,
+							leftAt: p.left_at,
 							canAction: p.can_action,
 							joinedAt: p.joined_at,
 							lastActiveAt: p.last_active_at,

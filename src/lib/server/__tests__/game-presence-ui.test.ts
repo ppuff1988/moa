@@ -30,6 +30,18 @@ describe('遊戲頁離線暫停提示', () => {
 		expect(playersEndpoint).toContain('isOnline: player.isOnline');
 	});
 
+	it('正式離房玩家不會被列入暫停等待名單', () => {
+		const playersEndpoint = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/players/+server.ts'),
+			'utf8'
+		);
+
+		expect(playersEndpoint).toContain('leftAt: gamePlayers.leftAt');
+		expect(playersEndpoint).toContain('leftAt: player.leftAt');
+		expect(source).toContain('player.leftAt == null && !player.isOnline');
+		expect(source).toContain('p.leftAt == null && !p.isOnline');
+	});
+
 	it('全員重連後會嘗試恢復已完成提交的線上投票', () => {
 		const endpointPath = resolve(
 			process.cwd(),

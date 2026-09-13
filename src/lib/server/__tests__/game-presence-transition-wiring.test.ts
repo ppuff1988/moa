@@ -15,7 +15,12 @@ describe('遊戲階段轉換在線狀態保護', () => {
 	it.each(transitionRoutes)('%s 在改變階段前確認全員在線', (file) => {
 		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
 
-		expect(source).toContain('requireAllPlayersOnline');
-		expect(source).toMatch(/await requireAllPlayersOnline\(game\.id/);
+		expect(
+			source.includes('runAllPlayersOnlineTransaction') ||
+				source.includes('requireAllPlayersOnline')
+		).toBe(true);
+		if (!source.includes('runAllPlayersOnlineTransaction')) {
+			expect(source).toMatch(/await requireAllPlayersOnline\(game\.id/);
+		}
 	});
 });

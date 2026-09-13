@@ -34,6 +34,7 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     nickname TEXT NOT NULL,
+    is_test BOOLEAN NOT NULL DEFAULT FALSE,
     password_hash TEXT,
     avatar TEXT,
     email_verified BOOLEAN DEFAULT FALSE,

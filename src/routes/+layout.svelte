@@ -17,13 +17,15 @@
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 
-	const INDEXABLE_PATHS = new Set(['/', '/terms']);
+	const INDEXABLE_PATHS = new Set(['/', '/terms', '/leaderboard']);
+	const INDEXABLE_ROLE_PATH = /^\/leaderboard\/roles\/[1-9]\d*$/;
 
 	let title = $derived(page.data.title || HOME_TITLE);
 	let description = $derived(page.data.description || HOME_DESCRIPTION);
 	let canonicalUrl = $derived(new URL(page.url.pathname, `${SITE_URL}/`).toString());
 	let robots = $derived(
-		page.status === 200 && INDEXABLE_PATHS.has(page.url.pathname)
+		page.status === 200 &&
+			(INDEXABLE_PATHS.has(page.url.pathname) || INDEXABLE_ROLE_PATH.test(page.url.pathname))
 			? 'index, follow, max-image-preview:large'
 			: 'noindex, nofollow'
 	);

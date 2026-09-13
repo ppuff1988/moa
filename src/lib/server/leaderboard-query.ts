@@ -22,7 +22,7 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 			JOIN games g ON g.id = gp.game_id
 			JOIN users u ON u.id = gp.user_id
 			JOIN eligible_roles r ON r.id = gp.role_id
-			WHERE g.status = 'finished' AND g.total_score IS NOT NULL
+			WHERE g.status = 'finished' AND g.total_score IS NOT NULL AND u.is_test = false
 			ORDER BY gp.game_id, gp.user_id, gp.id DESC
 		), filtered AS (
 			SELECT * FROM participations WHERE ${roleFilter}
@@ -51,8 +51,11 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 			FROM role_counts
 		)
 		SELECT
-			coalesce((SELECT json_agg(row ORDER BY row.wins DESC, row."userId") FROM (
-				SELECT user_id AS "userId", nickname, rank, wins, games, win_rate AS "winRate"
+			coalesce((SELECT json_agg(json_build_object(
+				'nickname', row.nickname, 'rank', row.rank, 'wins', row.wins,
+				'games', row.games, 'winRate', row.win_rate
+			) ORDER BY row.wins DESC, row.user_id) FROM (
+				SELECT user_id, nickname, rank, wins, games, win_rate
 				FROM ranked ORDER BY wins DESC, user_id
 				LIMIT ${LEADERBOARD_PAGE_SIZE}
 				OFFSET (SELECT (current_page - 1) * ${LEADERBOARD_PAGE_SIZE} FROM pagination)
@@ -61,8 +64,8 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 				SELECT r.*,
 					coalesce((SELECT max(wins) FROM role_counts WHERE role_id = r.id), 0) AS "leaderWins",
 					(SELECT count(*)::int FROM role_ranked WHERE role_id = r.id AND role_rank = 1 AND wins > 0) AS "leaderCount",
-					coalesce((SELECT json_agg(winner ORDER BY winner."userId") FROM (
-						SELECT user_id AS "userId", nickname FROM role_ranked
+					coalesce((SELECT json_agg(json_build_object('nickname', winner.nickname) ORDER BY winner.user_id) FROM (
+						SELECT user_id, nickname FROM role_ranked
 						WHERE role_id = r.id AND role_rank = 1 AND wins > 0 ORDER BY user_id LIMIT 3
 					) winner), '[]'::json) AS leaders
 				FROM eligible_roles r
@@ -72,8 +75,8 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 			(SELECT count(DISTINCT game_id)::int FROM filtered) AS "totalGames",
 			(SELECT max(finished_at) FROM filtered) AS "lastFinishedAt",
 			(SELECT count(*)::int FROM ranked WHERE rank = 1 AND wins > 0) AS "leaderCount",
-			coalesce((SELECT json_agg(winner ORDER BY winner."userId") FROM (
-				SELECT user_id AS "userId", nickname FROM ranked
+			coalesce((SELECT json_agg(json_build_object('nickname', winner.nickname) ORDER BY winner.user_id) FROM (
+				SELECT user_id, nickname FROM ranked
 				WHERE rank = 1 AND wins > 0 ORDER BY user_id LIMIT 3
 			) winner), '[]'::json) AS leaders
 		FROM pagination p

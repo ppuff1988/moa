@@ -6,8 +6,8 @@ import type { LeaderboardResult } from '$lib/types/leaderboard';
 const results: LeaderboardResult & { selectedRoleId: number | null } = {
 	selectedRoleId: null,
 	entries: [
-		{ userId: 1, nickname: '青禾', rank: 1, wins: 12, games: 20, winRate: 60 },
-		{ userId: 2, nickname: '墨竹', rank: 1, wins: 12, games: 18, winRate: 66.7 }
+		{ nickname: '青禾', rank: 1, wins: 12, games: 20, winRate: 60 },
+		{ nickname: '墨竹', rank: 1, wins: 12, games: 18, winRate: 66.7 }
 	],
 	roles: [
 		{
@@ -16,10 +16,7 @@ const results: LeaderboardResult & { selectedRoleId: number | null } = {
 			camp: 'bad',
 			leaderWins: 7,
 			leaderCount: 2,
-			leaders: [
-				{ userId: 1, nickname: '青禾' },
-				{ userId: 2, nickname: '墨竹' }
-			]
+			leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }]
 		},
 		{ id: 6, name: '藥不然', camp: 'bad', leaderWins: 0, leaderCount: 0, leaders: [] }
 	],
@@ -30,10 +27,7 @@ const results: LeaderboardResult & { selectedRoleId: number | null } = {
 	totalPages: 1,
 	leaderWins: 12,
 	leaderCount: 2,
-	leaders: [
-		{ userId: 1, nickname: '青禾' },
-		{ userId: 2, nickname: '墨竹' }
-	],
+	leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }],
 	lastFinishedAt: '2026-09-13T10:00:00Z'
 };
 

@@ -12,6 +12,8 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getNextRoundStarter } from './game-turn-order';
 import { COLOR_MAP, VALID_COLORS } from './constants';
 
+type GameExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
+
 // 遊戲角色配置
 export const GAME_ROLES = {
 	6: {
@@ -224,6 +226,7 @@ export async function getGameState(gameId: string) {
 			isHost: gamePlayers.isHost,
 			isReady: gamePlayers.isReady,
 			isOnline: gamePlayers.isOnline,
+			leftAt: gamePlayers.leftAt,
 			canAction: gamePlayers.canAction,
 			joinedAt: gamePlayers.joinedAt,
 			lastActiveAt: gamePlayers.lastActiveAt,
@@ -242,13 +245,18 @@ export async function getGameState(gameId: string) {
 }
 
 // 更新玩家在線狀態
-export async function updatePlayerOnlineStatus(gameId: string, userId: number, isOnline: boolean) {
+export async function updatePlayerOnlineStatus(
+	gameId: string,
+	userId: number,
+	isOnline: boolean,
+	restoreSeat = false
+) {
 	await db
 		.update(gamePlayers)
 		.set({
 			isOnline,
 			lastActiveAt: new Date(),
-			...(isOnline ? { leftAt: null } : {})
+			...(isOnline && restoreSeat ? { leftAt: null } : {})
 		})
 		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
 }
@@ -805,13 +813,17 @@ export async function advanceToNextPlayer(gameId: string, currentRoundId: number
 }
 
 // 開始新回合（第二、三回合）
-export async function startNewRound(gameId: string, roundNumber: number) {
+export async function startNewRound(
+	gameId: string,
+	roundNumber: number,
+	executor: GameExecutor = db
+) {
 	if (roundNumber < 2 || roundNumber > 3) {
 		throw new Error('回合數必須為 2 或 3');
 	}
 
 	// 檢查上一個回合是否存在且已完成
-	const [previousRound] = await db
+	const [previousRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, roundNumber - 1)))
@@ -826,7 +838,7 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 	}
 
 	// 檢查新回合是否已存在
-	const [existingRound] = await db
+	const [existingRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, roundNumber)))
@@ -842,7 +854,7 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 	}
 
 	// 創建新回合，並將上一回合最後一位玩家設為第一位
-	const [newRound] = await db
+	const [newRound] = await executor
 		.insert(gameRounds)
 		.values({
 			gameId,
@@ -853,10 +865,10 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 		.returning();
 
 	// 獲取遊戲信息以取得 roomName
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	// 通知房間內所有玩家新回合已開始
-	if (game) {
+	if (game && executor === db) {
 		const { getSocketIO } = await import('./socket');
 		const io = getSocketIO();
 		if (io) {
@@ -911,13 +923,18 @@ export async function startVotingPhase(gameId: string, currentRoundNumber: numbe
 }
 
 // 從投票階段完成，準備進入下一回合或結束遊戲
-export async function completeVotingPhase(gameId: string, currentRoundNumber: number) {
+export async function completeVotingPhase(
+	gameId: string,
+	currentRoundNumber: number,
+	executor: GameExecutor = db
+) {
 	// 獲取當前回合
-	const [currentRound] = await db
+	const [currentRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, currentRoundNumber)))
-		.limit(1);
+		.limit(1)
+		.for('update');
 
 	if (!currentRound) {
 		throw new Error('當前回合不存在');
@@ -928,7 +945,7 @@ export async function completeVotingPhase(gameId: string, currentRoundNumber: nu
 	}
 
 	// 標記當前回合完成
-	await db
+	await executor
 		.update(gameRounds)
 		.set({
 			phase: 'completed',
@@ -941,7 +958,7 @@ export async function completeVotingPhase(gameId: string, currentRoundNumber: nu
 	if (currentRoundNumber < 3) {
 		// 自動開始下一回合
 		try {
-			nextRoundInfo = await startNewRound(gameId, currentRoundNumber + 1);
+			nextRoundInfo = await startNewRound(gameId, currentRoundNumber + 1, executor);
 		} catch (error) {
 			// 如果無法自動開始下一回合，返回需要手動開始的訊息
 			console.error('無法自動開始下一回合:', error);

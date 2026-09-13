@@ -11,7 +11,8 @@ import { getPublishedVotingResult } from '$lib/server/game-voting';
 class VotingSubmissionError extends Error {
 	constructor(
 		message: string,
-		readonly status: number = 400
+		readonly status: number = 400,
+		readonly code?: string
 	) {
 		super(message);
 	}
@@ -25,11 +26,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const { game } = verifyResult;
-		const pauseResponse = await requireAllPlayersOnline(game.id);
-		if (pauseResponse) return pauseResponse;
 		if (game.onlineVotingEnabled) {
 			return json({ message: '線上投票房間必須由所有玩家自行提交籌碼' }, { status: 400 });
 		}
+		const pauseResponse = await requireAllPlayersOnline(game.id);
+		if (pauseResponse) return pauseResponse;
 		const body = await request.json();
 		const votes = body.votes as Record<string, unknown> | undefined;
 
@@ -38,6 +39,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const votingResult = await db.transaction(async (tx) => {
+			const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+			if (pauseResponse) {
+				throw new VotingSubmissionError('有玩家離線，請等待所有玩家重新連線', 409, 'GAME_PAUSED');
+			}
+
 			// Serialize submissions for this game. A second request observes the
 			// committed result phase and cannot overwrite the first result.
 			const [currentRound] = await tx
@@ -117,7 +123,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} catch (error) {
 		if (error instanceof VotingSubmissionError) {
-			return json({ message: error.message }, { status: error.status });
+			return json(
+				error.code
+					? { success: false, code: error.code, message: error.message }
+					: { message: error.message },
+				{ status: error.status }
+			);
 		}
 
 		console.error('[submit-votes] 錯誤:', error);
