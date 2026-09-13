@@ -25,4 +25,18 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 
 		expect(source).toContain('requireAllPlayersOnline(game.id, tx, true)');
 	});
+
+	it('resume-paused-game 依 game、active players、round 順序鎖定恢復交易', () => {
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/resume-paused-game/+server.ts'),
+			'utf8'
+		);
+
+		expect(source).toContain("from '$lib/server/api-helpers'");
+		expect(source).toContain('requireAllPlayersOnline(game.id, tx, true)');
+		expect(source).toMatch(/select\(\)\s*\.from\(games\)[\s\S]*?\.for\('update'\)/);
+		expect(source).toMatch(
+			/requireAllPlayersOnline\(game\.id, tx, true\)[\s\S]*?select\(\)\s*\.from\(gameRounds\)[\s\S]*?\.for\('update'\)/
+		);
+	});
 });

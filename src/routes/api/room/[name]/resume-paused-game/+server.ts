@@ -1,6 +1,6 @@
-import { verifyPlayerInRoom } from '$lib/server/api-helpers';
+import { requireAllPlayersOnline, verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gameRounds } from '$lib/server/db/schema';
+import { gameRounds, games } from '$lib/server/db/schema';
 import { finalizeOnlineVotingIfComplete } from '$lib/server/game-voting';
 import { emitToRoom } from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
@@ -21,6 +21,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const finalization = await db.transaction(async (tx) => {
+		const [lockedGame] = await tx.select().from(games).where(eq(games.id, game.id)).for('update');
+		if (!lockedGame || lockedGame.status !== 'playing' || !lockedGame.onlineVotingEnabled) {
+			return null;
+		}
+
+		const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+		if (pauseResponse) return null;
+
 		const [currentRound] = await tx
 			.select()
 			.from(gameRounds)
