@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('階段轉換與在線狀態必須在同一 transaction', () => {
 	const wrappedRoutes = [
 		'src/routes/api/room/[name]/start/+server.ts',
+		'src/routes/api/room/[name]/start-selection/+server.ts',
 		'src/routes/api/room/[name]/start-voting/+server.ts',
 		'src/routes/api/room/[name]/complete-voting/+server.ts',
 		'src/routes/api/room/[name]/calculate-settlement/+server.ts'
@@ -38,5 +39,25 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 		expect(source).toMatch(
 			/requireAllPlayersOnline\(game\.id, tx, true\)[\s\S]*?select\(\)\s*\.from\(gameRounds\)[\s\S]*?\.for\('update'\)/
 		);
+	});
+
+	it('start 的初始階段也在啟動遊戲前鎖定在線玩家', () => {
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/start/+server.ts'),
+			'utf8'
+		);
+
+		expect(source).toMatch(
+			/runAllPlayersOnlineTransaction\(game\.id,[\s\S]*?startRoleSelection\(game\.id, transaction\)/
+		);
+		expect(source).toMatch(
+			/runAllPlayersOnlineTransaction\(game\.id,[\s\S]*?startGame\(game\.id, transaction\)/
+		);
+	});
+
+	it('自動分派遊戲在同一 transaction 內鎖定在線玩家', () => {
+		const source = readFileSync(resolve(process.cwd(), 'src/lib/server/game.ts'), 'utf8');
+
+		expect(source).toContain('requireAllPlayersOnline(gameId, tx, true)');
 	});
 });

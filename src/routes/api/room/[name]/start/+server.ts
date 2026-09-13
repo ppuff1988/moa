@@ -58,7 +58,10 @@ export const POST: RequestHandler = async (event) => {
 
 			// 開始選角階段（startRoleSelection 會檢查玩家人數）
 			try {
-				await startRoleSelection(game.id);
+				const transition = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+					startRoleSelection(game.id, transaction)
+				);
+				if ('error' in transition) return transition.error;
 				return json(
 					{
 						message: '遊戲已開始選角階段',
@@ -177,7 +180,11 @@ export const POST: RequestHandler = async (event) => {
 
 			// 開始遊戲（第1回合）
 			// startGame 函數內部已經會廣播 game-started 事件，這裡不需要再次廣播
-			const result = await startGame(game.id);
+			const transition = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+				startGame(game.id, transaction)
+			);
+			if ('error' in transition) return transition.error;
+			const result = transition.data;
 
 			// 注意：game-started 事件已經在 startGame 函數內部廣播，不需要在這裡重複發送
 

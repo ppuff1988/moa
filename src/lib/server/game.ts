@@ -9,6 +9,7 @@ import {
 	gameActions
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { requireAllPlayersOnline } from './api-helpers';
 import { getNextRoundStarter } from './game-turn-order';
 import { COLOR_MAP, VALID_COLORS } from './constants';
 
@@ -272,9 +273,9 @@ export async function getGamePlayers(gameId: string) {
 }
 
 // 開始選角階段
-export async function startRoleSelection(gameId: string) {
+export async function startRoleSelection(gameId: string, executor: GameExecutor = db) {
 	// 獲取遊戲信息
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	if (!game) {
 		throw new Error('遊戲不存在');
@@ -286,14 +287,14 @@ export async function startRoleSelection(gameId: string) {
 	}
 
 	// 獲取玩家數量
-	const players = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
+	const players = await executor.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
 
 	if (players.length < 6 || players.length > 8) {
 		throw new Error('玩家人數必須為 6-8 人');
 	}
 
 	// 更新遊戲狀態為選角階段
-	await db
+	await executor
 		.update(games)
 		.set({
 			status: 'selecting',
@@ -305,9 +306,9 @@ export async function startRoleSelection(gameId: string) {
 }
 
 // 開始遊戲
-export async function startGame(gameId: string) {
+export async function startGame(gameId: string, executor: GameExecutor = db) {
 	// 獲取遊戲信息
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	if (!game) {
 		throw new Error('遊戲不存在');
@@ -319,7 +320,7 @@ export async function startGame(gameId: string) {
 	}
 
 	// 獲取所有玩家
-	const players = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
+	const players = await executor.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
 
 	if (players.length < 6 || players.length > 8) {
 		throw new Error('玩家人數必須為 6-8 人');
@@ -344,7 +345,7 @@ export async function startGame(gameId: string) {
 	}
 
 	// 更新遊戲狀態
-	await db
+	await executor
 		.update(games)
 		.set({
 			status: 'playing',
@@ -398,14 +399,14 @@ export async function startGame(gameId: string) {
 		});
 	}
 
-	await db.insert(gameArtifacts).values(artifactsToInsert);
+	await executor.insert(gameArtifacts).values(artifactsToInsert);
 
 	// 2. 創建第一輪並隨機決定第一個玩家
 	// 隨機選擇一個玩家作為第一個行動的玩家
 	const randomPlayerIndex = Math.floor(Math.random() * players.length);
 	const firstPlayerId = players[randomPlayerIndex].id;
 
-	const [round] = await db
+	const [round] = await executor
 		.insert(gameRounds)
 		.values({
 			gameId,
@@ -417,7 +418,7 @@ export async function startGame(gameId: string) {
 
 	// 3. 為黃煙煙和木戶加奈的玩家設置隨機無法鑑定的回合(1-3)
 	// 先取得黃煙煙和木戶加奈的角色ID
-	const specialRoles = await db
+	const specialRoles = await executor
 		.select()
 		.from(roles)
 		.where(sql`${roles.name} IN ('黃煙煙', '木戶加奈')`);
@@ -431,7 +432,7 @@ export async function startGame(gameId: string) {
 	for (const player of specialPlayers) {
 		const blockedRound = Math.floor(Math.random() * 3) + 1; // 隨機1-3
 
-		await db
+		await executor
 			.update(gamePlayers)
 			.set({
 				blockedRound
@@ -468,6 +469,11 @@ export async function startAutoAssignedGame(gameId: string) {
 		}
 		if (game.status !== 'waiting') {
 			throw new Error('遊戲已經開始');
+		}
+
+		const pauseResponse = await requireAllPlayersOnline(gameId, tx, true);
+		if (pauseResponse) {
+			throw new Error('有玩家離線，請等待所有玩家重新連線');
 		}
 
 		const players = await tx
