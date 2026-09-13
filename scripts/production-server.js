@@ -89,6 +89,10 @@ try {
 		return remainingConnections;
 	}
 
+	function hasRoomConnection(roomName, userId) {
+		return (roomConnections.get(roomName)?.get(userId)?.size ?? 0) > 0;
+	}
+
 	async function resetActivePlayerPresence() {
 		await pool.query(`
 			UPDATE game_players AS gp
@@ -155,7 +159,7 @@ try {
 				);
 				if (!socket.connected) {
 					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
-					if (remainingConnections === 0) {
+					if (remainingConnections === 0 && !hasRoomConnection(roomName, userId)) {
 						await pool.query(
 							'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
 							[gameId, userId]
@@ -253,7 +257,11 @@ try {
 					roomName
 				]);
 
-				if (gameResult.rows.length > 0 && remainingConnections === 0) {
+				if (
+					gameResult.rows.length > 0 &&
+					remainingConnections === 0 &&
+					!hasRoomConnection(roomName, userId)
+				) {
 					const gameId = gameResult.rows[0].id;
 
 					// 更新玩家離線狀態
@@ -357,7 +365,7 @@ try {
 						roomName
 					]);
 
-					if (gameResult.rows.length > 0) {
+					if (gameResult.rows.length > 0 && !hasRoomConnection(roomName, userId)) {
 						await pool.query(
 							'UPDATE game_players SET is_online = false WHERE game_id = $1 AND user_id = $2',
 							[gameResult.rows[0].id, userId]

@@ -38,7 +38,27 @@ describe('Socket 多分頁在線狀態', () => {
 		const disconnectedBranch = joinHandler.slice(joinHandler.indexOf('if (!socket.connected)'));
 		expect(disconnectedBranch).toContain('const remainingConnections = removeRoomConnection');
 		expect(disconnectedBranch).toMatch(
-			/if \(remainingConnections === 0\)[\s\S]*(?:updatePlayerOnlineStatus|pool\.query)/
+			/if \(remainingConnections === 0(?: && !hasRoomConnection\(roomName, userId\))?\)[\s\S]*(?:updatePlayerOnlineStatus|pool\.query)/
 		);
+	});
+
+	it.each(socketServers)('%s 完成遊戲查詢後重新確認連線再標記離線', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+		const hasConnectionHelper = source.match(
+			/(?:hasTrackedRoomConnection|hasRoomConnection)\(roomName, userId\)/g
+		);
+
+		expect(hasConnectionHelper?.length ?? 0).toBeGreaterThan(0);
+		const lastConnectionCheck = Math.max(
+			source.lastIndexOf('hasTrackedRoomConnection(roomName, userId)'),
+			source.lastIndexOf('hasRoomConnection(roomName, userId)')
+		);
+		const lastOfflineUpdate = Math.max(
+			source.lastIndexOf('updatePlayerOnlineStatus(game.id, userId, false)'),
+			source.lastIndexOf('UPDATE game_players SET is_online = false')
+		);
+
+		expect(lastConnectionCheck).toBeGreaterThan(-1);
+		expect(lastConnectionCheck).toBeLessThan(lastOfflineUpdate);
 	});
 });
