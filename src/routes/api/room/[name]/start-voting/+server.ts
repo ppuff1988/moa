@@ -1,6 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyHostInRoom, getCurrentRoundOrError } from '$lib/server/api-helpers';
+import {
+	getCurrentRoundOrError,
+	requireAllPlayersOnline,
+	verifyHostInRoom
+} from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameRounds } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -13,6 +17,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const { game } = verifyResult;
+		const pauseResponse = await requireAllPlayersOnline(game.id);
+		if (pauseResponse) return pauseResponse;
 
 		// 獲取當前回合
 		const roundResult = await getCurrentRoundOrError(game.id);

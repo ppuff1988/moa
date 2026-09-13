@@ -33,6 +33,7 @@ describe('current action transaction guard', () => {
 	let roundPhase = 'action';
 	let actionOrder: number[] = [11];
 	let activePlayerIds: number[] = [11, 99];
+	let offlinePlayerIds: number[] = [];
 	let gameStatus = 'playing';
 	let playerExists = true;
 
@@ -41,6 +42,7 @@ describe('current action transaction guard', () => {
 		roundPhase = 'action';
 		actionOrder = [11];
 		activePlayerIds = [11, 99];
+		offlinePlayerIds = [];
 		gameStatus = 'playing';
 		playerExists = true;
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
@@ -50,7 +52,12 @@ describe('current action transaction guard', () => {
 				return [{ id: 'game-1', roomName: '123456', status: gameStatus }];
 			}
 			if (table === gamePlayers) {
-				if (selection) return activePlayerIds.map((id) => ({ id }));
+				if (selection) {
+					return activePlayerIds.map((id) => ({
+						id,
+						isOnline: !offlinePlayerIds.includes(id)
+					}));
+				}
 				return playerExists
 					? [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }]
 					: [];
@@ -184,6 +191,27 @@ describe('current action transaction guard', () => {
 
 		expect(result).toHaveProperty('error');
 		if ('error' in result) expect(result.error.status).toBe(409);
+	});
+
+	it('任何仍在場玩家離線時暫停並拒絕執行動作', async () => {
+		offlinePlayerIds = [99];
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+		const action = vi.fn();
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			action
+		);
+
+		expect(result).toHaveProperty('error');
+		if ('error' in result) {
+			expect(result.error.status).toBe(409);
+			expect(await result.error.json()).toMatchObject({ code: 'GAME_PAUSED' });
+		}
+		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('鎖定回合後在同一 transaction 執行當前玩家的動作', async () => {

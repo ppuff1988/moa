@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { startAutoAssignedGame, startGame, startRoleSelection } from '$lib/server/game';
-import { verifyHostPermission } from '$lib/server/api-helpers';
+import { requireAllPlayersOnline, verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
 import { getNextRoundStarter } from '$lib/server/game-turn-order';
@@ -194,6 +194,9 @@ export const POST: RequestHandler = async (event) => {
 
 		// 如果遊戲正在進行中，開始新回合（第2或第3回合）
 		if (game.status === 'playing') {
+			const pauseResponse = await requireAllPlayersOnline(game.id);
+			if (pauseResponse) return pauseResponse;
+
 			// 確定要開始的回合數
 			let nextRoundNumber: number;
 

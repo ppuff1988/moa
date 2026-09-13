@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyHostInRoom } from '$lib/server/api-helpers';
+import { requireAllPlayersOnline, verifyHostInRoom } from '$lib/server/api-helpers';
 import { completeVotingPhase } from '$lib/server/game';
 
 // 完成投票階段，自動進入下一回合或結束遊戲
@@ -11,6 +11,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game } = verifyResult;
+	const pauseResponse = await requireAllPlayersOnline(game.id);
+	if (pauseResponse) return pauseResponse;
 
 	// 解析請求體以獲取當前回合數
 	const body = await request.json();

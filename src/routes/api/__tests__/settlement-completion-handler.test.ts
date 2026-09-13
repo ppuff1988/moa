@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	update: vi.fn(),
 	updateSet: vi.fn(),
 	verifyPlayerInRoomWithStatus: vi.fn(),
+	requireAllPlayersOnline: vi.fn(),
 	emitToRoom: vi.fn()
 }));
 
@@ -16,7 +17,8 @@ vi.mock('$lib/server/db', () => ({
 }));
 
 vi.mock('$lib/server/api-helpers', () => ({
-	verifyPlayerInRoomWithStatus: mocks.verifyPlayerInRoomWithStatus
+	verifyPlayerInRoomWithStatus: mocks.verifyPlayerInRoomWithStatus,
+	requireAllPlayersOnline: mocks.requireAllPlayersOnline
 }));
 
 vi.mock('$lib/server/socket', () => ({
@@ -65,6 +67,7 @@ describe('POST /api/room/[name]/calculate-settlement completion', () => {
 			game: { id: '11111111-1111-1111-1111-111111111111' },
 			player: { isHost: true }
 		});
+		mocks.requireAllPlayersOnline.mockResolvedValue(null);
 		mocks.update.mockReturnValue({ set: mocks.updateSet });
 		mocks.updateSet.mockReturnValue({ where: () => Promise.resolve() });
 	});

@@ -75,7 +75,7 @@ export async function getOnlineVotingProgress(
 ) {
 	const submittedPlayers = await getSubmittedOnlineVotingPlayers(executor, roundId);
 	const activePlayers = await executor
-		.select({ id: gamePlayers.id })
+		.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
 		.from(gamePlayers)
 		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
 	const submittedPlayerIds = new Set(
@@ -87,13 +87,15 @@ export async function getOnlineVotingProgress(
 	return {
 		submittedPlayers,
 		totalPlayers: quorumPlayerIds.size,
-		completed: activePlayers.every((activePlayer) => submittedPlayerIds.has(activePlayer.id))
+		completed: activePlayers.every(
+			(activePlayer) => activePlayer.isOnline && submittedPlayerIds.has(activePlayer.id)
+		)
 	};
 }
 
 /**
  * 在呼叫端已鎖定回合列的 transaction 內重新計算投票門檻並完成結算。
- * 暫時斷線玩家仍是 active；只有 leftAt 不為空的主動離房玩家退出待提交名單。
+ * 暫時斷線玩家仍是 active，且回來前即使全員已提交也不公布結果。
  */
 export async function finalizeOnlineVotingIfComplete(
 	executor: VotingTransaction,

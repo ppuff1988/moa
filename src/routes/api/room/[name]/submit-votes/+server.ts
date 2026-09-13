@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyHostWithStatus } from '$lib/server/api-helpers';
+import { requireAllPlayersOnline, verifyHostWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameArtifacts, gameRounds } from '$lib/server/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
@@ -25,6 +25,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const { game } = verifyResult;
+		const pauseResponse = await requireAllPlayersOnline(game.id);
+		if (pauseResponse) return pauseResponse;
 		if (game.onlineVotingEnabled) {
 			return json({ message: '線上投票房間必須由所有玩家自行提交籌碼' }, { status: 400 });
 		}

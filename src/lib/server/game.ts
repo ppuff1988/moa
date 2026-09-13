@@ -247,7 +247,8 @@ export async function updatePlayerOnlineStatus(gameId: string, userId: number, i
 		.update(gamePlayers)
 		.set({
 			isOnline,
-			lastActiveAt: new Date()
+			lastActiveAt: new Date(),
+			...(isOnline ? { leftAt: null } : {})
 		})
 		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
 }

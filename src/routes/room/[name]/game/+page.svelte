@@ -26,7 +26,7 @@
 	import VotingPanel from '$lib/components/ui/VotingPanel.svelte';
 	import VotingResultPanel from '$lib/components/ui/VotingResultPanel.svelte';
 
-	import type { ActionedPlayer, PublishedVotingResult, User } from '$lib/types/game';
+	import type { ActionedPlayer, Player, PublishedVotingResult, User } from '$lib/types/game';
 
 	// Game state
 	const gameState = createGameState();
@@ -71,6 +71,7 @@
 	let actionAreaElement: HTMLDivElement | null = $state(null);
 	let justUsedSkill = $state(false); // 防止使用技能後立即自動跳轉
 	let onlineVotingEnabled = $state(false);
+	let isResumingPausedGame = false;
 	const roundStatusRequests = createLatestRequestTracker();
 
 	// roomName 需要立即從 URL 參數初始化
@@ -98,6 +99,7 @@
 		})
 	);
 	const attackablePlayers = $derived($players.filter((player) => player.id !== currentUserId));
+	const offlinePlayers = $derived($players.filter((player) => !player.isOnline));
 
 	// Update gameStatus based on roundPhase
 	let gameStatus = $derived($roundPhase === 'finished' ? 'finished' : 'playing');
@@ -253,6 +255,30 @@
 			await fetchMyRole();
 		}
 		return true;
+	}
+
+	async function resumePausedGameIfReady(roomPlayers: Player[]) {
+		if (isResumingPausedGame || roomPlayers.length === 0 || roomPlayers.some((p) => !p.isOnline)) {
+			return;
+		}
+
+		isResumingPausedGame = true;
+		try {
+			const response = await fetch(`/api/room/${encodeURIComponent(roomName)}/resume-paused-game`, {
+				method: 'POST',
+				credentials: 'include'
+			});
+			if (!response.ok) return;
+
+			const data = await response.json();
+			if (data.completed && data.votingResult) {
+				applyPublishedVotingResult(data.votingResult);
+			}
+		} catch (error) {
+			console.error('[resume-paused-game] 恢復暫停遊戲失敗:', error);
+		} finally {
+			isResumingPausedGame = false;
+		}
 	}
 
 	async function fetchRoundStatus(): Promise<boolean> {
@@ -992,8 +1018,16 @@
 					});
 
 					// 監聽房間加入成功事件
-					socket.on('room-update', () => {
+					socket.on('room-update', (data: { players?: Player[] }) => {
 						console.log('[socket] 收到 room-update 事件，確認已成功加入房間');
+						if (data.players) {
+							players.set(data.players);
+							void resumePausedGameIfReady(data.players);
+						}
+					});
+
+					socket.on('player-offline', async () => {
+						await updatePlayersAndRound();
 					});
 
 					socket.on('error', (error) => {
@@ -1210,6 +1244,23 @@
 			{gameStatus}
 			onOpenHistory={() => (isActionHistoryOpen = true)}
 		/>
+
+		{#if offlinePlayers.length > 0 && $roundPhase !== 'finished'}
+			<div class="presence-pause-overlay" role="status" aria-live="polite">
+				<div class="presence-pause-card">
+					<div class="presence-pause-indicator" aria-hidden="true"></div>
+					<p class="presence-pause-label">連線中斷</p>
+					<h2>遊戲暫停</h2>
+					<p>等待以下玩家重新連線</p>
+					<ul>
+						{#each offlinePlayers as player (player.id)}
+							<li>{player.nickname}</li>
+						{/each}
+					</ul>
+					<p class="presence-pause-note">座位與目前進度都會保留，重新連線後自動繼續。</p>
+				</div>
+			</div>
+		{/if}
 
 		{#if !['identification', 'finished', 'discussion', 'voting', 'result'].includes($roundPhase)}
 			<PlayerOrderDisplay
@@ -1524,6 +1575,87 @@
 	.game-main {
 		display: flex;
 		flex-direction: column;
+	}
+
+	.presence-pause-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 1000;
+		display: grid;
+		place-items: center;
+		padding: 1.5rem;
+		background: rgba(8, 8, 10, 0.78);
+		backdrop-filter: blur(10px);
+	}
+
+	.presence-pause-card {
+		width: min(100%, 32rem);
+		padding: 2rem;
+		border: 1px solid rgba(212, 175, 55, 0.5);
+		border-radius: 1rem;
+		background: #171717;
+		box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.55);
+		color: #f5f2e8;
+		text-align: center;
+	}
+
+	.presence-pause-card h2 {
+		margin: 0.35rem 0 0.75rem;
+		font-size: clamp(1.75rem, 5vw, 2.4rem);
+	}
+
+	.presence-pause-card p {
+		margin: 0;
+		color: rgba(245, 242, 232, 0.72);
+	}
+
+	.presence-pause-card ul {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+		margin: 1.25rem 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.presence-pause-card li {
+		padding: 0.5rem 0.8rem;
+		border: 1px solid rgba(212, 175, 55, 0.35);
+		border-radius: 999px;
+		background: rgba(212, 175, 55, 0.1);
+		color: #f4d675;
+		font-weight: 700;
+	}
+
+	.presence-pause-label {
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+	}
+
+	.presence-pause-indicator {
+		width: 0.75rem;
+		height: 0.75rem;
+		margin: 0 auto 0.75rem;
+		border-radius: 50%;
+		background: #ef8354;
+		box-shadow: 0 0 0 0 rgba(239, 131, 84, 0.5);
+		animation: presence-pulse 1.8s infinite;
+	}
+
+	.presence-pause-note {
+		font-size: 0.875rem;
+	}
+
+	@keyframes presence-pulse {
+		70% {
+			box-shadow: 0 0 0 0.75rem rgba(239, 131, 84, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(239, 131, 84, 0);
+		}
 	}
 
 	.game-content {

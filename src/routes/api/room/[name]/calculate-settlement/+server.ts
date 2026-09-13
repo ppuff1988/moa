@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyPlayerInRoomWithStatus } from '$lib/server/api-helpers';
+import { requireAllPlayersOnline, verifyPlayerInRoomWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { games, gameArtifacts, gameRounds, gamePlayers, roles, user } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -14,6 +14,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const { game, player } = verifyResult;
+		const pauseResponse = await requireAllPlayersOnline(game.id);
+		if (pauseResponse) return pauseResponse;
 
 		// 檢查是否為房主
 		if (!player.isHost) {

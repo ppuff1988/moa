@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
 	transaction: vi.fn(),
 	updateSet: vi.fn(),
 	insertValues: vi.fn(),
-	verifyHostPermission: vi.fn()
+	verifyHostPermission: vi.fn(),
+	requireAllPlayersOnline: vi.fn()
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -20,7 +21,8 @@ vi.mock('$lib/server/socket', () => ({
 }));
 
 vi.mock('$lib/server/api-helpers', () => ({
-	verifyHostPermission: mocks.verifyHostPermission
+	verifyHostPermission: mocks.verifyHostPermission,
+	requireAllPlayersOnline: mocks.requireAllPlayersOnline
 }));
 
 vi.mock('$lib/server/game', () => ({
@@ -67,6 +69,7 @@ describe('POST /api/room/[name]/start round transition', () => {
 		mocks.verifyHostPermission.mockResolvedValue({
 			game: { id: '11111111-1111-1111-1111-111111111111', status: 'playing' }
 		});
+		mocks.requireAllPlayersOnline.mockResolvedValue(null);
 	});
 
 	it.each(['action', 'discussion', 'voting'])(

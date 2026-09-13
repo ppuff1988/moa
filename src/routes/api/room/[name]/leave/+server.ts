@@ -1,11 +1,10 @@
 import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
-import { gamePlayers, gameRounds, games, user } from '$lib/server/db/schema';
+import { gamePlayers, games, user } from '$lib/server/db/schema';
 import { getGameState } from '$lib/server/game';
-import { finalizeOnlineVotingIfComplete } from '$lib/server/game-voting';
 import { getSocketIO } from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, params }) => {
@@ -199,92 +198,22 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} else {
 		if (status === 'playing') {
-			const { remainingCount, votingFinalization, votingRound } = await db.transaction(
-				async (tx) => {
-					// 與線上投票提交維持相同鎖順序：先鎖回合，再鎖／更新玩家列。
-					const [currentRound] = await tx
-						.select()
-						.from(gameRounds)
-						.where(eq(gameRounds.gameId, game.id))
-						.orderBy(desc(gameRounds.round))
-						.limit(1)
-						.for('update');
+			await db
+				.update(gamePlayers)
+				.set({ isOnline: false, lastActiveAt: new Date() })
+				.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
 
-					await tx
-						.update(gamePlayers)
-						.set({ leftAt: new Date() })
-						.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
-
-					const remainingPlayers = await tx
-						.select({ id: gamePlayers.id })
-						.from(gamePlayers)
-						.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
-					let votingFinalization = null;
-					if (
-						remainingPlayers.length >= 6 &&
-						game.onlineVotingEnabled &&
-						currentRound?.phase === 'voting'
-					) {
-						votingFinalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
-					}
-
-					return {
-						remainingCount: remainingPlayers.length,
-						votingFinalization,
-						votingRound: currentRound?.round
-					};
-				}
-			);
-
-			// 如果剩餘人數少於6人，強制結束遊戲
-			if (remainingCount < 6) {
-				const { forceEndGame } = await import('$lib/server/game');
-				await forceEndGame(game.id, '由於人數不足，遊戲已強制結束');
-
-				// 通知房間內的其他玩家遊戲被強制結束
-				if (io) {
-					io.to(game.roomName).emit('game-force-ended', {
-						reason: '由於人數不足，遊戲已強制結束',
-						playerLeft: {
-							userId: currentUser.id,
-							nickname: currentUser.nickname
-						}
-					});
-				}
-
-				return json({
-					message: '成功離開房間，因人數不足遊戲已結束',
-					roomName: game.roomName,
-					gameEnded: true
-				});
-			}
-
-			if (votingFinalization?.completed && io) {
-				io.to(game.roomName).emit('voting-completed', {
-					phase: 'result',
-					votingResult: votingFinalization.votingResult
-				});
-			} else if (votingFinalization && io) {
-				io.to(game.roomName).emit('online-voting-progress', {
-					round: votingRound,
-					submittedPlayers: votingFinalization.submittedPlayers,
-					totalPlayers: votingFinalization.totalPlayers
-				});
-			}
-
-			// 在 playing 狀態下通知玩家離開（包含剩餘人數）
 			if (io) {
-				io.to(game.roomName).emit('player-left', {
+				io.to(game.roomName).emit('player-offline', {
 					userId: currentUser.id,
-					nickname: currentUser.nickname,
-					remainingCount
+					nickname: currentUser.nickname
 				});
 			}
 
 			return json({
-				message: '成功離開房間',
+				message: '已暫離遊戲，座位將保留至重新連線',
 				roomName: game.roomName,
-				votingCompleted: votingFinalization?.completed ?? false
+				gamePaused: true
 			});
 		}
 

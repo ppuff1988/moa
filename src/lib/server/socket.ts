@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Server as HTTPServer } from 'http';
 import type { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
@@ -9,8 +9,46 @@ import { getGameState, updatePlayerOnlineStatus } from './game';
 
 let io: SocketIOServer | null = null;
 
-// 房間玩家映射 { roomName: Set<userId> }
-const roomUsers = new Map<string, Set<number>>();
+// 同一玩家可能同時開啟多個遊戲分頁；只有最後一條連線離開才算離線。
+const roomConnections = new Map<string, Map<number, Set<string>>>();
+
+function addRoomConnection(roomName: string, userId: number, socketId: string): void {
+	let userConnections = roomConnections.get(roomName);
+	if (!userConnections) {
+		userConnections = new Map();
+		roomConnections.set(roomName, userConnections);
+	}
+
+	let socketIds = userConnections.get(userId);
+	if (!socketIds) {
+		socketIds = new Set<string>();
+		userConnections.set(userId, socketIds);
+	}
+	socketIds.add(socketId);
+}
+
+function removeRoomConnection(roomName: string, userId: number, socketId: string): number {
+	const userConnections = roomConnections.get(roomName);
+	const socketIds = userConnections?.get(userId);
+	socketIds?.delete(socketId);
+	const remainingConnections = socketIds?.size ?? 0;
+
+	if (remainingConnections === 0) userConnections?.delete(userId);
+	if (userConnections?.size === 0) roomConnections.delete(roomName);
+	return remainingConnections;
+}
+
+async function resetActivePlayerPresence(): Promise<void> {
+	await db
+		.update(gamePlayers)
+		.set({ isOnline: false })
+		.where(
+			inArray(
+				gamePlayers.gameId,
+				db.select({ id: games.id }).from(games).where(eq(games.status, 'playing'))
+			)
+		);
+}
 
 // 獲取 Socket.IO 實例
 export function getSocketIO(): SocketIOServer | null {
@@ -20,7 +58,7 @@ export function getSocketIO(): SocketIOServer | null {
 }
 
 // 初始化 Socket.IO
-export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
+export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServer> {
 	if (io) {
 		return io;
 	}
@@ -39,6 +77,7 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 	(globalThis as { io?: SocketIOServer }).io = io;
 
 	console.log('[initSocketIO] Socket.IO 實例已初始化並掛載到 global');
+	await resetActivePlayerPresence();
 
 	// 身份驗證中間件：支援 JWT auth token 及 cookie 鏈式驗證
 	io.use(async (socket, next) => {
@@ -130,15 +169,15 @@ export function initSocketIO(httpServer: HTTPServer): SocketIOServer {
 				socket.data.roomName = roomName;
 				socket.data.nickname = userInfo?.nickname || `玩家${userId}`;
 				socket.data.avatar = userInfo?.avatar || null;
+				addRoomConnection(roomName, userId, socket.id);
 
 				// 更新玩家在線狀態
 				await updatePlayerOnlineStatus(game.id, userId, true);
-
-				// 追蹤房間用戶
-				if (!roomUsers.has(roomName)) {
-					roomUsers.set(roomName, new Set());
+				if (!socket.connected) {
+					removeRoomConnection(roomName, userId, socket.id);
+					await updatePlayerOnlineStatus(game.id, userId, false);
+					return;
 				}
-				roomUsers.get(roomName)?.add(userId);
 
 				// 獲取更新的遊戲狀態
 				const gameState = await getGameState(game.id);
@@ -217,7 +256,7 @@ export function closeSocketIO(): void {
 	if (io) {
 		io.close();
 		io = null;
-		roomUsers.clear();
+		roomConnections.clear();
 	}
 }
 
@@ -228,19 +267,15 @@ async function handleLeaveRoom(socket: Socket) {
 		const roomName = socket.data.roomName;
 
 		if (!roomName) return;
+		const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 
 		// 查找遊戲
 		const [game] = await db.select().from(games).where(eq(games.roomName, roomName)).limit(1);
 
-		if (game) {
+		if (game && remainingConnections === 0) {
 			// 更新玩家離線狀態
 			await updatePlayerOnlineStatus(game.id, userId, false);
-
-			// 從房間用戶列表移除
-			roomUsers.get(roomName)?.delete(userId);
-			if (roomUsers.get(roomName)?.size === 0) {
-				roomUsers.delete(roomName);
-			}
+			io?.to(roomName).emit('player-offline', { userId, nickname: socket.data.nickname });
 		}
 
 		socket.leave(roomName);

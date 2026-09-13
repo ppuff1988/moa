@@ -29,6 +29,7 @@ type HostInRoomWithStatusResult = { error: Response } | { user: User; game: Game
 type HostInRoomResult = { error: Response } | { user: User; game: Game; player: GamePlayer };
 
 type CanActionCheckResult = { canAct: true } | { canAct: false; error: Response };
+type PresenceExecutor = Pick<typeof db, 'select'>;
 
 export type ActionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -68,6 +69,15 @@ const ErrorResponses = {
 	notActionPhase: () => json({ success: false, message: '當前階段不是行動階段' }, { status: 409 }),
 	notCurrentActionPlayer: () =>
 		json({ success: false, message: '目前不是你的行動回合' }, { status: 403 }),
+	gamePaused: () =>
+		json(
+			{
+				success: false,
+				code: 'GAME_PAUSED',
+				message: '有玩家離線，請等待所有玩家重新連線'
+			},
+			{ status: 409 }
+		),
 	notIdentificationPhase: () =>
 		json({ success: false, message: '當前階段不是鑑人階段' }, { status: 409 }),
 	blocked: () =>
@@ -102,6 +112,21 @@ const ErrorResponses = {
 		);
 	}
 };
+
+/**
+ * 遊戲進行中只要有仍在場的玩家離線，就暫停所有會推進階段的操作。
+ */
+export async function requireAllPlayersOnline(
+	gameId: string,
+	executor: PresenceExecutor = db
+): Promise<Response | null> {
+	const activePlayers = await executor
+		.select({ isOnline: gamePlayers.isOnline })
+		.from(gamePlayers)
+		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+
+	return activePlayers.some((player) => !player.isOnline) ? ErrorResponses.gamePaused() : null;
+}
 
 // ==================== 輔助函數 ====================
 
@@ -414,9 +439,12 @@ export async function runCurrentActionTransaction<T>(
 			? (currentRound.actionOrder as number[]).map(Number)
 			: [];
 		const activePlayers = await transaction
-			.select({ id: gamePlayers.id })
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
 			.from(gamePlayers)
 			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
+		}
 		const activePlayerIds = new Set(activePlayers.map((activePlayer) => activePlayer.id));
 		const currentPlayerLeft = actionOrder.length > 0 && !activePlayerIds.has(actionOrder[0]);
 		const activeActionOrder = actionOrder.filter((playerId) => activePlayerIds.has(playerId));
@@ -506,6 +534,14 @@ export async function runIdentificationTransaction<T>(
 		if (!currentRound) return { error: ErrorResponses.noCurrentRound() };
 		if (currentRound.phase !== 'identification') {
 			return { error: ErrorResponses.notIdentificationPhase() };
+		}
+
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
 		}
 
 		if (!player.roleId) return { error: ErrorResponses.noRole() };

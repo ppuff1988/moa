@@ -61,8 +61,44 @@ try {
 		}
 	});
 
-	// 房間玩家映射
-	const roomUsers = new Map();
+	// 同一玩家可能同時開啟多個遊戲分頁；只有最後一條連線離開才算離線。
+	const roomConnections = new Map();
+	function addRoomConnection(roomName, userId, socketId) {
+		let userConnections = roomConnections.get(roomName);
+		if (!userConnections) {
+			userConnections = new Map();
+			roomConnections.set(roomName, userConnections);
+		}
+
+		let socketIds = userConnections.get(userId);
+		if (!socketIds) {
+			socketIds = new Set();
+			userConnections.set(userId, socketIds);
+		}
+		socketIds.add(socketId);
+	}
+
+	function removeRoomConnection(roomName, userId, socketId) {
+		const userConnections = roomConnections.get(roomName);
+		const socketIds = userConnections?.get(userId);
+		socketIds?.delete(socketId);
+		const remainingConnections = socketIds?.size ?? 0;
+
+		if (remainingConnections === 0) userConnections?.delete(userId);
+		if (userConnections?.size === 0) roomConnections.delete(roomName);
+		return remainingConnections;
+	}
+
+	async function resetActivePlayerPresence() {
+		await pool.query(`
+			UPDATE game_players AS gp
+			SET is_online = false, last_active_at = NOW()
+			FROM games AS g
+			WHERE gp.game_id = g.id AND g.status = 'playing'
+		`);
+	}
+
+	await resetActivePlayerPresence();
 
 	// 連接處理
 	io.on('connection', async (socket) => {
@@ -110,18 +146,21 @@ try {
 				socket.data.roomName = roomName;
 				socket.data.nickname = nickname;
 				socket.data.avatar = avatar;
+				addRoomConnection(roomName, userId, socket.id);
 
 				// 更新玩家在線狀態
 				await pool.query(
-					'UPDATE game_players SET is_online = true, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+					'UPDATE game_players SET is_online = true, left_at = NULL, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
 					[gameId, userId]
 				);
-
-				// 記錄房間用戶
-				if (!roomUsers.has(roomName)) {
-					roomUsers.set(roomName, new Set());
+				if (!socket.connected) {
+					removeRoomConnection(roomName, userId, socket.id);
+					await pool.query(
+						'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+						[gameId, userId]
+					);
+					return;
 				}
-				roomUsers.get(roomName).add(userId);
 
 				console.log(`✅ 用戶 ${userId} (${nickname}) 成功加入房間: ${roomName}`);
 
@@ -203,13 +242,14 @@ try {
 					console.log(`[leave-room] 用戶 ${userId} 尚未加入任何房間`);
 					return;
 				}
+				const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 
 				// 查詢遊戲
 				const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
 					roomName
 				]);
 
-				if (gameResult.rows.length > 0) {
+				if (gameResult.rows.length > 0 && remainingConnections === 0) {
 					const gameId = gameResult.rows[0].id;
 
 					// 更新玩家離線狀態
@@ -219,14 +259,6 @@ try {
 					);
 
 					console.log(`[leave-room] 已更新用戶 ${userId} 的離線狀態`);
-
-					// 從房間用戶列表移除
-					if (roomUsers.has(roomName)) {
-						roomUsers.get(roomName).delete(userId);
-						if (roomUsers.get(roomName).size === 0) {
-							roomUsers.delete(roomName);
-						}
-					}
 
 					// 獲取更新的遊戲狀態和所有玩家資訊
 					const playersResult = await pool.query(
@@ -285,7 +317,7 @@ try {
 						}))
 					});
 
-					socket.to(roomName).emit('player-left', {
+					socket.to(roomName).emit('player-offline', {
 						userId,
 						nickname
 					});
@@ -311,6 +343,8 @@ try {
 
 			const roomName = socket.data.roomName;
 			if (roomName) {
+				const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+				if (remainingConnections > 0) return;
 				// 更新玩家離線狀態
 				try {
 					const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
@@ -322,14 +356,6 @@ try {
 							'UPDATE game_players SET is_online = false WHERE game_id = $1 AND user_id = $2',
 							[gameResult.rows[0].id, userId]
 						);
-					}
-
-					// 移除房間用戶記錄
-					if (roomUsers.has(roomName)) {
-						roomUsers.get(roomName).delete(userId);
-						if (roomUsers.get(roomName).size === 0) {
-							roomUsers.delete(roomName);
-						}
 					}
 
 					// 廣播玩家離線事件

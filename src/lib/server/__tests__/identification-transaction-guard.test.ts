@@ -28,17 +28,25 @@ describe('identification transaction guard', () => {
 	let phase = 'identification';
 	let gameStatus = 'playing';
 	let playerExists = true;
+	let offlinePlayerIds: number[] = [];
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		phase = 'identification';
 		gameStatus = 'playing';
 		playerExists = true;
+		offlinePlayerIds = [];
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
 
-		const rowsFor = (table: unknown) => {
+		const rowsFor = (table: unknown, selection?: unknown) => {
 			if (table === games) return [{ id: 'game-1', roomName: '123456', status: gameStatus }];
 			if (table === gamePlayers) {
+				if (selection) {
+					return [11, 99].map((id) => ({
+						id,
+						isOnline: !offlinePlayerIds.includes(id)
+					}));
+				}
 				return playerExists
 					? [{ id: 11, gameId: 'game-1', userId: 7, roleId: 3, leftAt: null }]
 					: [];
@@ -51,9 +59,9 @@ describe('identification transaction guard', () => {
 		};
 
 		const transaction = {
-			select: vi.fn(() => ({
+			select: vi.fn((selection?: unknown) => ({
 				from: (table: unknown) => {
-					const resolveRows = () => Promise.resolve(rowsFor(table));
+					const resolveRows = () => Promise.resolve(rowsFor(table, selection));
 					const limitResult = {
 						for: () => {
 							if (table === gameRounds) lockRoundMock();
@@ -64,7 +72,12 @@ describe('identification transaction guard', () => {
 							onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
 						) => resolveRows().then(onfulfilled, onrejected)
 					};
-					return { where: () => ({ limit: () => limitResult }) };
+					return {
+						where: () => ({
+							limit: () => limitResult,
+							then: limitResult.then
+						})
+					};
 				}
 			}))
 		};
@@ -125,5 +138,26 @@ describe('identification transaction guard', () => {
 
 		expect(result).toHaveProperty('error');
 		if ('error' in result) expect(result.error.status).toBe(409);
+	});
+
+	it('任何仍在場玩家離線時暫停並拒絕鑑人操作', async () => {
+		offlinePlayerIds = [99];
+		const guard = getGuard();
+		expect(guard).toBeTypeOf('function');
+		if (!guard) return;
+		const action = vi.fn();
+
+		const result = await guard(
+			new Request('http://localhost', { headers: { Authorization: 'Bearer token' } }),
+			'123456',
+			action
+		);
+
+		expect(result).toHaveProperty('error');
+		if ('error' in result) {
+			expect(result.error.status).toBe(409);
+			expect(await result.error.json()).toMatchObject({ code: 'GAME_PAUSED' });
+		}
+		expect(action).not.toHaveBeenCalled();
 	});
 });
