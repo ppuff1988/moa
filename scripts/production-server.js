@@ -63,6 +63,20 @@ try {
 
 	// 同一玩家可能同時開啟多個遊戲分頁；只有最後一條連線離開才算離線。
 	const roomConnections = new Map();
+	const presenceTransitions = new Map();
+
+	function enqueuePresenceTransition(roomName, userId, transition) {
+		const key = `${roomName}:${userId}`;
+		const previous = presenceTransitions.get(key) || Promise.resolve();
+		const current = previous.catch(() => undefined).then(transition);
+		presenceTransitions.set(key, current);
+
+		return current.finally(() => {
+			if (presenceTransitions.get(key) === current) {
+				presenceTransitions.delete(key);
+			}
+		});
+	}
 	function addRoomConnection(roomName, userId, socketId) {
 		let userConnections = roomConnections.get(roomName);
 		if (!userConnections) {
@@ -91,6 +105,10 @@ try {
 
 	function hasRoomConnection(roomName, userId) {
 		return (roomConnections.get(roomName)?.get(userId)?.size ?? 0) > 0;
+	}
+
+	function hasRoomSocket(roomName, userId, socketId) {
+		return roomConnections.get(roomName)?.get(userId)?.has(socketId) ?? false;
 	}
 
 	async function resetActivePlayerPresence() {
@@ -150,23 +168,29 @@ try {
 				socket.data.roomName = roomName;
 				socket.data.nickname = nickname;
 				socket.data.avatar = avatar;
-				addRoomConnection(roomName, userId, socket.id);
 
-				// 更新玩家在線狀態
-				await pool.query(
-					'UPDATE game_players SET is_online = true, left_at = CASE WHEN $3::boolean THEN NULL ELSE left_at END, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
-					[gameId, userId, game.status === 'playing']
-				);
-				if (!socket.connected) {
-					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
-					if (remainingConnections === 0 && !hasRoomConnection(roomName, userId)) {
-						await pool.query(
-							'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
-							[gameId, userId]
-						);
+				const joined = await enqueuePresenceTransition(roomName, userId, async () => {
+					if (!socket.connected) return false;
+
+					addRoomConnection(roomName, userId, socket.id);
+					// 更新玩家在線狀態
+					await pool.query(
+						'UPDATE game_players SET is_online = true, left_at = CASE WHEN $3::boolean THEN NULL ELSE left_at END, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+						[gameId, userId, game.status === 'playing']
+					);
+					if (!socket.connected) {
+						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+						if (remainingConnections === 0) {
+							await pool.query(
+								'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+								[gameId, userId]
+							);
+						}
+						return false;
 					}
-					return;
-				}
+					return true;
+				});
+				if (!joined) return;
 
 				console.log(`✅ 用戶 ${userId} (${nickname}) 成功加入房間: ${roomName}`);
 
@@ -250,26 +274,27 @@ try {
 					console.log(`[leave-room] 用戶 ${userId} 尚未加入任何房間`);
 					return;
 				}
-				const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+				const gameId = await enqueuePresenceTransition(roomName, userId, async () => {
+					if (!hasRoomSocket(roomName, userId, socket.id)) return null;
+					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+					if (remainingConnections !== 0 || hasRoomConnection(roomName, userId)) return null;
 
-				// 查詢遊戲
-				const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
-					roomName
-				]);
+					// 查詢遊戲
+					const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
+						roomName
+					]);
+					if (gameResult.rows.length === 0) return null;
 
-				if (
-					gameResult.rows.length > 0 &&
-					remainingConnections === 0 &&
-					!hasRoomConnection(roomName, userId)
-				) {
 					const gameId = gameResult.rows[0].id;
-
 					// 更新玩家離線狀態
 					await pool.query(
 						'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
 						[gameId, userId]
 					);
+					return gameId;
+				});
 
+				if (gameId) {
 					console.log(`[leave-room] 已更新用戶 ${userId} 的離線狀態`);
 
 					// 獲取更新的遊戲狀態和所有玩家資訊
@@ -357,23 +382,28 @@ try {
 
 			const roomName = socket.data.roomName;
 			if (roomName) {
-				const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
-				if (remainingConnections > 0) return;
-				// 更新玩家離線狀態
 				try {
-					const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
-						roomName
-					]);
+					const wentOffline = await enqueuePresenceTransition(roomName, userId, async () => {
+						if (!hasRoomSocket(roomName, userId, socket.id)) return false;
+						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+						if (remainingConnections !== 0 || hasRoomConnection(roomName, userId)) return false;
 
-					if (gameResult.rows.length > 0 && !hasRoomConnection(roomName, userId)) {
+						const gameResult = await pool.query('SELECT id FROM games WHERE room_name = $1', [
+							roomName
+						]);
+						if (gameResult.rows.length === 0) return false;
+
 						await pool.query(
 							'UPDATE game_players SET is_online = false WHERE game_id = $1 AND user_id = $2',
 							[gameResult.rows[0].id, userId]
 						);
-					}
+						return true;
+					});
 
-					// 廣播玩家離線事件
-					io.to(roomName).emit('player-offline', { userId });
+					if (wentOffline) {
+						// 廣播玩家離線事件
+						io.to(roomName).emit('player-offline', { userId });
+					}
 				} catch (error) {
 					console.error('[Socket] 更新離線狀態錯誤:', error);
 				}

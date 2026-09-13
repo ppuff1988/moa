@@ -11,6 +11,24 @@ let io: SocketIOServer | null = null;
 
 // 同一玩家可能同時開啟多個遊戲分頁；只有最後一條連線離開才算離線。
 const roomConnections = new Map<string, Map<number, Set<string>>>();
+const presenceTransitions = new Map<string, Promise<unknown>>();
+
+function enqueuePresenceTransition<T>(
+	roomName: string,
+	userId: number,
+	transition: () => Promise<T>
+): Promise<T> {
+	const key = `${roomName}:${userId}`;
+	const previous = presenceTransitions.get(key) ?? Promise.resolve();
+	const current = previous.catch(() => undefined).then(transition);
+	presenceTransitions.set(key, current);
+
+	return current.finally(() => {
+		if (presenceTransitions.get(key) === current) {
+			presenceTransitions.delete(key);
+		}
+	}) as Promise<T>;
+}
 
 function addRoomConnection(roomName: string, userId: number, socketId: string): void {
 	let userConnections = roomConnections.get(roomName);
@@ -40,6 +58,10 @@ function removeRoomConnection(roomName: string, userId: number, socketId: string
 
 function hasRoomConnection(roomName: string, userId: number): boolean {
 	return (roomConnections.get(roomName)?.get(userId)?.size ?? 0) > 0;
+}
+
+function hasRoomSocket(roomName: string, userId: number, socketId: string): boolean {
+	return roomConnections.get(roomName)?.get(userId)?.has(socketId) ?? false;
 }
 
 async function resetActivePlayerPresence(): Promise<void> {
@@ -190,17 +212,23 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				socket.data.roomName = roomName;
 				socket.data.nickname = userInfo?.nickname || `玩家${userId}`;
 				socket.data.avatar = userInfo?.avatar || null;
-				addRoomConnection(roomName, userId, socket.id);
 
-				// 更新玩家在線狀態
-				await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');
-				if (!socket.connected) {
-					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
-					if (remainingConnections === 0 && !hasRoomConnection(roomName, userId)) {
-						await updatePlayerOnlineStatus(game.id, userId, false);
+				const joined = await enqueuePresenceTransition(roomName, userId, async () => {
+					if (!socket.connected) return false;
+
+					addRoomConnection(roomName, userId, socket.id);
+					// 更新玩家在線狀態
+					await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');
+					if (!socket.connected) {
+						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+						if (remainingConnections === 0) {
+							await updatePlayerOnlineStatus(game.id, userId, false);
+						}
+						return false;
 					}
-					return;
-				}
+					return true;
+				});
+				if (!joined) return;
 
 				// 獲取更新的遊戲狀態
 				const gameState = await getGameState(game.id);
@@ -280,6 +308,7 @@ export function closeSocketIO(): void {
 		io.close();
 		io = null;
 		roomConnections.clear();
+		presenceTransitions.clear();
 	}
 }
 
@@ -290,14 +319,22 @@ async function handleLeaveRoom(socket: Socket) {
 		const roomName = socket.data.roomName;
 
 		if (!roomName) return;
-		const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 
-		// 查找遊戲
-		const [game] = await db.select().from(games).where(eq(games.roomName, roomName)).limit(1);
+		const game = await enqueuePresenceTransition(roomName, userId, async () => {
+			if (!hasRoomSocket(roomName, userId, socket.id)) return null;
+			const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+			if (remainingConnections !== 0 || hasRoomConnection(roomName, userId)) return null;
 
-		if (game && remainingConnections === 0 && !hasRoomConnection(roomName, userId)) {
+			// 查找遊戲
+			const [game] = await db.select().from(games).where(eq(games.roomName, roomName)).limit(1);
+			if (!game) return null;
+
 			// 更新玩家離線狀態
 			await updatePlayerOnlineStatus(game.id, userId, false);
+			return game;
+		});
+
+		if (game) {
 			io?.to(roomName).emit('player-offline', { userId, nickname: socket.data.nickname });
 		}
 

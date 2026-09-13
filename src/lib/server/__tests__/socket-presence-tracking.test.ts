@@ -61,4 +61,31 @@ describe('Socket 多分頁在線狀態', () => {
 		expect(lastConnectionCheck).toBeGreaterThan(-1);
 		expect(lastConnectionCheck).toBeLessThan(lastOfflineUpdate);
 	});
+
+	it.each(socketServers)('%s 將在線與離線寫入序列化避免重連競速', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+
+		expect(source).toContain('enqueuePresenceTransition');
+
+		const joinStart = source.indexOf("socket.on('join-room'");
+		const leaveStart = source.indexOf("socket.on('leave-room'");
+		const disconnectStart = source.indexOf("socket.on('disconnect'");
+		const joinHandler = source.slice(joinStart, leaveStart);
+		const leaveHandlerStart = source.indexOf('async function handleLeaveRoom');
+		const leaveHandler =
+			leaveHandlerStart >= 0
+				? source.slice(leaveHandlerStart)
+				: source.slice(leaveStart, disconnectStart);
+		const disconnectHandler = source.slice(disconnectStart);
+
+		expect(joinHandler).toMatch(
+			/enqueuePresenceTransition\([\s\S]*?(?:updatePlayerOnlineStatus\(game\.id, userId, true|UPDATE game_players SET is_online = true)/
+		);
+		expect(leaveHandler).toMatch(
+			/enqueuePresenceTransition\([\s\S]*?(?:updatePlayerOnlineStatus\(game\.id, userId, false|UPDATE game_players SET is_online = false)/
+		);
+		expect(disconnectHandler).toMatch(
+			/enqueuePresenceTransition\([\s\S]*?(?:updatePlayerOnlineStatus\(game\.id, userId, false|UPDATE game_players SET is_online = false)/
+		);
+	});
 });
