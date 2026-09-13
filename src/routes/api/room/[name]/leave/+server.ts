@@ -2,7 +2,12 @@ import { verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, games, user } from '$lib/server/db/schema';
 import { getGameState } from '$lib/server/game';
-import { enqueuePresenceTransition, getSocketIO, hasPlayerSocket } from '$lib/server/socket';
+import {
+	enqueuePresenceTransition,
+	getSocketIO,
+	hasPlayerSocket,
+	removePlayerSocketsFromRoom
+} from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
@@ -29,6 +34,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		// 更新房間玩家數量
 		const newPlayerCount = game.playerCount - 1;
+		await removePlayerSocketsFromRoom(game.roomName, currentUser.id);
 
 		// 如果是 selecting 狀態，解鎖所有玩家（取消 lock 狀態）
 		if (status === 'selecting') {

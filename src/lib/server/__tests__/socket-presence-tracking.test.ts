@@ -116,9 +116,17 @@ describe('Socket 多分頁在線狀態', () => {
 			'utf8'
 		);
 
-		expect(source).toContain('enqueuePresenceTransition');
-		expect(source).toContain('clearRoomConnections(roomName, targetUserId)');
-		expect(source).toContain('socket.data.roomName = null');
+		expect(source).toContain('removePlayerSocketsFromRoom');
+	});
+
+	it('正常離房時清除 Socket.IO 房間與連線追蹤', () => {
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/routes/api/room/[name]/leave/+server.ts'),
+			'utf8'
+		);
+
+		expect(source).toContain('removePlayerSocketsFromRoom');
+		expect(source).toContain('await removePlayerSocketsFromRoom(game.roomName, currentUser.id)');
 	});
 
 	it.each(socketServers)('%s 切換房間時清理舊房間連線追蹤', (file) => {

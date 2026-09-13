@@ -131,6 +131,25 @@ export async function hasPlayerSocket(roomName: string, userId: number): Promise
 	}
 }
 
+/** Remove all Socket.IO memberships and presence tracking for a player leaving a room. */
+export async function removePlayerSocketsFromRoom(roomName: string, userId: number): Promise<void> {
+	const socketIO = getSocketIO();
+	if (!socketIO) return;
+
+	await enqueuePresenceTransition(roomName, userId, async () => {
+		clearRoomConnections(roomName, userId);
+		const socketsInRoom = await socketIO.in(roomName).fetchSockets();
+		for (const socket of socketsInRoom) {
+			if (socket.data.userId === userId) {
+				socket.leave(roomName);
+				if (socket.data.roomName === roomName) {
+					socket.data.roomName = null;
+				}
+			}
+		}
+	});
+}
+
 // 初始化 Socket.IO
 export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServer> {
 	if (io) {
