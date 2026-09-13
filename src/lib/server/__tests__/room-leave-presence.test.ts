@@ -4,6 +4,7 @@ import { gamePlayers } from '../db/schema';
 const {
 	dbMock,
 	emitMock,
+	enqueuePresenceTransitionMock,
 	forceEndGameMock,
 	getSocketIOMock,
 	hasPlayerSocketMock,
@@ -16,6 +17,7 @@ const {
 		transaction: vi.fn()
 	},
 	emitMock: vi.fn(),
+	enqueuePresenceTransitionMock: vi.fn(),
 	forceEndGameMock: vi.fn(),
 	getSocketIOMock: vi.fn(() => null),
 	hasPlayerSocketMock: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock('../game', () => ({
 }));
 vi.mock('../game-voting', () => ({ finalizeOnlineVotingIfComplete: vi.fn() }));
 vi.mock('../socket', () => ({
+	enqueuePresenceTransition: enqueuePresenceTransitionMock,
 	getSocketIO: getSocketIOMock,
 	hasPlayerSocket: hasPlayerSocketMock
 }));
@@ -41,6 +44,9 @@ describe('playing game leave presence', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		playerUpdates.length = 0;
+		enqueuePresenceTransitionMock.mockImplementation(
+			(_roomName: string, _userId: number, transition: () => Promise<unknown>) => transition()
+		);
 		hasPlayerSocketMock.mockResolvedValue(false);
 		getSocketIOMock.mockReturnValue({
 			to: vi.fn(() => ({ emit: emitMock }))
@@ -98,6 +104,7 @@ describe('playing game leave presence', () => {
 		expect(playerUpdates).toContainEqual(expect.objectContaining({ isOnline: false }));
 		expect(playerUpdates.some((values) => 'leftAt' in values)).toBe(false);
 		expect(forceEndGameMock).not.toHaveBeenCalled();
+		expect(enqueuePresenceTransitionMock).toHaveBeenCalledWith('123456', 8, expect.any(Function));
 	});
 
 	it('同一玩家仍有其他 Socket 連線時不標記為離線', async () => {
@@ -111,5 +118,6 @@ describe('playing game leave presence', () => {
 		expect(response.status).toBe(200);
 		expect(playerUpdates.some((values) => values.isOnline === false)).toBe(false);
 		expect(emitMock).not.toHaveBeenCalled();
+		expect(enqueuePresenceTransitionMock).toHaveBeenCalledWith('123456', 8, expect.any(Function));
 	});
 });

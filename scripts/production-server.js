@@ -77,6 +77,7 @@ try {
 			}
 		});
 	}
+	global.__moaEnqueuePresenceTransition = enqueuePresenceTransition;
 	function addRoomConnection(roomName, userId, socketId) {
 		let userConnections = roomConnections.get(roomName);
 		if (!userConnections) {
@@ -433,6 +434,7 @@ server.listen(port, () => {
 // 優雅關閉
 process.on('SIGTERM', async () => {
 	console.log('收到 SIGTERM 信號，正在關閉...');
+	delete global.__moaEnqueuePresenceTransition;
 	await pool.end();
 	server.close();
 });

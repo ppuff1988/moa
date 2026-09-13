@@ -13,11 +13,23 @@ let io: SocketIOServer | null = null;
 const roomConnections = new Map<string, Map<number, Set<string>>>();
 const presenceTransitions = new Map<string, Promise<unknown>>();
 
-function enqueuePresenceTransition<T>(
+type PresenceTransition = <T>(
+	roomName: string,
+	userId: number,
+	transition: () => Promise<T>
+) => Promise<T>;
+
+export function enqueuePresenceTransition<T>(
 	roomName: string,
 	userId: number,
 	transition: () => Promise<T>
 ): Promise<T> {
+	const sharedTransition = (globalThis as { __moaEnqueuePresenceTransition?: PresenceTransition })
+		.__moaEnqueuePresenceTransition;
+	if (sharedTransition && sharedTransition !== enqueuePresenceTransition) {
+		return sharedTransition(roomName, userId, transition);
+	}
+
 	const key = `${roomName}:${userId}`;
 	const previous = presenceTransitions.get(key) ?? Promise.resolve();
 	const current = previous.catch(() => undefined).then(transition);

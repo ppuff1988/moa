@@ -88,4 +88,10 @@ describe('Socket 多分頁在線狀態', () => {
 			/enqueuePresenceTransition\([\s\S]*?(?:updatePlayerOnlineStatus\(game\.id, userId, false|UPDATE game_players SET is_online = false)/
 		);
 	});
+
+	it('production Socket.IO 與 API 共用在線狀態 transition queue', () => {
+		const source = readFileSync(resolve(process.cwd(), 'scripts/production-server.js'), 'utf8');
+
+		expect(source).toContain('__moaEnqueuePresenceTransition');
+	});
 });
