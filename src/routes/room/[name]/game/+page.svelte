@@ -6,6 +6,7 @@
 	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
 	import { createLatestRequestTracker } from '$lib/utils/latestRequest';
 	import { synchronizeNextRound } from '$lib/utils/nextRound';
+	import { mergeRoomPresence } from '$lib/utils/roomPresence';
 	import { disconnectSocket, initSocket } from '$lib/utils/socket';
 	import type { Socket } from 'socket.io-client';
 	import { onDestroy, onMount } from 'svelte';
@@ -1027,8 +1028,9 @@
 					socket.on('room-update', (data: { players?: Player[] }) => {
 						console.log('[socket] 收到 room-update 事件，確認已成功加入房間');
 						if (data.players) {
-							players.set(data.players);
-							void resumePausedGameIfReady(data.players);
+							const mergedPlayers = mergeRoomPresence($players, data.players);
+							players.set(mergedPlayers);
+							void resumePausedGameIfReady(mergedPlayers);
 						}
 					});
 

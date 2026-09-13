@@ -16,7 +16,8 @@ describe('遊戲頁離線暫停提示', () => {
 
 	it('收到 room-update 與 player-offline 時立即刷新玩家狀態', () => {
 		expect(source).toMatch(/socket\.on\('room-update', \(data/);
-		expect(source).toContain('players.set(data.players)');
+		expect(source).toContain('mergeRoomPresence($players, data.players)');
+		expect(source).toContain('players.set(mergedPlayers)');
 		expect(source).toContain("socket.on('player-offline'");
 	});
 
