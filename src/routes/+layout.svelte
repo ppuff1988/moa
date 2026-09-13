@@ -3,35 +3,29 @@
 	import { page } from '$app/state';
 	import GTM from '$lib/components/GTM.svelte';
 	import PWAPrompt from '$lib/components/PWAPrompt.svelte';
+	import {
+		HOME_DESCRIPTION,
+		HOME_TITLE,
+		SITE_NAME,
+		SITE_URL,
+		SOCIAL_IMAGE,
+		websiteSchema
+	} from '$lib/content/site';
 	import type { Snippet } from 'svelte';
 	import '../app.css';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 
-	const SITE_NAME = '古董局中局';
-	const SITE_URL = 'https://moa.sportify.tw';
-	const SOCIAL_IMAGE_URL = `${SITE_URL}/screenshot-desktop.png`;
 	const INDEXABLE_PATHS = new Set(['/', '/terms']);
-	const websiteSchema = JSON.stringify({
-		'@context': 'https://schema.org',
-		'@type': 'WebSite',
-		name: SITE_NAME,
-		alternateName: ['古董局中局非官方APP', 'moa.sportify.tw'],
-		url: `${SITE_URL}/`,
-		description:
-			'古董局中局非官方APP，免費線上桌遊輔助工具，無需下載應用程式，打開瀏覽器即可開始遊戲',
-		inLanguage: 'zh-TW'
-	});
 
-	let title = $derived(page.data.title || '古董局中局非官方APP｜免費線上桌遊輔助工具');
-	let description = $derived(
-		page.data.description ||
-			'古董局中局非官方APP，免費線上桌遊輔助工具，無需下載應用程式，打開瀏覽器即可開始遊戲'
-	);
+	let title = $derived(page.data.title || HOME_TITLE);
+	let description = $derived(page.data.description || HOME_DESCRIPTION);
 	let canonicalUrl = $derived(new URL(page.url.pathname, `${SITE_URL}/`).toString());
 	let robots = $derived(
-		INDEXABLE_PATHS.has(page.url.pathname) ? 'index, follow' : 'noindex, nofollow'
+		page.status === 200 && INDEXABLE_PATHS.has(page.url.pathname)
+			? 'index, follow, max-image-preview:large'
+			: 'noindex, nofollow'
 	);
 </script>
 
@@ -41,9 +35,6 @@
 	<meta name="application-name" content={SITE_NAME} />
 	<meta name="robots" content={robots} />
 	<link rel="canonical" href={canonicalUrl} />
-	{#if page.data.keywords}
-		<meta name="keywords" content={page.data.keywords} />
-	{/if}
 
 	<!-- Open Graph / Facebook -->
 	<meta property="og:type" content="website" />
@@ -52,20 +43,23 @@
 	<meta property="og:description" content={description} />
 	<meta property="og:url" content={canonicalUrl} />
 	<meta property="og:site_name" content={SITE_NAME} />
-	<meta property="og:image" content={SOCIAL_IMAGE_URL} />
-	<meta property="og:image:width" content="1920" />
-	<meta property="og:image:height" content="1080" />
-	<meta property="og:image:alt" content="古董局中局線上桌遊輔助工具" />
+	<meta property="og:image" content={SOCIAL_IMAGE.url} />
+	<meta property="og:image:type" content="image/jpeg" />
+	<meta property="og:image:width" content={String(SOCIAL_IMAGE.width)} />
+	<meta property="og:image:height" content={String(SOCIAL_IMAGE.height)} />
+	<meta property="og:image:alt" content={SOCIAL_IMAGE.alt} />
 
 	<!-- Twitter -->
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
-	<meta name="twitter:image" content={SOCIAL_IMAGE_URL} />
-	<meta name="twitter:image:alt" content="古董局中局線上桌遊輔助工具" />
+	<meta name="twitter:image" content={SOCIAL_IMAGE.url} />
+	<meta name="twitter:image:alt" content={SOCIAL_IMAGE.alt} />
 
-	{#if page.url.pathname === '/'}
-		<svelte:element this={'script'} type="application/ld+json">{websiteSchema}</svelte:element>
+	{#if page.url.pathname === '/' && page.status === 200}
+		<svelte:element this={'script'} type="application/ld+json"
+			>{JSON.stringify(websiteSchema)}</svelte:element
+		>
 	{/if}
 </svelte:head>
 
