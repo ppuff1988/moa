@@ -117,7 +117,7 @@
 	// 轉發的連接埠
 	"forwardPorts": [
 		5173, // 應用程式
-		5432 // PostgreSQL
+		"db:5432" // PostgreSQL service port inside the Compose network
 	],
 
 	// 連接埠標籤

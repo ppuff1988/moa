@@ -23,6 +23,25 @@
 		return rank.toString();
 	};
 
+	const getZodiacImagePath = (animal: string) => {
+		const zodiacMap: Record<string, number> = {
+			鼠: 1,
+			牛: 2,
+			虎: 3,
+			兔: 4,
+			龍: 5,
+			蛇: 6,
+			馬: 7,
+			羊: 8,
+			猴: 9,
+			雞: 10,
+			狗: 11,
+			豬: 12
+		};
+		const imageNumber = zodiacMap[animal] ?? 1;
+		return `/zodiac/zodiac_${imageNumber.toString().padStart(2, '0')}.png`;
+	};
+
 	$: topTwo = votingResult ? [votingResult.firstPlace, votingResult.secondPlace] : [];
 
 	const startNextRound = async () => {
@@ -71,43 +90,58 @@
 										class:top-one={beast.rank === 1}
 										class:top-two={beast.rank === 2}
 									>
-										<div class="detailed-result-header">
-											<div class="rank-identity">
-												{#if beast.rank === 1 || beast.rank === 2}
-													<span
-														class="result-medal"
-														aria-label={beast.rank === 1 ? '第一名金牌' : '第二名銀牌'}
-													>
-														{getRankBadge(beast.rank)}
-													</span>
-												{/if}
-												<div>
-													<span class="result-rank">
-														{beast.rank ? `第 ${beast.rank} 名` : '未入選'}
-													</span>
-													<h5>{beast.animal}首</h5>
+										<div class="detailed-result-main">
+											<figure class="artifact-portrait-frame">
+												<img
+													class="artifact-portrait-image"
+													src={getZodiacImagePath(beast.animal)}
+													alt={`${beast.animal}首雕像`}
+													width="341"
+													height="384"
+													decoding="async"
+												/>
+											</figure>
+
+											<div class="detailed-result-copy">
+												<div class="detailed-result-header">
+													<div class="rank-identity">
+														{#if beast.rank === 1 || beast.rank === 2}
+															<span
+																class="result-medal"
+																aria-label={beast.rank === 1 ? '第一名金牌' : '第二名銀牌'}
+															>
+																{getRankBadge(beast.rank)}
+															</span>
+														{/if}
+														<div>
+															<span class="result-rank">
+																{beast.rank ? `第 ${beast.rank} 名` : '未入選'}
+															</span>
+															<h5>{beast.animal}首</h5>
+														</div>
+													</div>
+													<strong class="detailed-vote-total">{beast.votes}<span>票</span></strong>
+												</div>
+
+												<div class="color-breakdown" aria-label={`${beast.animal}首顏色票數`}>
+													{#if beast.colorBreakdown.length === 0}
+														<span class="zero-chip-result">本輪無籌碼</span>
+													{:else}
+														{#each beast.colorBreakdown as item (`${beast.id}-${item.color}`)}
+															<div class="color-chip-row">
+																<VotingChip
+																	colorCode={item.colorCode}
+																	layers={item.chips}
+																	size="small"
+																	label={`${item.color}色籌碼 ${item.chips} 枚`}
+																/>
+																<span>{item.color}色</span>
+																<strong>×{item.chips}</strong>
+															</div>
+														{/each}
+													{/if}
 												</div>
 											</div>
-											<strong class="detailed-vote-total">{beast.votes}<span>票</span></strong>
-										</div>
-
-										<div class="color-breakdown" aria-label={`${beast.animal}首顏色票數`}>
-											{#if beast.colorBreakdown.length === 0}
-												<span class="zero-chip-result">本輪無籌碼</span>
-											{:else}
-												{#each beast.colorBreakdown as item (`${beast.id}-${item.color}`)}
-													<div class="color-chip-row">
-														<VotingChip
-															colorCode={item.colorCode}
-															layers={item.chips}
-															size="small"
-															label={`${item.color}色籌碼 ${item.chips} 枚`}
-														/>
-														<span>{item.color}色</span>
-														<strong>×{item.chips}</strong>
-													</div>
-												{/each}
-											{/if}
 										</div>
 
 										{#if beast.rank === 1}
@@ -494,6 +528,66 @@
 		background: rgba(203, 213, 225, 0.08);
 	}
 
+	.detailed-result-main {
+		display: grid;
+		grid-template-columns: 5.5rem minmax(0, 1fr);
+		align-items: start;
+		gap: 0.875rem;
+		min-width: 0;
+	}
+
+	.artifact-portrait-frame {
+		position: relative;
+		isolation: isolate;
+		overflow: hidden;
+		width: 100%;
+		margin: 0;
+		aspect-ratio: 341 / 384;
+		border: 1px solid rgba(212, 175, 55, 0.34);
+		border-radius: 10px;
+		background: #9b8b70;
+		box-shadow: inset 0 0 0 1px rgba(255, 244, 208, 0.08);
+	}
+
+	.artifact-portrait-frame::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		background: linear-gradient(to bottom, transparent 62%, rgba(28, 15, 10, 0.2));
+		pointer-events: none;
+	}
+
+	.artifact-portrait-image {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		filter: sepia(0.08) saturate(0.8) contrast(1.06) brightness(0.84);
+	}
+
+	.top-one .artifact-portrait-frame {
+		border-color: rgba(251, 191, 36, 0.72);
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 244, 208, 0.12),
+			0 0.35rem 1rem rgba(104, 70, 9, 0.24);
+	}
+
+	.top-two .artifact-portrait-frame {
+		border-color: rgba(203, 213, 225, 0.66);
+	}
+
+	.detailed-result-card:not(.top-one):not(.top-two) .artifact-portrait-image {
+		filter: sepia(0.12) saturate(0.62) contrast(1.02) brightness(0.7);
+	}
+
+	.detailed-result-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+
 	.detailed-result-header {
 		display: flex;
 		align-items: flex-start;
@@ -562,7 +656,7 @@
 
 	.color-breakdown {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(5.75rem, 1fr));
 		gap: 0.5rem;
 		min-height: 2rem;
 	}
@@ -584,6 +678,10 @@
 	.color-chip-row strong {
 		font-variant-numeric: tabular-nums;
 		color: #fff;
+	}
+
+	.color-chip-row > span {
+		white-space: nowrap;
 	}
 
 	.zero-chip-result {
@@ -661,6 +759,16 @@
 		}
 	}
 
+	@media (max-width: 640px) {
+		.detailed-results {
+			grid-template-columns: 1fr;
+		}
+
+		.detailed-result-main {
+			grid-template-columns: 6rem minmax(0, 1fr);
+		}
+	}
+
 	@media (max-width: 480px) {
 		.voting-result-panel {
 			padding: 1.25rem;
@@ -701,9 +809,16 @@
 		.detailed-results {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	@media (max-width: 360px) {
+		.detailed-result-main {
+			grid-template-columns: 4.75rem minmax(0, 1fr);
+			gap: 0.625rem;
+		}
 
 		.color-breakdown {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

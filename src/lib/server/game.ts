@@ -9,8 +9,11 @@ import {
 	gameActions
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { requireAllPlayersOnline } from './api-helpers';
 import { getNextRoundStarter } from './game-turn-order';
 import { COLOR_MAP, VALID_COLORS } from './constants';
+
+type GameExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
 
 // 遊戲角色配置
 export const GAME_ROLES = {
@@ -182,7 +185,7 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 				userId,
 				isHost,
 				isReady: false,
-				isOnline: true,
+				isOnline: false,
 				canAction: true
 			})
 			.returning();
@@ -224,6 +227,7 @@ export async function getGameState(gameId: string) {
 			isHost: gamePlayers.isHost,
 			isReady: gamePlayers.isReady,
 			isOnline: gamePlayers.isOnline,
+			leftAt: gamePlayers.leftAt,
 			canAction: gamePlayers.canAction,
 			joinedAt: gamePlayers.joinedAt,
 			lastActiveAt: gamePlayers.lastActiveAt,
@@ -242,12 +246,18 @@ export async function getGameState(gameId: string) {
 }
 
 // 更新玩家在線狀態
-export async function updatePlayerOnlineStatus(gameId: string, userId: number, isOnline: boolean) {
+export async function updatePlayerOnlineStatus(
+	gameId: string,
+	userId: number,
+	isOnline: boolean,
+	restoreSeat = false
+) {
 	await db
 		.update(gamePlayers)
 		.set({
 			isOnline,
-			lastActiveAt: new Date()
+			lastActiveAt: new Date(),
+			...(isOnline && restoreSeat ? { leftAt: null } : {})
 		})
 		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
 }
@@ -263,9 +273,9 @@ export async function getGamePlayers(gameId: string) {
 }
 
 // 開始選角階段
-export async function startRoleSelection(gameId: string) {
+export async function startRoleSelection(gameId: string, executor: GameExecutor = db) {
 	// 獲取遊戲信息
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	if (!game) {
 		throw new Error('遊戲不存在');
@@ -277,14 +287,14 @@ export async function startRoleSelection(gameId: string) {
 	}
 
 	// 獲取玩家數量
-	const players = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
+	const players = await executor.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
 
 	if (players.length < 6 || players.length > 8) {
 		throw new Error('玩家人數必須為 6-8 人');
 	}
 
 	// 更新遊戲狀態為選角階段
-	await db
+	await executor
 		.update(games)
 		.set({
 			status: 'selecting',
@@ -296,9 +306,9 @@ export async function startRoleSelection(gameId: string) {
 }
 
 // 開始遊戲
-export async function startGame(gameId: string) {
+export async function startGame(gameId: string, executor: GameExecutor = db) {
 	// 獲取遊戲信息
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	if (!game) {
 		throw new Error('遊戲不存在');
@@ -310,7 +320,7 @@ export async function startGame(gameId: string) {
 	}
 
 	// 獲取所有玩家
-	const players = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
+	const players = await executor.select().from(gamePlayers).where(eq(gamePlayers.gameId, gameId));
 
 	if (players.length < 6 || players.length > 8) {
 		throw new Error('玩家人數必須為 6-8 人');
@@ -335,7 +345,7 @@ export async function startGame(gameId: string) {
 	}
 
 	// 更新遊戲狀態
-	await db
+	await executor
 		.update(games)
 		.set({
 			status: 'playing',
@@ -389,14 +399,14 @@ export async function startGame(gameId: string) {
 		});
 	}
 
-	await db.insert(gameArtifacts).values(artifactsToInsert);
+	await executor.insert(gameArtifacts).values(artifactsToInsert);
 
 	// 2. 創建第一輪並隨機決定第一個玩家
 	// 隨機選擇一個玩家作為第一個行動的玩家
 	const randomPlayerIndex = Math.floor(Math.random() * players.length);
 	const firstPlayerId = players[randomPlayerIndex].id;
 
-	const [round] = await db
+	const [round] = await executor
 		.insert(gameRounds)
 		.values({
 			gameId,
@@ -408,7 +418,7 @@ export async function startGame(gameId: string) {
 
 	// 3. 為黃煙煙和木戶加奈的玩家設置隨機無法鑑定的回合(1-3)
 	// 先取得黃煙煙和木戶加奈的角色ID
-	const specialRoles = await db
+	const specialRoles = await executor
 		.select()
 		.from(roles)
 		.where(sql`${roles.name} IN ('黃煙煙', '木戶加奈')`);
@@ -422,7 +432,7 @@ export async function startGame(gameId: string) {
 	for (const player of specialPlayers) {
 		const blockedRound = Math.floor(Math.random() * 3) + 1; // 隨機1-3
 
-		await db
+		await executor
 			.update(gamePlayers)
 			.set({
 				blockedRound
@@ -430,18 +440,19 @@ export async function startGame(gameId: string) {
 			.where(eq(gamePlayers.id, player.id));
 	}
 
-	// 通知房間內所有玩家遊戲已開始
-	const { getSocketIO } = await import('./socket');
-	const io = getSocketIO();
-	if (io) {
-		io.to(game.roomName).emit('game-started', {
-			gameId,
-			roundId: round.id,
-			roomName: game.roomName
-		});
+	const result = { gameId, roundId: round.id, roomName: game.roomName };
+
+	// A transaction caller emits only after commit; direct callers preserve the
+	// historical behavior of emitting once setup has completed.
+	if (executor === db) {
+		const { getSocketIO } = await import('./socket');
+		const io = getSocketIO();
+		if (io) {
+			io.to(game.roomName).emit('game-started', result);
+		}
 	}
 
-	return { gameId, roundId: round.id };
+	return result;
 }
 
 export async function startAutoAssignedGame(gameId: string) {
@@ -459,6 +470,11 @@ export async function startAutoAssignedGame(gameId: string) {
 		}
 		if (game.status !== 'waiting') {
 			throw new Error('遊戲已經開始');
+		}
+
+		const pauseResponse = await requireAllPlayersOnline(gameId, tx, true);
+		if (pauseResponse) {
+			throw new Error('有玩家離線，請等待所有玩家重新連線');
 		}
 
 		const players = await tx
@@ -804,13 +820,17 @@ export async function advanceToNextPlayer(gameId: string, currentRoundId: number
 }
 
 // 開始新回合（第二、三回合）
-export async function startNewRound(gameId: string, roundNumber: number) {
+export async function startNewRound(
+	gameId: string,
+	roundNumber: number,
+	executor: GameExecutor = db
+) {
 	if (roundNumber < 2 || roundNumber > 3) {
 		throw new Error('回合數必須為 2 或 3');
 	}
 
 	// 檢查上一個回合是否存在且已完成
-	const [previousRound] = await db
+	const [previousRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, roundNumber - 1)))
@@ -825,7 +845,7 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 	}
 
 	// 檢查新回合是否已存在
-	const [existingRound] = await db
+	const [existingRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, roundNumber)))
@@ -841,7 +861,7 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 	}
 
 	// 創建新回合，並將上一回合最後一位玩家設為第一位
-	const [newRound] = await db
+	const [newRound] = await executor
 		.insert(gameRounds)
 		.values({
 			gameId,
@@ -852,10 +872,10 @@ export async function startNewRound(gameId: string, roundNumber: number) {
 		.returning();
 
 	// 獲取遊戲信息以取得 roomName
-	const [game] = await db.select().from(games).where(eq(games.id, gameId)).limit(1);
+	const [game] = await executor.select().from(games).where(eq(games.id, gameId)).limit(1);
 
 	// 通知房間內所有玩家新回合已開始
-	if (game) {
+	if (game && executor === db) {
 		const { getSocketIO } = await import('./socket');
 		const io = getSocketIO();
 		if (io) {
@@ -910,13 +930,18 @@ export async function startVotingPhase(gameId: string, currentRoundNumber: numbe
 }
 
 // 從投票階段完成，準備進入下一回合或結束遊戲
-export async function completeVotingPhase(gameId: string, currentRoundNumber: number) {
+export async function completeVotingPhase(
+	gameId: string,
+	currentRoundNumber: number,
+	executor: GameExecutor = db
+) {
 	// 獲取當前回合
-	const [currentRound] = await db
+	const [currentRound] = await executor
 		.select()
 		.from(gameRounds)
 		.where(and(eq(gameRounds.gameId, gameId), eq(gameRounds.round, currentRoundNumber)))
-		.limit(1);
+		.limit(1)
+		.for('update');
 
 	if (!currentRound) {
 		throw new Error('當前回合不存在');
@@ -927,7 +952,7 @@ export async function completeVotingPhase(gameId: string, currentRoundNumber: nu
 	}
 
 	// 標記當前回合完成
-	await db
+	await executor
 		.update(gameRounds)
 		.set({
 			phase: 'completed',
@@ -940,7 +965,7 @@ export async function completeVotingPhase(gameId: string, currentRoundNumber: nu
 	if (currentRoundNumber < 3) {
 		// 自動開始下一回合
 		try {
-			nextRoundInfo = await startNewRound(gameId, currentRoundNumber + 1);
+			nextRoundInfo = await startNewRound(gameId, currentRoundNumber + 1, executor);
 		} catch (error) {
 			// 如果無法自動開始下一回合，返回需要手動開始的訊息
 			console.error('無法自動開始下一回合:', error);

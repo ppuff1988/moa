@@ -3,7 +3,41 @@ import { describe, expect, it } from 'vitest';
 
 import VotingResultPanel from './VotingResultPanel.svelte';
 
-describe('VotingResultPanel chip colors', () => {
+describe('VotingResultPanel', () => {
+	it('renders the matching zodiac portrait for every detailed result card', () => {
+		const { body } = render(VotingResultPanel, {
+			props: {
+				roomName: '404263',
+				votingResult: {
+					round: 2,
+					artifacts: [
+						{
+							id: 1,
+							animal: '牛',
+							votes: 2,
+							rank: 1,
+							colorBreakdown: []
+						},
+						{
+							id: 2,
+							animal: '兔',
+							votes: 1,
+							rank: 2,
+							colorBreakdown: []
+						}
+					],
+					firstPlace: { id: 1, animal: '牛', votes: 2, rank: 1 },
+					secondPlace: { id: 2, animal: '兔', votes: 1, rank: 2, isGenuine: false }
+				}
+			} as never
+		});
+
+		expect(body).toContain('src="/zodiac/zodiac_02.png"');
+		expect(body).toContain('alt="牛首雕像"');
+		expect(body).toContain('src="/zodiac/zodiac_04.png"');
+		expect(body).toContain('alt="兔首雕像"');
+	});
+
 	it('renders settlement chips from the exact recorded player color code', () => {
 		const { body } = render(VotingResultPanel, {
 			props: {

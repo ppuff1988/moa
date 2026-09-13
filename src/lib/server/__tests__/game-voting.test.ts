@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildPublishedVotingResult } from '../game-voting';
 import * as gameVoting from '../game-voting';
 
@@ -92,5 +92,39 @@ describe('buildPublishedVotingResult', () => {
 				{ id: 3, animal: '馬', votes: 2, rank: null, colorBreakdown: [] }
 			]
 		});
+	});
+});
+
+describe('getOnlineVotingProgress', () => {
+	it('所有人已投票但仍有人離線時不進入結果階段', async () => {
+		const select = vi
+			.fn()
+			.mockReturnValueOnce({
+				from: () => ({
+					innerJoin: () => ({
+						where: () => ({
+							orderBy: () =>
+								Promise.resolve([
+									{ playerId: 11, color: '紅', colorCode: '#f00' },
+									{ playerId: 12, color: '藍', colorCode: '#00f' }
+								])
+						})
+					})
+				})
+			})
+			.mockReturnValueOnce({
+				from: () => ({
+					where: () =>
+						Promise.resolve([
+							{ id: 11, isOnline: true },
+							{ id: 12, isOnline: false }
+						])
+				})
+			});
+
+		const progress = await gameVoting.getOnlineVotingProgress({ select } as never, 'game-1', 21);
+
+		expect(progress.completed).toBe(false);
+		expect(progress.totalPlayers).toBe(2);
 	});
 });

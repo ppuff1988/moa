@@ -29,6 +29,7 @@ type HostInRoomWithStatusResult = { error: Response } | { user: User; game: Game
 type HostInRoomResult = { error: Response } | { user: User; game: Game; player: GamePlayer };
 
 type CanActionCheckResult = { canAct: true } | { canAct: false; error: Response };
+type PresenceExecutor = Pick<typeof db, 'select'>;
 
 export type ActionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -68,6 +69,15 @@ const ErrorResponses = {
 	notActionPhase: () => json({ success: false, message: '當前階段不是行動階段' }, { status: 409 }),
 	notCurrentActionPlayer: () =>
 		json({ success: false, message: '目前不是你的行動回合' }, { status: 403 }),
+	gamePaused: () =>
+		json(
+			{
+				success: false,
+				code: 'GAME_PAUSED',
+				message: '有玩家離線，請等待所有玩家重新連線'
+			},
+			{ status: 409 }
+		),
 	notIdentificationPhase: () =>
 		json({ success: false, message: '當前階段不是鑑人階段' }, { status: 409 }),
 	blocked: () =>
@@ -102,6 +112,49 @@ const ErrorResponses = {
 		);
 	}
 };
+
+/**
+ * 遊戲進行中只要有仍在場的玩家離線，就暫停所有會推進階段的操作。
+ */
+export async function requireAllPlayersOnline(
+	gameId: string,
+	executor: PresenceExecutor = db,
+	lockRows = false
+): Promise<Response | null> {
+	const presenceQuery = executor
+		.select({ isOnline: gamePlayers.isOnline })
+		.from(gamePlayers)
+		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+	const activePlayers = lockRows ? await presenceQuery.for('update') : await presenceQuery;
+
+	return activePlayers.some((player) => !player.isOnline) ? ErrorResponses.gamePaused() : null;
+}
+
+/**
+ * 將在線狀態檢查與會改變遊戲階段的操作放在同一個 transaction。
+ * 交易內會鎖定仍在場的玩家列，讓斷線更新與階段更新能被明確排序。
+ */
+export async function runAllPlayersOnlineTransaction<T>(
+	gameId: string,
+	action: (transaction: ActionTransaction) => Promise<T>
+): Promise<{ data: T } | { error: Response }> {
+	return db.transaction(async (transaction) => {
+		// Keep the lock order consistent with action and identification transactions:
+		// game -> active players -> round. This prevents phase transitions that
+		// update the game row from deadlocking with a player action.
+		const [game] = await transaction
+			.select({ id: games.id })
+			.from(games)
+			.where(eq(games.id, gameId))
+			.for('update');
+		if (!game) return { error: ErrorResponses.roomNotFound() };
+
+		const pauseResponse = await requireAllPlayersOnline(gameId, transaction, true);
+		if (pauseResponse) return { error: pauseResponse };
+
+		return { data: await action(transaction) };
+	});
+}
 
 // ==================== 輔助函數 ====================
 
@@ -395,6 +448,17 @@ export async function runCurrentActionTransaction<T>(
 			return { error: ErrorResponses.wrongStatus('playing') };
 		}
 
+		if (!player.roleId) return { error: ErrorResponses.noRole() };
+
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.for('update');
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
+		}
+
 		const [currentRound] = await transaction
 			.select()
 			.from(gameRounds)
@@ -408,15 +472,9 @@ export async function runCurrentActionTransaction<T>(
 			return { error: ErrorResponses.notActionPhase() };
 		}
 
-		if (!player.roleId) return { error: ErrorResponses.noRole() };
-
 		const actionOrder = Array.isArray(currentRound.actionOrder)
 			? (currentRound.actionOrder as number[]).map(Number)
 			: [];
-		const activePlayers = await transaction
-			.select({ id: gamePlayers.id })
-			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
 		const activePlayerIds = new Set(activePlayers.map((activePlayer) => activePlayer.id));
 		const currentPlayerLeft = actionOrder.length > 0 && !activePlayerIds.has(actionOrder[0]);
 		const activeActionOrder = actionOrder.filter((playerId) => activePlayerIds.has(playerId));
@@ -494,6 +552,15 @@ export async function runIdentificationTransaction<T>(
 		if (!player) return { error: ErrorResponses.notInRoom() };
 		if (game.status !== 'playing') {
 			return { error: ErrorResponses.wrongStatus('playing') };
+		}
+
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.for('update');
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
 		}
 
 		const [currentRound] = await transaction

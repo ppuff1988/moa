@@ -4,7 +4,7 @@ import { verifyHostWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { games, gamePlayers, user } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { getSocketIO } from '$lib/server/socket';
+import { getSocketIO, removePlayerSocketsFromRoom } from '$lib/server/socket';
 import { getGameState } from '$lib/server/game';
 
 export const POST: RequestHandler = async ({ request, params }) => {
@@ -85,13 +85,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				nickname: kickedUser?.nickname
 			});
 
-			// 讓被踢玩家離開房間
-			const socketsInRoom = await io.in(game.roomName).fetchSockets();
-			for (const socket of socketsInRoom) {
-				if (socket.data.userId === targetUserId) {
-					socket.leave(game.roomName);
-				}
-			}
+			// 讓被踢玩家離開房間並清除所有連線追蹤
+			await removePlayerSocketsFromRoom(game.roomName, targetUserId);
 
 			// 獲取更新後的遊戲狀態
 			const gameState = await getGameState(game.id);
@@ -157,13 +152,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				nickname: kickedUser?.nickname
 			});
 
-			// 讓被踢玩家離開房間（從 Socket.IO 房間中移除）
-			const socketsInRoom = await io.in(game.roomName).fetchSockets();
-			for (const socket of socketsInRoom) {
-				if (socket.data.userId === targetUserId) {
-					socket.leave(game.roomName);
-				}
-			}
+			// 讓被踢玩家離開房間並清除所有連線追蹤
+			await removePlayerSocketsFromRoom(game.roomName, targetUserId);
 
 			// 獲取更新後的遊戲狀態
 			const gameState = await getGameState(game.id);

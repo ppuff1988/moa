@@ -185,7 +185,7 @@ describe('Room Leave API', () => {
 			expect([403, 404]).toContain(response.status);
 		});
 
-		it('非 waiting 狀態離開時應更新 left_at 欄位', async () => {
+		it('遊戲進行中暫離時應保留座位且不強制結束', async () => {
 			// 創建房間
 			const room = await createTestRoom(testUsers[0].token);
 			testGames.push(room.gameId);
@@ -210,9 +210,10 @@ describe('Room Leave API', () => {
 
 			expect(response.status).toBe(200);
 			const data = await response.json();
-			expect(data.message).toContain('離開');
+			expect(data.message).toContain('暫離');
+			expect(data.gamePaused).toBe(true);
 
-			// 驗證 left_at 欄位已更新（game_players table）
+			// 驗證座位仍保留，並只標記為離線
 			const playerRow = await db
 				.select()
 				.from(gamePlayers)
@@ -220,7 +221,11 @@ describe('Room Leave API', () => {
 					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
 				)
 				.limit(1);
-			expect(playerRow[0]?.leftAt).not.toBeNull();
+			expect(playerRow[0]?.leftAt).toBeNull();
+			expect(playerRow[0]?.isOnline).toBe(false);
+
+			const [gameRow] = await db.select().from(games).where(eq(games.id, room.gameId)).limit(1);
+			expect(gameRow.status).toBe('playing');
 		});
 	});
 });
