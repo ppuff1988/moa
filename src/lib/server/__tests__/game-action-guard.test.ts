@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { gamePlayers, gameRounds, games, roles } from '../db/schema';
 
-const { dbMock, getUserFromJWTMock, lockRoundMock, updateRoundMock } = vi.hoisted(() => ({
-	dbMock: { transaction: vi.fn() },
-	getUserFromJWTMock: vi.fn(),
-	lockRoundMock: vi.fn(),
-	updateRoundMock: vi.fn()
-}));
+const { dbMock, getUserFromJWTMock, lockPresenceMock, lockRoundMock, updateRoundMock } = vi.hoisted(
+	() => ({
+		dbMock: { transaction: vi.fn() },
+		getUserFromJWTMock: vi.fn(),
+		lockPresenceMock: vi.fn(),
+		lockRoundMock: vi.fn(),
+		updateRoundMock: vi.fn()
+	})
+);
 
 vi.mock('../db', () => ({ db: dbMock }));
 vi.mock('../auth', () => ({
@@ -87,6 +90,10 @@ describe('current action transaction guard', () => {
 						where: () => ({
 							limit: () => limitResult,
 							orderBy: () => ({ limit: () => limitResult }),
+							for: () => {
+								if (table === gamePlayers) lockPresenceMock();
+								return resolveRows();
+							},
 							then: limitResult.then
 						})
 					};
@@ -228,6 +235,7 @@ describe('current action transaction guard', () => {
 
 		expect(result).toEqual({ data: 11 });
 		expect(lockRoundMock).toHaveBeenCalledOnce();
+		expect(lockPresenceMock).toHaveBeenCalledOnce();
 		expect(action).toHaveBeenCalledOnce();
 	});
 });

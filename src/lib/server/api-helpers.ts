@@ -139,6 +139,16 @@ export async function runAllPlayersOnlineTransaction<T>(
 	action: (transaction: ActionTransaction) => Promise<T>
 ): Promise<{ data: T } | { error: Response }> {
 	return db.transaction(async (transaction) => {
+		// Keep the lock order consistent with action and identification transactions:
+		// game -> active players -> round. This prevents phase transitions that
+		// update the game row from deadlocking with a player action.
+		const [game] = await transaction
+			.select({ id: games.id })
+			.from(games)
+			.where(eq(games.id, gameId))
+			.for('update');
+		if (!game) return { error: ErrorResponses.roomNotFound() };
+
 		const pauseResponse = await requireAllPlayersOnline(gameId, transaction, true);
 		if (pauseResponse) return { error: pauseResponse };
 
@@ -438,6 +448,17 @@ export async function runCurrentActionTransaction<T>(
 			return { error: ErrorResponses.wrongStatus('playing') };
 		}
 
+		if (!player.roleId) return { error: ErrorResponses.noRole() };
+
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.for('update');
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
+		}
+
 		const [currentRound] = await transaction
 			.select()
 			.from(gameRounds)
@@ -451,18 +472,9 @@ export async function runCurrentActionTransaction<T>(
 			return { error: ErrorResponses.notActionPhase() };
 		}
 
-		if (!player.roleId) return { error: ErrorResponses.noRole() };
-
 		const actionOrder = Array.isArray(currentRound.actionOrder)
 			? (currentRound.actionOrder as number[]).map(Number)
 			: [];
-		const activePlayers = await transaction
-			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
-			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
-		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
-			return { error: ErrorResponses.gamePaused() };
-		}
 		const activePlayerIds = new Set(activePlayers.map((activePlayer) => activePlayer.id));
 		const currentPlayerLeft = actionOrder.length > 0 && !activePlayerIds.has(actionOrder[0]);
 		const activeActionOrder = actionOrder.filter((playerId) => activePlayerIds.has(playerId));
@@ -542,6 +554,15 @@ export async function runIdentificationTransaction<T>(
 			return { error: ErrorResponses.wrongStatus('playing') };
 		}
 
+		const activePlayers = await transaction
+			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.for('update');
+		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+			return { error: ErrorResponses.gamePaused() };
+		}
+
 		const [currentRound] = await transaction
 			.select()
 			.from(gameRounds)
@@ -552,14 +573,6 @@ export async function runIdentificationTransaction<T>(
 		if (!currentRound) return { error: ErrorResponses.noCurrentRound() };
 		if (currentRound.phase !== 'identification') {
 			return { error: ErrorResponses.notIdentificationPhase() };
-		}
-
-		const activePlayers = await transaction
-			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
-			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
-		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
-			return { error: ErrorResponses.gamePaused() };
 		}
 
 		if (!player.roleId) return { error: ErrorResponses.noRole() };

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { gamePlayers, gameRounds, games, roles } from '../db/schema';
 
-const { dbMock, getUserFromJWTMock, lockRoundMock } = vi.hoisted(() => ({
+const { dbMock, getUserFromJWTMock, lockPresenceMock, lockRoundMock } = vi.hoisted(() => ({
 	dbMock: { transaction: vi.fn() },
 	getUserFromJWTMock: vi.fn(),
+	lockPresenceMock: vi.fn(),
 	lockRoundMock: vi.fn()
 }));
 
@@ -75,6 +76,10 @@ describe('identification transaction guard', () => {
 					return {
 						where: () => ({
 							limit: () => limitResult,
+							for: () => {
+								if (table === gamePlayers) lockPresenceMock();
+								return resolveRows();
+							},
 							then: limitResult.then
 						})
 					};
@@ -121,6 +126,7 @@ describe('identification transaction guard', () => {
 
 		expect(result).toEqual({ data: 11 });
 		expect(lockRoundMock).toHaveBeenCalledOnce();
+		expect(lockPresenceMock).toHaveBeenCalledOnce();
 		expect(action).toHaveBeenCalledOnce();
 	});
 

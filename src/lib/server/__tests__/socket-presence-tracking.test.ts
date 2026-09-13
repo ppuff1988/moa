@@ -35,5 +35,10 @@ describe('Socket 多分頁在線狀態', () => {
 			onlineUpdateIndex >= 0 ? onlineUpdateIndex : updatePlayerOnlineStatusIndex
 		);
 		expect(joinHandler).toContain('if (!socket.connected)');
+		const disconnectedBranch = joinHandler.slice(joinHandler.indexOf('if (!socket.connected)'));
+		expect(disconnectedBranch).toContain('const remainingConnections = removeRoomConnection');
+		expect(disconnectedBranch).toMatch(
+			/if \(remainingConnections === 0\)[\s\S]*(?:updatePlayerOnlineStatus|pool\.query)/
+		);
 	});
 });

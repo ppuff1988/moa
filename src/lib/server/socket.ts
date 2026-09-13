@@ -191,8 +191,10 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				// 更新玩家在線狀態
 				await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');
 				if (!socket.connected) {
-					removeRoomConnection(roomName, userId, socket.id);
-					await updatePlayerOnlineStatus(game.id, userId, false);
+					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+					if (remainingConnections === 0) {
+						await updatePlayerOnlineStatus(game.id, userId, false);
+					}
 					return;
 				}
 

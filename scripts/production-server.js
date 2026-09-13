@@ -154,11 +154,13 @@ try {
 					[gameId, userId, game.status === 'playing']
 				);
 				if (!socket.connected) {
-					removeRoomConnection(roomName, userId, socket.id);
-					await pool.query(
-						'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
-						[gameId, userId]
-					);
+					const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
+					if (remainingConnections === 0) {
+						await pool.query(
+							'UPDATE game_players SET is_online = false, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+							[gameId, userId]
+						);
+					}
 					return;
 				}
 
