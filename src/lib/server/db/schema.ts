@@ -17,6 +17,7 @@ export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
 	email: text('email').notNull().unique(),
 	nickname: text('nickname').notNull(),
+	isTest: boolean('is_test').notNull().default(false),
 	passwordHash: text('password_hash'), // 改為可選，因為 OAuth 用戶不需要密碼
 	avatar: text('avatar'), // 用戶頭像 URL，可選
 	emailVerified: boolean('email_verified').default(false), // Email 是否已驗證

@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
 	transaction: vi.fn(),
 	updateSet: vi.fn(),
 	insertValues: vi.fn(),
-	verifyHostPermission: vi.fn()
+	verifyHostPermission: vi.fn(),
+	runAllPlayersOnlineTransaction: vi.fn()
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -20,7 +21,8 @@ vi.mock('$lib/server/socket', () => ({
 }));
 
 vi.mock('$lib/server/api-helpers', () => ({
-	verifyHostPermission: mocks.verifyHostPermission
+	verifyHostPermission: mocks.verifyHostPermission,
+	runAllPlayersOnlineTransaction: mocks.runAllPlayersOnlineTransaction
 }));
 
 vi.mock('$lib/server/game', () => ({
@@ -43,7 +45,7 @@ function limitedSelectResult<T>(rows: T[]) {
 	return {
 		from: () => ({
 			where: () => ({
-				limit: () => Promise.resolve(rows)
+				limit: () => ({ for: () => Promise.resolve(rows) })
 			})
 		})
 	};
@@ -67,6 +69,13 @@ describe('POST /api/room/[name]/start round transition', () => {
 		mocks.verifyHostPermission.mockResolvedValue({
 			game: { id: '11111111-1111-1111-1111-111111111111', status: 'playing' }
 		});
+		mocks.runAllPlayersOnlineTransaction.mockImplementation(async (_gameId, action) => ({
+			data: await action({
+				select: mocks.select,
+				update: () => ({ set: mocks.updateSet }),
+				insert: () => ({ values: mocks.insertValues })
+			} as never)
+		}));
 	});
 
 	it.each(['action', 'discussion', 'voting'])(
@@ -132,7 +141,7 @@ describe('POST /api/room/[name]/start round transition', () => {
 		} as never);
 
 		expect(response.status).toBe(200);
-		expect(mocks.transaction).toHaveBeenCalledOnce();
+		expect(mocks.runAllPlayersOnlineTransaction).toHaveBeenCalledOnce();
 		expect(mocks.updateSet).toHaveBeenCalledWith({
 			phase: 'completed',
 			completedAt: expect.any(Date)

@@ -1,6 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getCurrentRoundOrError, verifyPlayerInRoom } from '$lib/server/api-helpers';
+import {
+	getCurrentRoundOrError,
+	requireAllPlayersOnline,
+	verifyPlayerInRoom
+} from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import {
 	artifactVoteAllocations,
@@ -16,7 +20,8 @@ import { finalizeOnlineVotingIfComplete, getOnlineVotingProgress } from '$lib/se
 class OnlineVotingSubmissionError extends Error {
 	constructor(
 		message: string,
-		readonly status: number = 400
+		readonly status: number = 400,
+		readonly code?: string
 	) {
 		super(message);
 	}
@@ -110,6 +115,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
+	const pauseResponse = await requireAllPlayersOnline(game.id);
+	if (pauseResponse) return pauseResponse;
 
 	let body: { votes?: unknown };
 	try {
@@ -123,6 +130,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 	try {
 		const result = await db.transaction(async (tx) => {
+			const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+			if (pauseResponse) {
+				throw new OnlineVotingSubmissionError(
+					'有玩家離線，請等待所有玩家重新連線',
+					409,
+					'GAME_PAUSED'
+				);
+			}
+
 			const [currentRound] = await tx
 				.select()
 				.from(gameRounds)
@@ -219,10 +235,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await tx.insert(artifactVoteAllocations).values(allocations);
 			}
 
-			// 遊戲規則（docs/RULE.md「線上投票」）：暫時斷線只改 isOnline，
-			// isOnline 不影響投票資格，因此本局會等待該玩家回來。
-			// leftAt 不為空的玩家已主動離開，不再列入尚待提交的 quorum；
-			// 若他在離開前已提交，既有投票仍保留在本輪結果中。
+			// 暫時斷線只改 isOnline，席位與投票資格不變；即使玩家已提交，
+			// finalizeOnlineVotingIfComplete 也會等所有人重新連線才公布結果。
+			// leftAt 條件只保留給舊資料與非進行中狀態的離房記錄。
 			const finalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
 
 			return {
@@ -257,7 +272,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} catch (error) {
 		if (error instanceof OnlineVotingSubmissionError) {
-			return json({ message: error.message }, { status: error.status });
+			return json(
+				error.code
+					? { success: false, code: error.code, message: error.message }
+					: { message: error.message },
+				{ status: error.status }
+			);
 		}
 
 		console.error('提交線上投票失敗:', error);

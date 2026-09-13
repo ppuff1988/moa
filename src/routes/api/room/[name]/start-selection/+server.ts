@@ -1,12 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { verifyHostWithStatus } from '$lib/server/api-helpers';
-import { db } from '$lib/server/db';
-import { games } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { runAllPlayersOnlineTransaction, verifyHostWithStatus } from '$lib/server/api-helpers';
 import { MIN_PLAYERS } from '$lib/server/constants';
 import { getSocketIO } from '$lib/server/socket';
-import { getGameState } from '$lib/server/game';
+import { getGameState, startRoleSelection } from '$lib/server/game';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const verifyResult = await verifyHostWithStatus(request, params.name!, 'waiting');
@@ -24,14 +21,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		return json({ message: `至少需要${MIN_PLAYERS}名玩家才能開始遊戲` }, { status: 400 });
 	}
 
-	// 更新遊戲狀態為選角階段
-	await db
-		.update(games)
-		.set({
-			status: 'selecting',
-			updatedAt: new Date()
-		})
-		.where(eq(games.id, game.id));
+	const transition = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+		startRoleSelection(game.id, transaction)
+	);
+	if ('error' in transition) return transition.error;
 
 	// 獲取更新後的遊戲狀態
 	const gameState = await getGameState(game.id);

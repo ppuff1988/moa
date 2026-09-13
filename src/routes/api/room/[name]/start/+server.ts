@@ -1,12 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { startAutoAssignedGame, startGame, startRoleSelection } from '$lib/server/game';
-import { verifyHostPermission } from '$lib/server/api-helpers';
+import { runAllPlayersOnlineTransaction, verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
 import { getNextRoundStarter } from '$lib/server/game-turn-order';
 import { eq, and } from 'drizzle-orm';
 import { chineseNumeral } from '$lib/utils/round';
+import { getSocketIO } from '$lib/server/socket';
 
 export const POST: RequestHandler = async (event) => {
 	// 驗證房主權限
@@ -58,7 +59,10 @@ export const POST: RequestHandler = async (event) => {
 
 			// 開始選角階段（startRoleSelection 會檢查玩家人數）
 			try {
-				await startRoleSelection(game.id);
+				const transition = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+					startRoleSelection(game.id, transaction)
+				);
+				if ('error' in transition) return transition.error;
 				return json(
 					{
 						message: '遊戲已開始選角階段',
@@ -177,9 +181,21 @@ export const POST: RequestHandler = async (event) => {
 
 			// 開始遊戲（第1回合）
 			// startGame 函數內部已經會廣播 game-started 事件，這裡不需要再次廣播
-			const result = await startGame(game.id);
+			const transition = await runAllPlayersOnlineTransaction(game.id, (transaction) =>
+				startGame(game.id, transaction)
+			);
+			if ('error' in transition) return transition.error;
+			const result = transition.data;
 
-			// 注意：game-started 事件已經在 startGame 函數內部廣播，不需要在這裡重複發送
+			// Transaction 已提交後才通知客戶端，避免客戶端讀到舊的遊戲狀態。
+			const io = getSocketIO();
+			if (io) {
+				io.to(game.roomName).emit('game-started', {
+					gameId: result.gameId,
+					roundId: result.roundId,
+					roomName: game.roomName
+				});
+			}
 
 			return json(
 				{
@@ -194,85 +210,103 @@ export const POST: RequestHandler = async (event) => {
 
 		// 如果遊戲正在進行中，開始新回合（第2或第3回合）
 		if (game.status === 'playing') {
-			// 確定要開始的回合數
-			let nextRoundNumber: number;
+			const result = await runAllPlayersOnlineTransaction(game.id, async (transaction) => {
+				// 確定要開始的回合數
+				let nextRoundNumber: number;
 
-			if (requestedRound) {
-				// 如果請求中指定了回合數
-				if (requestedRound < 2 || requestedRound > 3) {
-					return json({ message: '無效的回合數字（只能是 2 或 3）' }, { status: 400 });
+				if (requestedRound) {
+					if (requestedRound < 2 || requestedRound > 3) {
+						return {
+							outcome: 'error' as const,
+							response: json({ message: '無效的回合數字（只能是 2 或 3）' }, { status: 400 })
+						};
+					}
+					nextRoundNumber = requestedRound;
+				} else {
+					const existingRounds = await transaction
+						.select()
+						.from(gameRounds)
+						.where(eq(gameRounds.gameId, game.id))
+						.orderBy(gameRounds.round);
+					const currentRound =
+						existingRounds.length > 0 ? existingRounds[existingRounds.length - 1].round : 0;
+					nextRoundNumber = currentRound + 1;
+
+					if (nextRoundNumber > 3) {
+						return {
+							outcome: 'error' as const,
+							response: json({ message: '遊戲已完成所有回合' }, { status: 400 })
+						};
+					}
 				}
-				nextRoundNumber = requestedRound;
-			} else {
-				// 如果沒有指定，自動判斷下一回合
-				const existingRounds = await db
+
+				const previousRoundNumber = nextRoundNumber - 1;
+				const [previousRound] = await transaction
 					.select()
 					.from(gameRounds)
-					.where(eq(gameRounds.gameId, game.id))
-					.orderBy(gameRounds.round);
+					.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, previousRoundNumber)))
+					.limit(1)
+					.for('update');
 
-				const currentRound =
-					existingRounds.length > 0 ? existingRounds[existingRounds.length - 1].round : 0;
-				nextRoundNumber = currentRound + 1;
-
-				if (nextRoundNumber > 3) {
-					return json({ message: '遊戲已完成所有回合' }, { status: 400 });
+				if (!previousRound) {
+					return {
+						outcome: 'error' as const,
+						response: json({ message: `找不到第 ${previousRoundNumber} 回合` }, { status: 404 })
+					};
 				}
-			}
 
-			// 查找上一回合
-			const previousRoundNumber = nextRoundNumber - 1;
-			const [previousRound] = await db
-				.select()
-				.from(gameRounds)
-				.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, previousRoundNumber)))
-				.limit(1);
+				if (previousRound.phase !== 'result') {
+					return {
+						outcome: 'error' as const,
+						response: json(
+							{ message: `第 ${previousRoundNumber} 回合尚未完成投票結果公布` },
+							{ status: 409 }
+						)
+					};
+				}
 
-			if (!previousRound) {
-				return json({ message: `找不到第 ${previousRoundNumber} 回合` }, { status: 404 });
-			}
+				const [existingRound] = await transaction
+					.select()
+					.from(gameRounds)
+					.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, nextRoundNumber)))
+					.limit(1)
+					.for('update');
 
-			// 只有投票結果已公布才能開始下一回合。
-			if (previousRound.phase !== 'result') {
-				return json(
-					{ message: `第 ${previousRoundNumber} 回合尚未完成投票結果公布` },
-					{ status: 409 }
-				);
-			}
+				if (existingRound) {
+					return {
+						outcome: 'error' as const,
+						response: json({ message: `第 ${nextRoundNumber} 回合已經存在` }, { status: 400 })
+					};
+				}
 
-			// 檢查新回合是否已經存在
-			const [existingRound] = await db
-				.select()
-				.from(gameRounds)
-				.where(and(eq(gameRounds.gameId, game.id), eq(gameRounds.round, nextRoundNumber)))
-				.limit(1);
+				const lastPlayerId = getNextRoundStarter(previousRound.actionOrder);
+				if (lastPlayerId === null) {
+					return {
+						outcome: 'error' as const,
+						response: json({ message: '上一回合沒有有效的行動順序' }, { status: 400 })
+					};
+				}
 
-			if (existingRound) {
-				return json({ message: `第 ${nextRoundNumber} 回合已經存在` }, { status: 400 });
-			}
-
-			const lastPlayerId = getNextRoundStarter(previousRound.actionOrder);
-			if (lastPlayerId === null) {
-				return json({ message: '上一回合沒有有效的行動順序' }, { status: 400 });
-			}
-
-			// 完成上一回合並建立新回合；任一步驟失敗時一起回滾。
-			const [newRound] = await db.transaction(async (transaction) => {
 				await transaction
 					.update(gameRounds)
 					.set({ phase: 'completed', completedAt: new Date() })
 					.where(eq(gameRounds.id, previousRound.id));
 
-				return transaction
+				const [newRound] = await transaction
 					.insert(gameRounds)
 					.values({
 						gameId: game.id,
 						round: nextRoundNumber,
 						phase: 'action',
-						actionOrder: [lastPlayerId] // 上一輪最後的玩家為新一輪的起始玩家
+						actionOrder: [lastPlayerId]
 					})
 					.returning();
+
+				return { outcome: 'success' as const, newRound, nextRoundNumber, lastPlayerId };
 			});
+			if ('error' in result) return result.error;
+			if (result.data.outcome === 'error') return result.data.response;
+			const { newRound, nextRoundNumber, lastPlayerId } = result.data;
 
 			// 通過 Socket.IO 通知所有玩家
 			try {

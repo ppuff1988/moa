@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
 	transaction: vi.fn(),
 	select: vi.fn(),
 	emit: vi.fn(),
-	verifyPlayerInRoom: vi.fn()
+	verifyPlayerInRoom: vi.fn(),
+	requireAllPlayersOnline: vi.fn()
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -20,7 +21,8 @@ vi.mock('$lib/server/db', () => ({
 
 vi.mock('$lib/server/api-helpers', () => ({
 	getCurrentRoundOrError: vi.fn(),
-	verifyPlayerInRoom: mocks.verifyPlayerInRoom
+	verifyPlayerInRoom: mocks.verifyPlayerInRoom,
+	requireAllPlayersOnline: mocks.requireAllPlayersOnline
 }));
 
 vi.mock('$lib/server/socket', () => ({
@@ -54,6 +56,7 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 			},
 			player: { id: 7 }
 		});
+		mocks.requireAllPlayersOnline.mockResolvedValue(null);
 	});
 
 	it('acknowledges a committed vote without making another database read', async () => {
@@ -97,6 +100,24 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		expect(await response.json()).toEqual({ message: '提交投票失敗，請稍後再試' });
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
+	});
+
+	it('rejects voting while any player is offline', async () => {
+		mocks.requireAllPlayersOnline.mockResolvedValue(
+			new Response(JSON.stringify({ code: 'GAME_PAUSED' }), {
+				status: 409,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+
+		const response = await POST({
+			request: createRequest(),
+			params: { name: '123456' }
+		} as never);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ code: 'GAME_PAUSED' });
+		expect(mocks.transaction).not.toHaveBeenCalled();
 	});
 
 	it('acknowledges a committed vote when progress broadcasting fails', async () => {
@@ -152,16 +173,16 @@ describe('online voting database constraints', () => {
 		);
 	});
 
-	it('documents that disconnected players remain in the quorum while explicit departures do not', () => {
+	it('documents that active games retain seats and wait for every disconnected player', () => {
 		const endpoint = readFileSync(
 			resolve(process.cwd(), 'src/routes/api/room/[name]/online-voting/+server.ts'),
 			'utf8'
 		);
 		const rules = readFileSync(resolve(process.cwd(), 'docs/RULE.md'), 'utf8');
 
-		expect(endpoint).toContain('isOnline 不影響投票資格');
-		expect(endpoint).toContain('leftAt 不為空的玩家已主動離開');
-		expect(rules).toContain('Socket 斷線而暫時離線時，只會將 `is_online` 標記為 `false`');
-		expect(rules).toContain('主動離開房間才會設定 `left_at`');
+		expect(endpoint).toContain('席位與投票資格不變');
+		expect(endpoint).toContain('等所有人重新連線才公布結果');
+		expect(rules).toContain('另開分頁瀏覽其他網站不算離線');
+		expect(rules).toContain('不設定離房期限，也不因人數不足自動結束');
 	});
 });

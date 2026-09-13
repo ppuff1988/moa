@@ -3,8 +3,8 @@
  */
 
 import { db } from '$lib/server/db';
-import { user } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { gamePlayers, user } from '$lib/server/db/schema';
+import { and, eq } from 'drizzle-orm';
 
 export const API_BASE = process.env.API_BASE_URL || 'http://localhost:5173';
 
@@ -37,6 +37,7 @@ export async function createTestUser(suffix: string = '') {
 	await db
 		.update(user)
 		.set({
+			isTest: true,
 			emailVerified: true,
 			emailVerificationToken: null,
 			emailVerificationTokenExpiresAt: null
@@ -109,6 +110,11 @@ export async function createTestRoom(
 	}
 
 	const data = await response.json();
+	// HTTP 測試 helper 代表瀏覽器已完成 Socket.IO join，模擬成功的在線狀態同步。
+	await db
+		.update(gamePlayers)
+		.set({ isOnline: true })
+		.where(and(eq(gamePlayers.gameId, data.gameId), eq(gamePlayers.userId, data.player.userId)));
 	return {
 		roomName: data.roomName, // 使用API返回的自動生成房間名稱
 		password,
@@ -134,7 +140,14 @@ export async function joinTestRoom(authToken: string, roomName: string, password
 		throw new Error(`Failed to join room: ${await response.text()}`);
 	}
 
-	return await response.json();
+	const data = await response.json();
+	// HTTP 測試 helper 代表瀏覽器已完成 Socket.IO join，模擬成功的在線狀態同步。
+	await db
+		.update(gamePlayers)
+		.set({ isOnline: true })
+		.where(and(eq(gamePlayers.gameId, data.gameId), eq(gamePlayers.userId, data.player.userId)));
+
+	return data;
 }
 
 /**

@@ -30,7 +30,9 @@ export function initSocket(): Socket {
 		reconnection: true,
 		reconnectionDelay: 1000,
 		reconnectionDelayMax: 5000,
-		reconnectionAttempts: 5,
+		// Keep retrying while the page is open so a temporary outage cannot
+		// permanently strand an active game in GAME_PAUSED.
+		reconnectionAttempts: Infinity,
 		// 確保 cookie 隨 handshake 一起傳送（用於 Lucia session / jwt cookie fallback）
 		withCredentials: true,
 		// 在開發環境中使用 polling，避免需要自定義服務器

@@ -31,7 +31,7 @@ try {
 	const socketModule = await vite.ssrLoadModule('/src/lib/server/socket.ts');
 
 	if (socketModule.initSocketIO) {
-		socketModule.initSocketIO(server);
+		await socketModule.initSocketIO(server);
 		console.log('✅ Socket.IO 已成功初始化（開發模式）');
 	} else {
 		console.error('❌ 無法找到 initSocketIO 函數');
