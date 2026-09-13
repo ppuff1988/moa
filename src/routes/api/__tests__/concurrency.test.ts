@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '$lib/server/db';
 import { user, games, gamePlayers } from '$lib/server/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
-import { API_BASE, createTestUser, createTestRoom, wait } from './helpers';
+import { API_BASE, createTestUser, createTestRoom, joinTestRoom, wait } from './helpers';
 
 describe('Concurrency and Race Conditions', () => {
 	const testUsers: { email: string; token: string; userId: number }[] = [];
@@ -284,17 +284,7 @@ describe('Concurrency and Race Conditions', () => {
 
 			// 添加更多玩家（需要至少6個玩家才能開始遊戲）
 			for (let i = 1; i <= 5; i++) {
-				await fetch(`${API_BASE}/api/room/join`, {
-					method: 'POST',
-					headers: {
-						Authorization: `Bearer ${testUsers[i].token}`,
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						roomName: room.roomName,
-						password: room.password
-					})
-				});
+				await joinTestRoom(testUsers[i].token, room.roomName, room.password);
 			}
 
 			// 房主啟動遊戲，進入選角階段
