@@ -185,7 +185,7 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 				userId,
 				isHost,
 				isReady: false,
-				isOnline: true,
+				isOnline: false,
 				canAction: true
 			})
 			.returning();

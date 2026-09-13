@@ -139,4 +139,16 @@ describe('Socket 多分頁在線狀態', () => {
 			/socket\.data\.roomName[\s\S]*(?:handleLeaveRoom|removeRoomConnection|clearRoomConnections)/
 		);
 	});
+
+	it.each(socketServers)('%s 在線狀態更新前在 transition 內重新驗證玩家席位', (file) => {
+		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+		const joinStart = source.indexOf("socket.on('join-room'");
+		const joinEnd = source.indexOf("socket.on('leave-room'", joinStart);
+		const joinHandler = source.slice(joinStart, joinEnd);
+		const transitionStart = joinHandler.indexOf('const joined = await enqueuePresenceTransition');
+		const transitionEnd = joinHandler.indexOf('if (!joined)', transitionStart);
+		const transitionBody = joinHandler.slice(transitionStart, transitionEnd);
+
+		expect(transitionBody).toMatch(/gamePlayers|game_players/);
+	});
 });

@@ -286,6 +286,17 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				const joined = await enqueuePresenceTransition(roomName, userId, async () => {
 					if (!socket.connected) return false;
 
+					const [currentPlayer] = await db
+						.select({ id: gamePlayers.id })
+						.from(gamePlayers)
+						.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, userId)))
+						.limit(1);
+					if (!currentPlayer) {
+						socket.leave(roomName);
+						socket.data.roomName = null;
+						return false;
+					}
+
 					addRoomConnection(roomName, userId, socket.id);
 					// 更新玩家在線狀態
 					await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');

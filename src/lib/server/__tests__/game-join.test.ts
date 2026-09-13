@@ -107,6 +107,7 @@ describe('joinGame', () => {
 			reason: expect.objectContaining({ message: '房間已滿' })
 		});
 		expect(insertedPlayers).toHaveLength(1);
+		expect(insertedPlayers[0]).toMatchObject({ isOnline: false });
 		expect(game.playerCount).toBe(8);
 	});
 });
