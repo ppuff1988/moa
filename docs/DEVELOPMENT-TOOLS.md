@@ -260,12 +260,7 @@ make docker-prod-down
 
 ### Pre-push Hook
 
-在推送前自動執行：
-
-- TypeScript 類型檢查
-- 完整 Lint 檢查
-- 單元測試
-- API 測試
+Pre-push hook 已停用，推送前的型別、Lint、單元測試與 API 測試由 CI 執行。重新執行安裝腳本時，也會自動移除既有工作區中殘留的 `.git/hooks/pre-push`。
 
 ### 繞過 Hooks
 

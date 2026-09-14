@@ -33,12 +33,15 @@ test('手機角色榜可直接開啟、重新整理且沒有橫向溢出', async
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('公開排行榜 API 僅回傳排行所需資訊並拒絕無效參數', async ({ request }) => {
+test('公開排行榜 API 僅回傳前十名排行資訊並拒絕無效參數', async ({ request }) => {
 	const response = await request.get('/api/leaderboard');
 	expect(response.status()).toBe(200);
 	const body = await response.json();
 	expect(body).toHaveProperty('entries');
 	expect(body).toHaveProperty('roles');
+	expect(body).not.toHaveProperty('page');
+	expect(body).not.toHaveProperty('totalPages');
+	expect(body.entries.length).toBeLessThanOrEqual(10);
 	for (const row of body.entries) {
 		expect(Object.keys(row).sort()).toEqual(
 			['games', 'nickname', 'rank', 'winRate', 'wins'].sort()
@@ -47,8 +50,11 @@ test('公開排行榜 API 僅回傳排行所需資訊並拒絕無效參數', asy
 	for (const winner of body.leaders) {
 		expect(Object.keys(winner)).toEqual(['nickname']);
 	}
-	for (const query of ['?page=-1', '?page=1.5', '?role=abc', '?role=1%20OR%201=1']) {
+	for (const query of ['?role=abc', '?role=1%20OR%201=1']) {
 		expect((await request.get(`/api/leaderboard${query}`)).status()).toBe(400);
 	}
+	const legacyPageResponse = await request.get('/api/leaderboard?page=2');
+	expect(legacyPageResponse.status()).toBe(200);
+	expect((await legacyPageResponse.json()).entries).toEqual(body.entries);
 	expect((await request.get('/api/leaderboard?role=2147483647')).status()).toBe(404);
 });

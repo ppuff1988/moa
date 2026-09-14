@@ -23,8 +23,6 @@ const results: LeaderboardResult & { selectedRoleId: number | null } = {
 	totalPlayers: 2,
 	totalGames: 30,
 	totalWins: 24,
-	page: 1,
-	totalPages: 1,
 	leaderWins: 12,
 	leaderCount: 2,
 	leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }],
@@ -75,15 +73,20 @@ describe('leaderboard honors presentation', () => {
 			.toHaveAttribute('href', '/leaderboard');
 	});
 
-	it('keeps pagination within the selected role', async () => {
+	it('shows only the top ten entries without pagination controls', async () => {
+		const topTen = Array.from({ length: 10 }, (_, index) => ({
+			nickname: `玩家${index + 1}`,
+			rank: index + 1,
+			wins: 10 - index,
+			games: 10,
+			winRate: 100 - index * 10
+		}));
 		const screen = render(LeaderboardView, {
-			leaderboard: { ...results, selectedRoleId: 5, page: 2, totalPages: 3 }
+			leaderboard: { ...results, selectedRoleId: 5, entries: topTen, totalPlayers: 23 }
 		});
-		await expect
-			.element(screen.getByRole('link', { name: '上一頁' }))
-			.toHaveAttribute('href', '/leaderboard/roles/5');
-		await expect
-			.element(screen.getByRole('link', { name: '下一頁' }))
-			.toHaveAttribute('href', '/leaderboard/roles/5?page=3');
+		await expect.element(screen.getByRole('table', { name: '老朝奉勝場排名' })).toBeVisible();
+		expect(screen.getByRole('row').elements()).toHaveLength(11);
+		expect(screen.getByRole('navigation', { name: '排行榜分頁' }).query()).toBeNull();
+		await expect.element(screen.getByText('顯示前 10 名')).toBeVisible();
 	});
 });
