@@ -3,22 +3,20 @@ import { db } from './db';
 import { buildLeaderboardQuery } from './leaderboard-query';
 import type { LeaderboardResult } from '$lib/types/leaderboard';
 
-const LEADERBOARD_CACHE_TTL_MS = 10_000;
+const LEADERBOARD_CACHE_TTL_MS = 60_000;
 const LEADERBOARD_CACHE_MAX_ENTRIES = 48;
 const leaderboardCache = new Map<string, { result: LeaderboardResult; expiresAt: number }>();
 
-function positiveInteger(value: string | null, fallback: number | null): number | null {
-	if (value === null) return fallback;
+function positiveInteger(value: string): number {
 	if (!/^[1-9]\d*$/.test(value) || Number(value) > 2147483647) {
 		error(400, '排行榜參數不正確');
 	}
 	return Number(value);
 }
 
-export async function getLeaderboard(role: string | null, requestedPage: string | null) {
-	const roleId = positiveInteger(role, null);
-	const page = positiveInteger(requestedPage, 1)!;
-	const cacheKey = `${roleId ?? 'all'}:${page}`;
+export async function getLeaderboard(role: string | null) {
+	const roleId = role === null ? null : positiveInteger(role);
+	const cacheKey = `${roleId ?? 'all'}`;
 	const cached = leaderboardCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return { ...cached.result, selectedRoleId: roleId };
@@ -27,7 +25,7 @@ export async function getLeaderboard(role: string | null, requestedPage: string 
 
 	let result: LeaderboardResult;
 	try {
-		const rows = await db.execute(buildLeaderboardQuery({ roleId, page }));
+		const rows = await db.execute(buildLeaderboardQuery({ roleId }));
 		result = rows[0] as unknown as LeaderboardResult;
 	} catch (cause) {
 		console.error('載入排行榜失敗:', cause);

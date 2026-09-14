@@ -76,7 +76,7 @@ release/* (發布分支，可選)
    - 提交時會觸發 pre-commit hooks（格式化、ESLint 等）
    - 使用 Conventional Commits 格式
 3. 推送到遠端
-   - 推送前觸發 pre-push hooks（typecheck、lint、單元測試、API 測試）
+   - 推送後由 GitHub Actions 執行 typecheck、lint、單元測試、API 測試與必要的 smoke test
 4. 創建 Pull Request
    - PR 目標通常為 `dev`
    - 填寫完整描述、連結 Issue、指定審核者
@@ -93,7 +93,7 @@ release/* (發布分支，可選)
 
 - **安裝 Hooks**: 執行 `npm install` 或手動執行 `bash install-hooks.sh`（Windows 使用 `install-hooks.ps1`）
 - **Pre-commit**: Prettier 格式化、ESLint 檢查（僅針對 staged 檔）
-- **Pre-push**: TypeScript 類型檢查、完整 Lint、單元測試、API 測試
+- **Pre-push**: 已停用；既有工作區會在重新安裝 hooks 時移除殘留的 pre-push hook
 - **繞過 Hooks**（僅緊急）: 使用 `--no-verify` 參數
 - **Hooks 位置**: `.githooks/` 目錄（會在安裝時複製到 `.git/hooks/`）
 

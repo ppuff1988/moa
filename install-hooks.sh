@@ -5,6 +5,13 @@
 
 HOOKS_DIR=".githooks"
 GIT_HOOKS_DIR=".git/hooks"
+LEGACY_PRE_PUSH_HOOK='#!/usr/bin/env sh
+
+# Pre-push hook for running tests
+# 執行測試
+
+node scripts/pre-push-checks.js
+'
 
 echo "🔧 設定 Git hooks..."
 
@@ -19,6 +26,13 @@ mkdir -p "$GIT_HOOKS_DIR"
 
 # 複製所有 hooks 到 .git/hooks
 if [ -d "$HOOKS_DIR" ]; then
+  # 移除已停用但可能留在既有工作區的 hook
+  if [ ! -f "$HOOKS_DIR/pre-push" ] && [ -f "$GIT_HOOKS_DIR/pre-push" ] \
+    && cmp -s <(tr -d '\r' < "$GIT_HOOKS_DIR/pre-push") <(printf '%s' "$LEGACY_PRE_PUSH_HOOK"); then
+    rm "$GIT_HOOKS_DIR/pre-push"
+    echo "🗑️ 已移除已停用: pre-push"
+  fi
+
   for hook in "$HOOKS_DIR"/*; do
     if [ -f "$hook" ]; then
       hook_name=$(basename "$hook")

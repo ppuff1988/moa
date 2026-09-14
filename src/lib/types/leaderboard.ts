@@ -25,8 +25,6 @@ export interface LeaderboardResult {
 	totalPlayers: number;
 	totalGames: number;
 	totalWins: number;
-	page: number;
-	totalPages: number;
 	leaderWins: number;
 	leaderCount: number;
 	leaders: AwardWinner[];

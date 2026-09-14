@@ -3,9 +3,9 @@ import { roleHonors } from '$lib/content/role-honors';
 import { createLeaderboardSchema } from '$lib/content/leaderboard-seo';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
+export const load: PageServerLoad = async ({ params, setHeaders }) => {
 	setHeaders({ 'cache-control': 'no-store' });
-	const leaderboard = await getLeaderboard(params.id, url.searchParams.get('page'));
+	const leaderboard = await getLeaderboard(params.id);
 	const role = leaderboard.roles.find((item) => item.id === leaderboard.selectedRoleId)!;
 	const honor = roleHonors[role.name];
 	const title = `${role.name}勝場榜${honor ? `・${honor.title}` : ''}｜古董局中局 MOA`;
