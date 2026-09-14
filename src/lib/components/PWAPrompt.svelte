@@ -55,32 +55,32 @@
 
 {#if needRefresh || offlineReady}
 	<div
-		class="bottom-4 right-4 max-w-md rounded-lg bg-gray-900 p-4 shadow-lg border-gray-700 fixed z-50 border"
+		class="fixed right-4 bottom-4 z-50 max-w-md rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-lg"
 		role="alert"
 	>
-		<div class="gap-4 flex items-start">
+		<div class="flex items-start gap-4">
 			<div class="flex-1">
 				{#if offlineReady}
-					<h3 class="font-semibold text-white mb-1">✅ 離線模式已就緒</h3>
+					<h3 class="mb-1 font-semibold text-white">✅ 離線模式已就緒</h3>
 					<p class="text-sm text-gray-300">應用程式現在可以離線使用</p>
 				{:else if needRefresh}
-					<h3 class="font-semibold text-white mb-1">🎉 新版本可用</h3>
+					<h3 class="mb-1 font-semibold text-white">🎉 新版本可用</h3>
 					<p class="text-sm text-gray-300">點擊更新以使用最新版本</p>
 				{/if}
 			</div>
 
-			<div class="gap-2 flex">
+			<div class="flex gap-2">
 				{#if needRefresh}
 					<button
 						onclick={updateApp}
-						class="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+						class="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-blue-700"
 					>
 						更新
 					</button>
 				{/if}
 				<button
 					onclick={close}
-					class="px-3 py-1 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+					class="px-3 py-1 text-sm font-medium text-gray-300 transition-colors hover:text-white"
 				>
 					關閉
 				</button>

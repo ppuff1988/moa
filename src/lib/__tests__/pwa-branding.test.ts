@@ -18,4 +18,10 @@ describe('PWA branding', () => {
 		expect(viteConfig).not.toContain('MOA - 末日危途');
 		expect(viteConfig).toContain("name: '古董局中局'");
 	});
+
+	it('全域樣式載入 PWA 提示所需的 Tailwind utilities', async () => {
+		const appStyles = await readFile(resolve(process.cwd(), 'src/app.css'), 'utf8');
+
+		expect(appStyles).toContain("@import 'tailwindcss';");
+	});
 });
