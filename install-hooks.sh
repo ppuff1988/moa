@@ -19,6 +19,12 @@ mkdir -p "$GIT_HOOKS_DIR"
 
 # 複製所有 hooks 到 .git/hooks
 if [ -d "$HOOKS_DIR" ]; then
+  # 移除已停用但可能留在既有工作區的 hook
+  if [ ! -f "$HOOKS_DIR/pre-push" ] && [ -f "$GIT_HOOKS_DIR/pre-push" ]; then
+    rm "$GIT_HOOKS_DIR/pre-push"
+    echo "🗑️ 已移除已停用: pre-push"
+  fi
+
   for hook in "$HOOKS_DIR"/*; do
     if [ -f "$hook" ]; then
       hook_name=$(basename "$hook")
