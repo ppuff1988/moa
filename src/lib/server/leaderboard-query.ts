@@ -1,12 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { XUYUAN_WIN_SCORE } from './game-identification-helpers';
 
-export const LEADERBOARD_PAGE_SIZE = 20;
+export const LEADERBOARD_LIMIT = 10;
 
-export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null; page: number }) {
+export function buildLeaderboardQuery({ roleId }: { roleId: number | null }) {
 	const roleFilter = roleId === null ? sql`true` : sql`role_id = ${roleId}`;
 
-	// Rank before pagination. A completed game counts once per account, even if
+	// Rank before limiting the displayed entries. A completed game counts once per account, even if
 	// legacy membership rows were duplicated. Leaving a finished room is irrelevant.
 	return sql`
 		WITH eligible_roles AS (
@@ -39,10 +39,6 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 				coalesce(sum(wins), 0)::int AS total_wins,
 				coalesce(max(wins), 0)::int AS leader_wins
 			FROM ranked
-		), pagination AS (
-			SELECT *, greatest(1, ceil(total_players::numeric / ${LEADERBOARD_PAGE_SIZE})::int) AS total_pages,
-				least(${page}, greatest(1, ceil(total_players::numeric / ${LEADERBOARD_PAGE_SIZE})::int)) AS current_page
-			FROM totals
 		), role_counts AS (
 			SELECT role_id, user_id, nickname, count(*) FILTER (WHERE won)::int AS wins
 			FROM participations GROUP BY role_id, user_id, nickname
@@ -57,8 +53,7 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 			) ORDER BY row.wins DESC, row.user_id) FROM (
 				SELECT user_id, nickname, rank, wins, games, win_rate
 				FROM ranked ORDER BY wins DESC, user_id
-				LIMIT ${LEADERBOARD_PAGE_SIZE}
-				OFFSET (SELECT (current_page - 1) * ${LEADERBOARD_PAGE_SIZE} FROM pagination)
+				LIMIT ${LEADERBOARD_LIMIT}
 			) row), '[]'::json) AS entries,
 			coalesce((SELECT json_agg(role ORDER BY role.id) FROM (
 				SELECT r.*,
@@ -70,8 +65,7 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 					) winner), '[]'::json) AS leaders
 				FROM eligible_roles r
 			) role), '[]'::json) AS roles,
-			p.total_players AS "totalPlayers", p.total_wins AS "totalWins",
-			p.current_page AS page, p.total_pages AS "totalPages", p.leader_wins AS "leaderWins",
+			t.total_players AS "totalPlayers", t.total_wins AS "totalWins", t.leader_wins AS "leaderWins",
 			(SELECT count(DISTINCT game_id)::int FROM filtered) AS "totalGames",
 			(SELECT max(finished_at) FROM filtered) AS "lastFinishedAt",
 			(SELECT count(*)::int FROM ranked WHERE rank = 1 AND wins > 0) AS "leaderCount",
@@ -79,6 +73,6 @@ export function buildLeaderboardQuery({ roleId, page }: { roleId: number | null;
 				SELECT user_id, nickname FROM ranked
 				WHERE rank = 1 AND wins > 0 ORDER BY user_id LIMIT 3
 			) winner), '[]'::json) AS leaders
-		FROM pagination p
+		FROM totals t
 	`;
 }

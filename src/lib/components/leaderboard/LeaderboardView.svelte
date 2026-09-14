@@ -29,10 +29,6 @@
 		const names = winners.map((winner) => winner.nickname).join('、');
 		return count > winners.length ? `${names}等 ${number.format(count)} 位` : names;
 	}
-
-	function pageHref(page: number) {
-		return page === 1 ? basePath : `${basePath}?page=${page}`;
-	}
 </script>
 
 <main class="leaderboard-page" id="leaderboard-content">
@@ -103,7 +99,7 @@
 				<p class="eyebrow">勝場見真章</p>
 				<h2 id="rankings-title">{selectedRole ? `${selectedRole.name}名家錄` : '群英名次錄'}</h2>
 			</div>
-			<a class="refresh-link" href={pageHref(leaderboard.page)} data-sveltekit-reload
+			<a class="refresh-link" href={basePath} data-sveltekit-reload
 				>更新排名 <span aria-hidden="true">↻</span></a
 			>
 		</div>
@@ -171,17 +167,7 @@
 					</div>
 				{/if}
 				<div class="table-footer">
-					<span>共 {number.format(leaderboard.totalPlayers)} 位玩家 · 每頁 20 位</span>
-					<nav class="pagination" aria-label="排行榜分頁">
-						{#if leaderboard.page > 1}<a href={pageHref(leaderboard.page - 1)} aria-label="上一頁"
-								>←</a
-							>{:else}<span aria-disabled="true" aria-label="上一頁">←</span>{/if}<span
-							>{leaderboard.page} / {leaderboard.totalPages}</span
-						>{#if leaderboard.page < leaderboard.totalPages}<a
-								href={pageHref(leaderboard.page + 1)}
-								aria-label="下一頁">→</a
-							>{:else}<span aria-disabled="true" aria-label="下一頁">→</span>{/if}
-					</nav>
+					<span>共 {number.format(leaderboard.totalPlayers)} 位玩家 · 顯示前 10 名</span>
 				</div>
 			</div>
 			<aside class="ranking-rules" aria-labelledby="rules-title">
@@ -616,27 +602,6 @@
 		color: var(--muted);
 		font-size: 0.6875rem;
 	}
-	.pagination {
-		display: flex;
-		align-items: center;
-		gap: 0.8rem;
-		font-variant-numeric: tabular-nums;
-	}
-	.pagination a,
-	.pagination [aria-disabled] {
-		display: grid;
-		place-items: center;
-		width: 2.75rem;
-		height: 2.75rem;
-		border: 1px solid var(--line);
-		border-radius: 0.2rem;
-	}
-	.pagination [aria-disabled] {
-		opacity: 0.35;
-	}
-	.pagination a:hover {
-		background: hsl(var(--secondary) / 0.1);
-	}
 	.ranking-rules {
 		padding: 1.25rem 0 0 1.25rem;
 		border-top: 1px solid var(--line);
@@ -938,9 +903,6 @@
 		.table-footer {
 			font-size: 0.625rem;
 			gap: 0.5rem;
-		}
-		.pagination {
-			gap: 0.45rem;
 		}
 		.ranking-rules ol {
 			display: block;

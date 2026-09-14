@@ -7,9 +7,7 @@ import type { LeaderboardResult } from '$lib/types/leaderboard';
 // Temporary tables shadow the live tables only on this transaction's connection.
 // No accounts or game records are written to the application's tables.
 async function withFixture(
-	run: (
-		query: (roleId?: number | null, page?: number) => Promise<LeaderboardResult>
-	) => Promise<void>
+	run: (query: (roleId?: number | null) => Promise<LeaderboardResult>) => Promise<void>
 ) {
 	await db.transaction(async (tx) => {
 		await tx.execute(
@@ -43,8 +41,8 @@ async function withFixture(
 			(11, 'invalid', 3, 2, NULL), (12, 'six', 4, NULL, NULL),
 			(13, 'five', 4, 4, NULL), (14, 'seven', 4, 5, NULL),
 			(15, 'six', 5, 1, NULL)`);
-		await run(async (roleId = null, page = 1) => {
-			const rows = await tx.execute(buildLeaderboardQuery({ roleId, page }));
+		await run(async (roleId = null) => {
+			const rows = await tx.execute(buildLeaderboardQuery({ roleId }));
 			return rows[0] as unknown as LeaderboardResult;
 		});
 	});
@@ -65,10 +63,10 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 				totalWins: 5,
 				leaderWins: 2,
 				leaderCount: 2,
-				leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }],
-				page: 1,
-				totalPages: 1
+				leaders: [{ nickname: '青禾' }, { nickname: '墨竹' }]
 			});
+			expect(result).not.toHaveProperty('page');
+			expect(result).not.toHaveProperty('totalPages');
 			expect(JSON.stringify(result)).not.toContain('private-');
 			expect(result.roles.map((role) => role.name)).toEqual(['許愿', '老朝奉', '方震']);
 		});
@@ -95,24 +93,21 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 		});
 	});
 
-	it('returns a real empty state for an unused role and clamps out-of-range pages', async () => {
+	it('returns a real empty state for an unused role', async () => {
 		await withFixture(async (query) => {
-			expect(await query(3, 999)).toMatchObject({
+			expect(await query(3)).toMatchObject({
 				entries: [],
 				totalPlayers: 0,
 				totalGames: 0,
 				totalWins: 0,
 				leaderWins: 0,
 				leaderCount: 0,
-				leaders: [],
-				page: 1,
-				totalPages: 1
+				leaders: []
 			});
-			expect((await query(null, 999)).page).toBe(1);
 		});
 	});
 
-	it('paginates after computing global ranks and preserves equal ranks across pages', async () => {
+	it('returns only the top ten ranked entries', async () => {
 		await db.transaction(async (tx) => {
 			await tx.execute(
 				sql`CREATE TEMP TABLE users (id integer, nickname text, is_test boolean NOT NULL DEFAULT false) ON COMMIT DROP`
@@ -136,8 +131,8 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 			await tx.execute(
 				sql`INSERT INTO game_players SELECT n, 'game' || n, n, 1 FROM generate_series(1, 23) n`
 			);
-			const [result] = await tx.execute(buildLeaderboardQuery({ roleId: null, page: 2 }));
-			expect(result).toMatchObject({ page: 2, totalPages: 2, totalPlayers: 23 });
+			const [result] = await tx.execute(buildLeaderboardQuery({ roleId: null }));
+			expect(result).toMatchObject({ totalPlayers: 23 });
 			expect(
 				(result.entries as LeaderboardResult['entries']).map(({ nickname, rank, wins }) => ({
 					nickname,
@@ -145,10 +140,15 @@ describe('leaderboard aggregation with PostgreSQL', () => {
 					wins
 				}))
 			).toEqual([
-				{ nickname: '玩家21', rank: 1, wins: 1 },
-				{ nickname: '玩家22', rank: 22, wins: 0 },
-				{ nickname: '玩家23', rank: 22, wins: 0 }
+				...Array.from({ length: 10 }, (_, index) => ({
+					nickname: `玩家${index + 1}`,
+					rank: 1,
+					wins: 1
+				}))
 			]);
+			expect(result.entries as LeaderboardResult['entries']).toHaveLength(10);
+			const [roleResult] = await tx.execute(buildLeaderboardQuery({ roleId: 1 }));
+			expect(roleResult.entries as LeaderboardResult['entries']).toHaveLength(10);
 		});
 	});
 });
