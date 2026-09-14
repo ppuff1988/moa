@@ -38,6 +38,20 @@ describe('Git hooks installer', () => {
 		expect(existsSync(join(gitHooksDirectory, 'pre-commit'))).toBe(true);
 	});
 
+	it('removes a stale legacy hook with CRLF line endings', () => {
+		fixtureDirectory = mkdtempSync(join(tmpdir(), 'moa-hooks-'));
+		const gitHooksDirectory = join(fixtureDirectory, '.git', 'hooks');
+		const sourceHooksDirectory = join(fixtureDirectory, '.githooks');
+		mkdirSync(gitHooksDirectory, { recursive: true });
+		mkdirSync(sourceHooksDirectory, { recursive: true });
+		writeFileSync(join(gitHooksDirectory, 'pre-push'), legacyPrePushHook.replace(/\n/g, '\r\n'));
+		writeFileSync(join(sourceHooksDirectory, 'pre-commit'), '#!/usr/bin/env sh\nexit 0\n');
+
+		execFileSync('bash', [installHooksScript], { cwd: fixtureDirectory });
+
+		expect(existsSync(join(gitHooksDirectory, 'pre-push'))).toBe(false);
+	});
+
 	it('preserves an unrelated installed pre-push hook', () => {
 		fixtureDirectory = mkdtempSync(join(tmpdir(), 'moa-hooks-'));
 		const gitHooksDirectory = join(fixtureDirectory, '.git', 'hooks');

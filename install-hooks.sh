@@ -28,7 +28,7 @@ mkdir -p "$GIT_HOOKS_DIR"
 if [ -d "$HOOKS_DIR" ]; then
   # 移除已停用但可能留在既有工作區的 hook
   if [ ! -f "$HOOKS_DIR/pre-push" ] && [ -f "$GIT_HOOKS_DIR/pre-push" ] \
-    && cmp -s "$GIT_HOOKS_DIR/pre-push" <(printf '%s' "$LEGACY_PRE_PUSH_HOOK"); then
+    && cmp -s <(tr -d '\r' < "$GIT_HOOKS_DIR/pre-push") <(printf '%s' "$LEGACY_PRE_PUSH_HOOK"); then
     rm "$GIT_HOOKS_DIR/pre-push"
     echo "🗑️ 已移除已停用: pre-push"
   fi
