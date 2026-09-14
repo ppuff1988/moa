@@ -615,6 +615,7 @@
 		margin-top: 0.5rem;
 	}
 	.ranking-rules ol {
+		list-style: decimal;
 		padding-left: 1rem;
 		margin: 1.5rem 0;
 	}
