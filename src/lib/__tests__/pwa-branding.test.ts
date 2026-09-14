@@ -18,4 +18,24 @@ describe('PWA branding', () => {
 		expect(viteConfig).not.toContain('MOA - 末日危途');
 		expect(viteConfig).toContain("name: '古董局中局'");
 	});
+
+	it('全域樣式載入 PWA 提示所需的 Tailwind utilities', async () => {
+		const appStyles = await readFile(resolve(process.cwd(), 'src/app.css'), 'utf8');
+
+		expect(appStyles).toContain("@import 'tailwindcss';");
+	});
+
+	it('條款清單在 Tailwind Preflight 後保留項目符號與縮排', async () => {
+		const termsPage = await readFile(
+			resolve(process.cwd(), 'src/routes/terms/+page.svelte'),
+			'utf8'
+		);
+		const listStyles = termsPage.slice(
+			termsPage.indexOf('\n\tul {'),
+			termsPage.indexOf('\n\tli {')
+		);
+
+		expect(listStyles).toContain('list-style: disc;');
+		expect(listStyles).toContain('padding-left: 1.5rem;');
+	});
 });
