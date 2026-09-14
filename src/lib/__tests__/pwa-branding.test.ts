@@ -24,4 +24,18 @@ describe('PWA branding', () => {
 
 		expect(appStyles).toContain("@import 'tailwindcss';");
 	});
+
+	it('條款清單在 Tailwind Preflight 後保留項目符號與縮排', async () => {
+		const termsPage = await readFile(
+			resolve(process.cwd(), 'src/routes/terms/+page.svelte'),
+			'utf8'
+		);
+		const listStyles = termsPage.slice(
+			termsPage.indexOf('\n\tul {'),
+			termsPage.indexOf('\n\tli {')
+		);
+
+		expect(listStyles).toContain('list-style: disc;');
+		expect(listStyles).toContain('padding-left: 1.5rem;');
+	});
 });
