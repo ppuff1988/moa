@@ -5,7 +5,6 @@ import { getGameState } from '$lib/server/game';
 import {
 	enqueuePresenceTransition,
 	getSocketIO,
-	hasPlayerSocket,
 	removePlayerSocketsFromRoom
 } from '$lib/server/socket';
 import { json } from '@sveltejs/kit';
@@ -204,39 +203,40 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		});
 	} else {
 		if (status === 'playing') {
-			const wentOffline = await enqueuePresenceTransition(
-				game.roomName,
-				currentUser.id,
-				async () => {
-					const hasActiveSocket = await hasPlayerSocket(game.roomName, currentUser.id);
-					if (hasActiveSocket) return false;
+			// 明確離開房間會清除該玩家的所有 Socket；Socket disconnect 本身只代表暫時斷線。
+			await removePlayerSocketsFromRoom(game.roomName, currentUser.id);
+			const leftRoom = await enqueuePresenceTransition(game.roomName, currentUser.id, async () => {
+				await db
+					.update(gamePlayers)
+					.set({
+						isOnline: false,
+						roomPresence: 'left',
+						leftAt: new Date(),
+						lastActiveAt: new Date()
+					})
+					.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
+				return true;
+			});
 
-					await db
-						.update(gamePlayers)
-						.set({ isOnline: false, lastActiveAt: new Date() })
-						.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
-					return true;
-				}
-			);
-
-			if (io && wentOffline) {
-				io.to(game.roomName).emit('player-offline', {
+			if (io && leftRoom) {
+				io.to(game.roomName).emit('player-left-room', {
 					userId: currentUser.id,
 					nickname: currentUser.nickname
 				});
 			}
 
 			return json({
-				message: '已暫離遊戲，座位將保留至重新連線',
+				message: '已離開房間，請重新加入以回到遊戲',
 				roomName: game.roomName,
 				gamePaused: true
 			});
 		}
 
-		// finished／terminated 狀態保留玩家歷史，只標記離房時間。
+		// finished／terminated 狀態保留玩家歷史，但離開後不再是房間成員。
+		await removePlayerSocketsFromRoom(game.roomName, currentUser.id);
 		await db
 			.update(gamePlayers)
-			.set({ leftAt: new Date() })
+			.set({ isOnline: false, roomPresence: 'left', leftAt: new Date(), lastActiveAt: new Date() })
 			.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, currentUser.id)));
 
 		return json({ message: '成功離開房間', roomName: game.roomName });

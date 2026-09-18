@@ -11,6 +11,7 @@ const currentPlayer: Player = {
 	isHost: false,
 	isReady: true,
 	isOnline: true,
+	roomPresence: 'active',
 	leftAt: null
 };
 
@@ -22,6 +23,7 @@ describe('mergeRoomPresence', () => {
 			roleName: null,
 			isReady: false,
 			isOnline: false,
+			roomPresence: 'left',
 			leftAt: null
 		};
 
@@ -29,6 +31,7 @@ describe('mergeRoomPresence', () => {
 			{
 				...currentPlayer,
 				isOnline: false,
+				roomPresence: 'left',
 				leftAt: null
 			}
 		]);
@@ -45,5 +48,31 @@ describe('mergeRoomPresence', () => {
 		};
 
 		expect(mergeRoomPresence([], [incomingPlayer])).toEqual([incomingPlayer]);
+	});
+
+	it('舊版 room-update 缺少 roomPresence 時保留目前的離房狀態', () => {
+		const leftPlayer: Player = { ...currentPlayer, roomPresence: 'left' };
+		const legacyIncomingPlayer: Player = {
+			...leftPlayer,
+			isOnline: false,
+			roomPresence: undefined
+		};
+
+		expect(mergeRoomPresence([leftPlayer], [legacyIncomingPlayer])).toEqual([
+			{
+				...leftPlayer,
+				isOnline: false,
+				roomPresence: 'left',
+				leftAt: null
+			}
+		]);
+	});
+
+	it('新的 room-update 明確回傳 null leftAt 時可以清除舊值', () => {
+		const leftAt = new Date('2026-01-01T00:00:00.000Z');
+		const leftPlayer: Player = { ...currentPlayer, leftAt };
+		const returnedPlayer: Player = { ...leftPlayer, leftAt: null, roomPresence: 'active' };
+
+		expect(mergeRoomPresence([leftPlayer], [returnedPlayer])[0].leftAt).toBeNull();
 	});
 });

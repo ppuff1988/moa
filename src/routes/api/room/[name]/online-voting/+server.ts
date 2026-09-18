@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	getCurrentRoundOrError,
-	requireAllPlayersOnline,
+	requireAllPlayersPresent,
 	verifyPlayerInRoom
 } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
@@ -47,7 +47,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
-	if (player.leftAt) {
+	if (player.roomPresence === 'left' || player.leftAt) {
 		return json({ message: '您已離開此房間' }, { status: 403 });
 	}
 	if (!game.onlineVotingEnabled) {
@@ -109,13 +109,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	}
 
 	const { game, player } = verifyResult;
-	if (player.leftAt) {
+	if (player.roomPresence === 'left' || player.leftAt) {
 		return json({ message: '您已離開此房間' }, { status: 403 });
 	}
 	if (!game.onlineVotingEnabled) {
 		return json({ message: '此房間未開啟線上投票' }, { status: 400 });
 	}
-	const pauseResponse = await requireAllPlayersOnline(game.id);
+	const pauseResponse = await requireAllPlayersPresent(game.id);
 	if (pauseResponse) return pauseResponse;
 
 	let body: { votes?: unknown };
@@ -130,10 +130,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 	try {
 		const result = await db.transaction(async (tx) => {
-			const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+			const pauseResponse = await requireAllPlayersPresent(game.id, tx, true);
 			if (pauseResponse) {
 				throw new OnlineVotingSubmissionError(
-					'有玩家離線，請等待所有玩家重新連線',
+					'有玩家已離開房間，請等待玩家重新加入',
 					409,
 					'GAME_PAUSED'
 				);
@@ -154,7 +154,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			const [activePlayer] = await tx
 				.select({ id: gamePlayers.id })
 				.from(gamePlayers)
-				.where(and(eq(gamePlayers.id, player.id), isNull(gamePlayers.leftAt)))
+				.where(
+					and(
+						eq(gamePlayers.id, player.id),
+						eq(gamePlayers.roomPresence, 'active'),
+						isNull(gamePlayers.leftAt)
+					)
+				)
 				.limit(1)
 				.for('update');
 			if (!activePlayer) {
@@ -235,9 +241,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await tx.insert(artifactVoteAllocations).values(allocations);
 			}
 
-			// 暫時斷線只改 isOnline，席位與投票資格不變；即使玩家已提交，
-			// finalizeOnlineVotingIfComplete 也會等所有人重新連線才公布結果。
-			// leftAt 條件只保留給舊資料與非進行中狀態的離房記錄。
+			// 暫時斷線只改 isOnline，席位與投票資格不變；明確離開房間的玩家重新加入前，
+			// finalizeOnlineVotingIfComplete 不會公布結果。
 			const finalization = await finalizeOnlineVotingIfComplete(tx, game.id, currentRound);
 
 			return {

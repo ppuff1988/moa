@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Server as HTTPServer } from 'http';
 import type { Socket } from 'socket.io';
 import { Server as SocketIOServer } from 'socket.io';
@@ -245,7 +245,14 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 				const [player] = await db
 					.select()
 					.from(gamePlayers)
-					.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, userId)))
+					.where(
+						and(
+							eq(gamePlayers.gameId, game.id),
+							eq(gamePlayers.userId, userId),
+							eq(gamePlayers.roomPresence, 'active'),
+							isNull(gamePlayers.leftAt)
+						)
+					)
 					.limit(1);
 
 				if (!player) {
@@ -289,7 +296,14 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 					const [currentPlayer] = await db
 						.select({ id: gamePlayers.id })
 						.from(gamePlayers)
-						.where(and(eq(gamePlayers.gameId, game.id), eq(gamePlayers.userId, userId)))
+						.where(
+							and(
+								eq(gamePlayers.gameId, game.id),
+								eq(gamePlayers.userId, userId),
+								eq(gamePlayers.roomPresence, 'active'),
+								isNull(gamePlayers.leftAt)
+							)
+						)
 						.limit(1);
 					if (!currentPlayer) {
 						socket.leave(roomName);
@@ -299,7 +313,7 @@ export async function initSocketIO(httpServer: HTTPServer): Promise<SocketIOServ
 
 					addRoomConnection(roomName, userId, socket.id);
 					// 更新玩家在線狀態
-					await updatePlayerOnlineStatus(game.id, userId, true, game.status === 'playing');
+					await updatePlayerOnlineStatus(game.id, userId, true);
 					if (!socket.connected) {
 						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 						if (remainingConnections === 0) {
@@ -393,7 +407,7 @@ export function closeSocketIO(): void {
 	}
 }
 
-// 處理離開房間（僅處理在線狀態更新，不發送通知避免與 API 重複）
+// 清理 Socket 連線；明確離開房間的狀態由離開 API 寫入 roomPresence。
 async function handleLeaveRoom(socket: Socket) {
 	try {
 		const userId = socket.data.userId;
@@ -401,7 +415,7 @@ async function handleLeaveRoom(socket: Socket) {
 
 		if (!roomName) return;
 
-		const game = await enqueuePresenceTransition(roomName, userId, async () => {
+		await enqueuePresenceTransition(roomName, userId, async () => {
 			if (!hasRoomSocket(roomName, userId, socket.id)) return null;
 			const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 			if (remainingConnections !== 0 || hasRoomConnection(roomName, userId)) return null;
@@ -414,10 +428,6 @@ async function handleLeaveRoom(socket: Socket) {
 			await updatePlayerOnlineStatus(game.id, userId, false);
 			return game;
 		});
-
-		if (game) {
-			io?.to(roomName).emit('player-offline', { userId, nickname: socket.data.nickname });
-		}
 
 		socket.leave(roomName);
 		socket.data.roomName = null;

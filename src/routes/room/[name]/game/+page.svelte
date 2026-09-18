@@ -100,9 +100,7 @@
 		})
 	);
 	const attackablePlayers = $derived($players.filter((player) => player.id !== currentUserId));
-	const offlinePlayers = $derived(
-		$players.filter((player) => player.leftAt == null && !player.isOnline)
-	);
+	const leftRoomPlayers = $derived($players.filter((player) => player.roomPresence === 'left'));
 
 	// Update gameStatus based on roundPhase
 	let gameStatus = $derived($roundPhase === 'finished' ? 'finished' : 'playing');
@@ -264,7 +262,7 @@
 		if (
 			isResumingPausedGame ||
 			roomPlayers.length === 0 ||
-			roomPlayers.some((p) => p.leftAt == null && !p.isOnline)
+			roomPlayers.some((p) => p.roomPresence === 'left')
 		) {
 			return;
 		}
@@ -1034,7 +1032,7 @@
 						}
 					});
 
-					socket.on('player-offline', async () => {
+					socket.on('player-left-room', async () => {
 						await updatePlayersAndRound();
 					});
 
@@ -1188,7 +1186,6 @@
 			clearInterval(updateInterval);
 		}
 		if (socket) {
-			socket.emit('leave-room');
 			disconnectSocket();
 		}
 		// 移除可見性變化監聽器
@@ -1253,20 +1250,15 @@
 			onOpenHistory={() => (isActionHistoryOpen = true)}
 		/>
 
-		{#if offlinePlayers.length > 0 && $roundPhase !== 'finished'}
-			<div class="presence-pause-overlay" role="status" aria-live="polite">
-				<div class="presence-pause-card">
-					<div class="presence-pause-indicator" aria-hidden="true"></div>
-					<p class="presence-pause-label">連線中斷</p>
-					<h2>遊戲暫停</h2>
-					<p>等待以下玩家重新連線</p>
-					<ul>
-						{#each offlinePlayers as player (player.id)}
-							<li>{player.nickname}</li>
-						{/each}
-					</ul>
-					<p class="presence-pause-note">座位與目前進度都會保留，重新連線後自動繼續。</p>
-				</div>
+		{#if leftRoomPlayers.length > 0 && $roundPhase !== 'finished'}
+			<div class="left-room-status" role="status" aria-live="polite">
+				<span class="left-room-status-icon" aria-hidden="true">○</span>
+				<span>
+					{#each leftRoomPlayers as player, index (player.id)}
+						{#if index > 0}、{/if}{player.nickname}
+					{/each}
+					已離開房間，等待玩家重新加入
+				</span>
 			</div>
 		{/if}
 
@@ -1585,85 +1577,25 @@
 		flex-direction: column;
 	}
 
-	.presence-pause-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 1000;
-		display: grid;
-		place-items: center;
-		padding: 1.5rem;
-		background: rgba(8, 8, 10, 0.78);
-		backdrop-filter: blur(10px);
-	}
-
-	.presence-pause-card {
-		width: min(100%, 32rem);
-		padding: 2rem;
-		border: 1px solid rgba(212, 175, 55, 0.5);
-		border-radius: 1rem;
-		background: #171717;
-		box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.55);
-		color: #f5f2e8;
+	.left-room-status {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		margin: 0.75rem 0 1rem;
+		padding: 0.6rem 0.9rem;
+		border: 1px solid rgba(156, 163, 175, 0.32);
+		border-radius: 0.65rem;
+		background: rgba(156, 163, 175, 0.08);
+		color: rgba(229, 231, 235, 0.78);
+		font-size: 0.875rem;
 		text-align: center;
 	}
 
-	.presence-pause-card h2 {
-		margin: 0.35rem 0 0.75rem;
-		font-size: clamp(1.75rem, 5vw, 2.4rem);
-	}
-
-	.presence-pause-card p {
-		margin: 0;
-		color: rgba(245, 242, 232, 0.72);
-	}
-
-	.presence-pause-card ul {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.5rem;
-		margin: 1.25rem 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.presence-pause-card li {
-		padding: 0.5rem 0.8rem;
-		border: 1px solid rgba(212, 175, 55, 0.35);
-		border-radius: 999px;
-		background: rgba(212, 175, 55, 0.1);
-		color: #f4d675;
-		font-weight: 700;
-	}
-
-	.presence-pause-label {
-		font-size: 0.75rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-	}
-
-	.presence-pause-indicator {
-		width: 0.75rem;
-		height: 0.75rem;
-		margin: 0 auto 0.75rem;
-		border-radius: 50%;
-		background: #ef8354;
-		box-shadow: 0 0 0 0 rgba(239, 131, 84, 0.5);
-		animation: presence-pulse 1.8s infinite;
-	}
-
-	.presence-pause-note {
-		font-size: 0.875rem;
-	}
-
-	@keyframes presence-pulse {
-		70% {
-			box-shadow: 0 0 0 0.75rem rgba(239, 131, 84, 0);
-		}
-		100% {
-			box-shadow: 0 0 0 0 rgba(239, 131, 84, 0);
-		}
+	.left-room-status-icon {
+		color: rgba(156, 163, 175, 0.9);
+		font-size: 1.2rem;
+		line-height: 1;
 	}
 
 	.game-content {

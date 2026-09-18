@@ -24,7 +24,7 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 	it.each(existingTransactions)('%s 在既有 transaction 內鎖定在線狀態', (file) => {
 		const source = readFileSync(resolve(process.cwd(), file), 'utf8');
 
-		expect(source).toContain('requireAllPlayersOnline(game.id, tx, true)');
+		expect(source).toContain('requireAllPlayersPresent(game.id, tx, true)');
 	});
 
 	it('resume-paused-game 依 game、active players、round 順序鎖定恢復交易', () => {
@@ -34,10 +34,10 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 		);
 
 		expect(source).toContain("from '$lib/server/api-helpers'");
-		expect(source).toContain('requireAllPlayersOnline(game.id, tx, true)');
+		expect(source).toContain('requireAllPlayersPresent(game.id, tx, true)');
 		expect(source).toMatch(/select\(\)\s*\.from\(games\)[\s\S]*?\.for\('update'\)/);
 		expect(source).toMatch(
-			/requireAllPlayersOnline\(game\.id, tx, true\)[\s\S]*?select\(\)\s*\.from\(gameRounds\)[\s\S]*?\.for\('update'\)/
+			/requireAllPlayersPresent\(game\.id, tx, true\)[\s\S]*?select\(\)\s*\.from\(gameRounds\)[\s\S]*?\.for\('update'\)/
 		);
 	});
 
@@ -58,7 +58,7 @@ describe('階段轉換與在線狀態必須在同一 transaction', () => {
 	it('自動分派遊戲在同一 transaction 內鎖定在線玩家', () => {
 		const source = readFileSync(resolve(process.cwd(), 'src/lib/server/game.ts'), 'utf8');
 
-		expect(source).toContain('requireAllPlayersOnline(gameId, tx, true)');
+		expect(source).toContain('requireAllPlayersPresent(gameId, tx, true)');
 	});
 
 	it('手動開始遊戲在 transaction commit 後才廣播 game-started', () => {

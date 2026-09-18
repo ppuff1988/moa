@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAllPlayersOnline, verifyHostWithStatus } from '$lib/server/api-helpers';
+import { requireAllPlayersPresent, verifyHostWithStatus } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameArtifacts, gameRounds } from '$lib/server/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
@@ -29,7 +29,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		if (game.onlineVotingEnabled) {
 			return json({ message: '線上投票房間必須由所有玩家自行提交籌碼' }, { status: 400 });
 		}
-		const pauseResponse = await requireAllPlayersOnline(game.id);
+		const pauseResponse = await requireAllPlayersPresent(game.id);
 		if (pauseResponse) return pauseResponse;
 		const body = await request.json();
 		const votes = body.votes as Record<string, unknown> | undefined;
@@ -39,9 +39,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const votingResult = await db.transaction(async (tx) => {
-			const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+			const pauseResponse = await requireAllPlayersPresent(game.id, tx, true);
 			if (pauseResponse) {
-				throw new VotingSubmissionError('有玩家離線，請等待所有玩家重新連線', 409, 'GAME_PAUSED');
+				throw new VotingSubmissionError('有玩家已離開房間，請等待玩家重新加入', 409, 'GAME_PAUSED');
 			}
 
 			// Serialize submissions for this game. A second request observes the

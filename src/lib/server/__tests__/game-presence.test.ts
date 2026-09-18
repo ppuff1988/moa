@@ -17,14 +17,16 @@ describe('updatePlayerOnlineStatus', () => {
 		dbMock.update.mockReturnValue({ set: setMock });
 	});
 
-	it('進行中的玩家重新連線時恢復原座位並清除舊的離房狀態', async () => {
-		await updatePlayerOnlineStatus('game-1', 7, true, true);
+	it('重新連線只同步在線狀態，不會清除明確離房狀態', async () => {
+		await updatePlayerOnlineStatus('game-1', 7, true);
 
-		expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ isOnline: true, leftAt: null }));
+		expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ isOnline: true }));
+		expect(setMock.mock.calls[0][0]).not.toHaveProperty('leftAt');
+		expect(setMock.mock.calls[0][0]).not.toHaveProperty('roomPresence');
 	});
 
-	it('已結束遊戲重新連線時保留正式離房狀態', async () => {
-		await updatePlayerOnlineStatus('game-1', 7, true, false);
+	it('重新連線時保留正式離房狀態', async () => {
+		await updatePlayerOnlineStatus('game-1', 7, true);
 
 		expect(setMock.mock.calls[0][0]).not.toHaveProperty('leftAt');
 	});

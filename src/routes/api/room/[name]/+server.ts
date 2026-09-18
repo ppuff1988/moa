@@ -22,6 +22,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			avatar: user.avatar,
 			isHost: gamePlayers.isHost,
 			isOnline: gamePlayers.isOnline,
+			roomPresence: gamePlayers.roomPresence,
 			isReady: gamePlayers.isReady,
 			roleId: gamePlayers.roleId,
 			color: gamePlayers.color,

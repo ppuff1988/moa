@@ -7,7 +7,7 @@ const {
 	enqueuePresenceTransitionMock,
 	forceEndGameMock,
 	getSocketIOMock,
-	hasPlayerSocketMock,
+	removePlayerSocketsFromRoomMock,
 	playerUpdates,
 	verifyPlayerInRoomMock
 } = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ const {
 	enqueuePresenceTransitionMock: vi.fn(),
 	forceEndGameMock: vi.fn(),
 	getSocketIOMock: vi.fn(() => null),
-	hasPlayerSocketMock: vi.fn(),
+	removePlayerSocketsFromRoomMock: vi.fn(),
 	playerUpdates: [] as Array<Record<string, unknown>>,
 	verifyPlayerInRoomMock: vi.fn()
 }));
@@ -35,7 +35,7 @@ vi.mock('../game-voting', () => ({ finalizeOnlineVotingIfComplete: vi.fn() }));
 vi.mock('../socket', () => ({
 	enqueuePresenceTransition: enqueuePresenceTransitionMock,
 	getSocketIO: getSocketIOMock,
-	hasPlayerSocket: hasPlayerSocketMock
+	removePlayerSocketsFromRoom: removePlayerSocketsFromRoomMock
 }));
 
 import { POST } from '../../../routes/api/room/[name]/leave/+server';
@@ -47,7 +47,7 @@ describe('playing game leave presence', () => {
 		enqueuePresenceTransitionMock.mockImplementation(
 			(_roomName: string, _userId: number, transition: () => Promise<unknown>) => transition()
 		);
-		hasPlayerSocketMock.mockResolvedValue(false);
+		removePlayerSocketsFromRoomMock.mockResolvedValue(undefined);
 		getSocketIOMock.mockReturnValue({
 			to: vi.fn(() => ({ emit: emitMock }))
 		} as never);
@@ -93,7 +93,7 @@ describe('playing game leave presence', () => {
 		dbMock.transaction.mockImplementation(async (callback) => callback(transaction));
 	});
 
-	it('遊戲中玩家暫離時保留座位且不因人數不足終止遊戲', async () => {
+	it('遊戲中玩家明確離開時失去房間資格並等待重新加入', async () => {
 		const response = await POST({
 			request: new Request('http://localhost/api/room/123456/leave', { method: 'POST' }),
 			params: { name: '123456' }
@@ -101,23 +101,37 @@ describe('playing game leave presence', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({ gamePaused: true });
-		expect(playerUpdates).toContainEqual(expect.objectContaining({ isOnline: false }));
-		expect(playerUpdates.some((values) => 'leftAt' in values)).toBe(false);
+		expect(playerUpdates).toContainEqual(
+			expect.objectContaining({
+				isOnline: false,
+				roomPresence: 'left',
+				leftAt: expect.any(Date)
+			})
+		);
+		expect(playerUpdates.some((values) => 'leftAt' in values)).toBe(true);
 		expect(forceEndGameMock).not.toHaveBeenCalled();
 		expect(enqueuePresenceTransitionMock).toHaveBeenCalledWith('123456', 8, expect.any(Function));
 	});
 
-	it('同一玩家仍有其他 Socket 連線時不標記為離線', async () => {
-		hasPlayerSocketMock.mockResolvedValue(true);
-
+	it('明確離開時清除所有 Socket 並標記房間狀態', async () => {
 		const response = await POST({
 			request: new Request('http://localhost/api/room/123456/leave', { method: 'POST' }),
 			params: { name: '123456' }
 		} as never);
 
 		expect(response.status).toBe(200);
-		expect(playerUpdates.some((values) => values.isOnline === false)).toBe(false);
-		expect(emitMock).not.toHaveBeenCalled();
+		expect(playerUpdates).toContainEqual(
+			expect.objectContaining({
+				isOnline: false,
+				roomPresence: 'left',
+				leftAt: expect.any(Date)
+			})
+		);
+		expect(removePlayerSocketsFromRoomMock).toHaveBeenCalledWith('123456', 8);
+		expect(emitMock).toHaveBeenCalledWith('player-left-room', {
+			userId: 8,
+			nickname: '暫離玩家'
+		});
 		expect(enqueuePresenceTransitionMock).toHaveBeenCalledWith('123456', 8, expect.any(Function));
 	});
 });

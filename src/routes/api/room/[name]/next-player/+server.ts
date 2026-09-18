@@ -22,6 +22,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				and(
 					eq(gamePlayers.gameId, game.id),
 					eq(gamePlayers.id, nextPlayerId),
+					eq(gamePlayers.roomPresence, 'active'),
 					isNull(gamePlayers.leftAt)
 				)
 			)
