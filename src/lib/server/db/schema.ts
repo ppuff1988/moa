@@ -103,27 +103,42 @@ export const roles = pgTable('roles', {
 	canFool: boolean('can_fool').default(false) // 是否能迷惑
 });
 
-export const gamePlayers = pgTable('game_players', {
-	id: serial('id').primaryKey(),
-	gameId: uuid('game_id')
-		.notNull()
-		.references(() => games.id),
-	userId: integer('user_id')
-		.notNull()
-		.references(() => user.id),
-	roleId: integer('role_id').references(() => roles.id),
-	color: text('color'), // 紅, 橙, 黃, 綠, 藍, 紫, 黑, 白
-	colorCode: text('color_code'), // #EF4444, #F97316, #EAB308, #22C55E, #3B82F6, #A855F7, #1F2937, #F3F4F6
-	isHost: boolean('is_host').default(false),
-	isReady: boolean('is_ready').default(false),
-	isOnline: boolean('is_online').default(true),
-	canAction: boolean('can_action').default(true), // 當前是否能行動
-	attackedRounds: integer('attacked_rounds').array().default([]), // 記錄第幾回合被攻擊
-	blockedRound: integer('blocked_round'), // 記錄黃煙煙和木戶加奈天生的無法行動回合（1-3隨機）
-	joinedAt: timestamp('joined_at').defaultNow(),
-	lastActiveAt: timestamp('last_active_at').defaultNow(),
-	leftAt: timestamp('left_at') // 玩家離開時間
-});
+export const gamePlayers = pgTable(
+	'game_players',
+	{
+		id: serial('id').primaryKey(),
+		gameId: uuid('game_id')
+			.notNull()
+			.references(() => games.id),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => user.id),
+		roleId: integer('role_id').references(() => roles.id),
+		color: text('color'), // 紅, 橙, 黃, 綠, 藍, 紫, 黑, 白
+		colorCode: text('color_code'), // #EF4444, #F97316, #EAB308, #22C55E, #3B82F6, #A855F7, #1F2937, #F3F4F6
+		isHost: boolean('is_host').default(false),
+		isReady: boolean('is_ready').default(false),
+		isOnline: boolean('is_online').default(true),
+		roomPresence: text('room_presence', { enum: ['active', 'left'] })
+			.notNull()
+			.default('active'),
+		canAction: boolean('can_action').default(true), // 當前是否能行動
+		attackedRounds: integer('attacked_rounds').array().default([]), // 記錄第幾回合被攻擊
+		blockedRound: integer('blocked_round'), // 記錄黃煙煙和木戶加奈天生的無法行動回合（1-3隨機）
+		joinedAt: timestamp('joined_at').defaultNow(),
+		lastActiveAt: timestamp('last_active_at').defaultNow(),
+		leftAt: timestamp('left_at') // 玩家離開時間
+	},
+	(table) => ({
+		roomPresenceConsistencyCheck: check(
+			'game_players_room_presence_consistency_check',
+			sql`
+			(${table.roomPresence} = 'active' AND ${table.leftAt} IS NULL)
+			OR (${table.roomPresence} = 'left' AND ${table.leftAt} IS NOT NULL)
+		`
+		)
+	})
+);
 
 export const gameArtifacts = pgTable('game_artifacts', {
 	id: serial('id').primaryKey(),

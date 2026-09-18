@@ -74,7 +74,7 @@ const ErrorResponses = {
 			{
 				success: false,
 				code: 'GAME_PAUSED',
-				message: '有玩家離線，請等待所有玩家重新連線'
+				message: '有玩家已離開房間，請等待玩家重新加入'
 			},
 			{ status: 409 }
 		),
@@ -114,20 +114,23 @@ const ErrorResponses = {
 };
 
 /**
- * 遊戲進行中只要有仍在場的玩家離線，就暫停所有會推進階段的操作。
+ * 遊戲進行中只有明確離開房間的玩家，才會暫停所有會推進階段的操作。
+ * Socket 暫時斷線不影響遊戲。
  */
-export async function requireAllPlayersOnline(
+export async function requireAllPlayersPresent(
 	gameId: string,
 	executor: PresenceExecutor = db,
 	lockRows = false
 ): Promise<Response | null> {
 	const presenceQuery = executor
-		.select({ isOnline: gamePlayers.isOnline })
+		.select({ roomPresence: gamePlayers.roomPresence })
 		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+		.where(eq(gamePlayers.gameId, gameId));
 	const activePlayers = lockRows ? await presenceQuery.for('update') : await presenceQuery;
 
-	return activePlayers.some((player) => !player.isOnline) ? ErrorResponses.gamePaused() : null;
+	return activePlayers.some((player) => player.roomPresence === 'left')
+		? ErrorResponses.gamePaused()
+		: null;
 }
 
 /**
@@ -149,7 +152,7 @@ export async function runAllPlayersOnlineTransaction<T>(
 			.for('update');
 		if (!game) return { error: ErrorResponses.roomNotFound() };
 
-		const pauseResponse = await requireAllPlayersOnline(gameId, transaction, true);
+		const pauseResponse = await requireAllPlayersPresent(gameId, transaction, true);
 		if (pauseResponse) return { error: pauseResponse };
 
 		return { data: await action(transaction) };
@@ -203,7 +206,14 @@ async function findPlayerInGame(
 	const [player] = await db
 		.select()
 		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
+		.where(
+			and(
+				eq(gamePlayers.gameId, gameId),
+				eq(gamePlayers.userId, userId),
+				eq(gamePlayers.roomPresence, 'active'),
+				isNull(gamePlayers.leftAt)
+			)
+		)
 		.limit(1);
 
 	return player || null;
@@ -325,6 +335,10 @@ export async function verifyHostPermission(
 		return { error: ErrorResponses.notHost() };
 	}
 
+	if (!(await findPlayerInGame(game.id, user.id))) {
+		return { error: ErrorResponses.notInRoom() };
+	}
+
 	return { user, game };
 }
 
@@ -400,6 +414,10 @@ export async function verifyHostWithStatus(
 		return { error: ErrorResponses.notHost() };
 	}
 
+	if (!(await findPlayerInGame(game.id, user.id))) {
+		return { error: ErrorResponses.notInRoom() };
+	}
+
 	if (requiredStatus) {
 		const allowedStatuses = Array.isArray(requiredStatus) ? requiredStatus : [requiredStatus];
 		if (!allowedStatuses.includes(game.status)) {
@@ -438,6 +456,7 @@ export async function runCurrentActionTransaction<T>(
 				and(
 					eq(gamePlayers.gameId, game.id),
 					eq(gamePlayers.userId, authResult.user.id),
+					eq(gamePlayers.roomPresence, 'active'),
 					isNull(gamePlayers.leftAt)
 				)
 			)
@@ -451,11 +470,11 @@ export async function runCurrentActionTransaction<T>(
 		if (!player.roleId) return { error: ErrorResponses.noRole() };
 
 		const activePlayers = await transaction
-			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.select({ id: gamePlayers.id, roomPresence: gamePlayers.roomPresence })
 			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.where(eq(gamePlayers.gameId, game.id))
 			.for('update');
-		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+		if (activePlayers.some((activePlayer) => activePlayer.roomPresence === 'left')) {
 			return { error: ErrorResponses.gamePaused() };
 		}
 
@@ -544,6 +563,7 @@ export async function runIdentificationTransaction<T>(
 				and(
 					eq(gamePlayers.gameId, game.id),
 					eq(gamePlayers.userId, authResult.user.id),
+					eq(gamePlayers.roomPresence, 'active'),
 					isNull(gamePlayers.leftAt)
 				)
 			)
@@ -555,11 +575,11 @@ export async function runIdentificationTransaction<T>(
 		}
 
 		const activePlayers = await transaction
-			.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+			.select({ id: gamePlayers.id, roomPresence: gamePlayers.roomPresence })
 			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)))
+			.where(eq(gamePlayers.gameId, game.id))
 			.for('update');
-		if (activePlayers.some((activePlayer) => !activePlayer.isOnline)) {
+		if (activePlayers.some((activePlayer) => activePlayer.roomPresence === 'left')) {
 			return { error: ErrorResponses.gamePaused() };
 		}
 

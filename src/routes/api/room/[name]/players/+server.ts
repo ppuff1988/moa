@@ -46,6 +46,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			isHost: gamePlayers.isHost,
 			isReady: gamePlayers.isReady,
 			isOnline: gamePlayers.isOnline,
+			roomPresence: gamePlayers.roomPresence,
 			leftAt: gamePlayers.leftAt
 		})
 		.from(gamePlayers)
@@ -66,6 +67,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		isHost: player.isHost,
 		isReady: player.isReady,
 		isOnline: player.isOnline,
+		roomPresence: player.roomPresence,
 		leftAt: player.leftAt,
 		isCurrentAction: currentActionPlayerId === player.id,
 		hasActioned: actionedPlayersInOrder.includes(player.id)

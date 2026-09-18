@@ -96,7 +96,7 @@ describe('buildPublishedVotingResult', () => {
 });
 
 describe('getOnlineVotingProgress', () => {
-	it('所有人已投票但仍有人離線時不進入結果階段', async () => {
+	it('暫時斷線不影響已提交玩家完成線上投票', async () => {
 		const select = vi
 			.fn()
 			.mockReturnValueOnce({
@@ -116,8 +116,40 @@ describe('getOnlineVotingProgress', () => {
 				from: () => ({
 					where: () =>
 						Promise.resolve([
-							{ id: 11, isOnline: true },
-							{ id: 12, isOnline: false }
+							{ id: 11, isOnline: true, roomPresence: 'active' },
+							{ id: 12, isOnline: false, roomPresence: 'active' }
+						])
+				})
+			});
+
+		const progress = await gameVoting.getOnlineVotingProgress({ select } as never, 'game-1', 21);
+
+		expect(progress.completed).toBe(true);
+		expect(progress.totalPlayers).toBe(2);
+	});
+
+	it('明確離開房間時即使已提交也要等待玩家重新加入', async () => {
+		const select = vi
+			.fn()
+			.mockReturnValueOnce({
+				from: () => ({
+					innerJoin: () => ({
+						where: () => ({
+							orderBy: () =>
+								Promise.resolve([
+									{ playerId: 11, color: '紅', colorCode: '#f00' },
+									{ playerId: 12, color: '藍', colorCode: '#00f' }
+								])
+						})
+					})
+				})
+			})
+			.mockReturnValueOnce({
+				from: () => ({
+					where: () =>
+						Promise.resolve([
+							{ id: 11, isOnline: true, roomPresence: 'active' },
+							{ id: 12, isOnline: false, roomPresence: 'left' }
 						])
 				})
 			});
@@ -125,6 +157,5 @@ describe('getOnlineVotingProgress', () => {
 		const progress = await gameVoting.getOnlineVotingProgress({ select } as never, 'game-1', 21);
 
 		expect(progress.completed).toBe(false);
-		expect(progress.totalPlayers).toBe(2);
 	});
 });

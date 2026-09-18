@@ -128,10 +128,15 @@ CREATE TABLE game_players (
     is_host BOOLEAN DEFAULT FALSE,
     is_ready BOOLEAN DEFAULT FALSE,
     is_online BOOLEAN DEFAULT TRUE,
+    room_presence TEXT NOT NULL DEFAULT 'active' CHECK (room_presence IN ('active', 'left')),
     can_action BOOLEAN DEFAULT TRUE,
     attacked_rounds INTEGER[] DEFAULT '{}',
     blocked_round INTEGER,
     left_at TIMESTAMP,
+    CONSTRAINT game_players_room_presence_consistency_check CHECK (
+        (room_presence = 'active' AND left_at IS NULL)
+        OR (room_presence = 'left' AND left_at IS NOT NULL)
+    ),
     joined_at TIMESTAMP DEFAULT NOW(),
     last_active_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(game_id, user_id),

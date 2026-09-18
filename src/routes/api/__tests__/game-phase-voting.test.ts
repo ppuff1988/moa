@@ -356,7 +356,7 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 			expect(round.phase).toBe('result');
 		});
 
-		it('暫時斷線期間拒絕提交投票並等待玩家回來', async () => {
+		it('暫時斷線期間仍可提交投票', async () => {
 			const room = await createVotingGame(true);
 			await db
 				.update(gamePlayers)
@@ -365,40 +365,48 @@ describe('Game Phase APIs - Discussion and Voting', () => {
 					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
 				);
 
-			const response = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
-
-			expect(response.status).toBe(409);
-			expect(await response.json()).toMatchObject({
-				success: false,
-				code: 'GAME_PAUSED'
+			const response = await submitOnlineVotes(room.roomName, testUsers[0].token, {
+				[room.artifacts[0].id]: 1
 			});
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ completed: false });
 		});
 
-		it('舊 leftAt 資料不再列入待提交門檻且不能再投票', async () => {
+		it('明確離開玩家列入等待門檻，重新加入後才能繼續投票', async () => {
 			const room = await createVotingGame(true);
 			await db
 				.update(gamePlayers)
-				.set({ leftAt: new Date() })
+				.set({ leftAt: new Date(), roomPresence: 'left', isOnline: false })
 				.where(
 					and(eq(gamePlayers.gameId, room.gameId), eq(gamePlayers.userId, testUsers[1].userId))
 				);
 
 			const departedResponse = await submitOnlineVotes(room.roomName, testUsers[1].token, {});
 			expect(departedResponse.status).toBe(403);
-			expect((await departedResponse.json()).message).toContain('已離開');
+			expect((await departedResponse.json()).message).toContain('不在此房間');
 			const activeProgressResponse = await fetch(
 				`${API_BASE}/api/room/${encodeURIComponent(room.roomName)}/online-voting`,
 				{ headers: { Authorization: `Bearer ${testUsers[0].token}` } }
 			);
 			expect(activeProgressResponse.status).toBe(200);
-			expect((await activeProgressResponse.json()).totalPlayers).toBe(1);
+			expect((await activeProgressResponse.json()).totalPlayers).toBe(2);
 
 			const hostResponse = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
-			expect(hostResponse.status).toBe(200);
-			expect((await hostResponse.json()).completed).toBe(true);
+			expect(hostResponse.status).toBe(409);
+			expect((await hostResponse.json()).message).toContain('重新加入');
+
+			await joinTestRoom(testUsers[1].token, room.roomName, room.password);
+			const rejoinedResponse = await submitOnlineVotes(room.roomName, testUsers[1].token, {});
+			expect(rejoinedResponse.status).toBe(200);
+			expect((await rejoinedResponse.json()).completed).toBe(false);
+
+			const resumedHostResponse = await submitOnlineVotes(room.roomName, testUsers[0].token, {});
+			expect(resumedHostResponse.status).toBe(200);
+			expect((await resumedHostResponse.json()).completed).toBe(true);
 		});
 
-		it('七人局最後一位待投玩家暫離時保留席位並維持投票階段', async () => {
+		it('七人局最後一位待投玩家明確離開時保留席位並維持投票階段', async () => {
 			const room = await createVotingGame(true, 7);
 			for (let index = 0; index < 6; index++) {
 				const response = await submitOnlineVotes(room.roomName, testUsers[index].token, {});

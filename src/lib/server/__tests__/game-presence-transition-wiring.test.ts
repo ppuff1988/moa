@@ -17,10 +17,10 @@ describe('遊戲階段轉換在線狀態保護', () => {
 
 		expect(
 			source.includes('runAllPlayersOnlineTransaction') ||
-				source.includes('requireAllPlayersOnline')
+				source.includes('requireAllPlayersPresent')
 		).toBe(true);
 		if (!source.includes('runAllPlayersOnlineTransaction')) {
-			expect(source).toMatch(/await requireAllPlayersOnline\(game\.id/);
+			expect(source).toMatch(/await requireAllPlayersPresent\(game\.id/);
 		}
 	});
 });

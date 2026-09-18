@@ -1,4 +1,4 @@
-import { requireAllPlayersOnline, verifyPlayerInRoom } from '$lib/server/api-helpers';
+import { requireAllPlayersPresent, verifyPlayerInRoom } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gameRounds, games } from '$lib/server/db/schema';
 import { finalizeOnlineVotingIfComplete } from '$lib/server/game-voting';
@@ -8,8 +8,8 @@ import { desc, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
 /**
- * 全員重連後恢復不需要額外玩家輸入的流程。目前只有線上投票可能在
- * 所有人已提交後因離線暫停，因此這個端點在回合鎖內做冪等結算。
+ * 明確離開房間的玩家重新加入後，恢復不需要額外玩家輸入的流程。目前只有線上投票可能在
+ * 所有人已提交後因離房等待，因此這個端點在回合鎖內做冪等結算。
  */
 export const POST: RequestHandler = async ({ request, params }) => {
 	const verifyResult = await verifyPlayerInRoom(request, params.name!);
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return null;
 		}
 
-		const pauseResponse = await requireAllPlayersOnline(game.id, tx, true);
+		const pauseResponse = await requireAllPlayersPresent(game.id, tx, true);
 		if (pauseResponse) return null;
 
 		const [currentRound] = await tx

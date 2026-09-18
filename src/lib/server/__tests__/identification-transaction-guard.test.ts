@@ -29,14 +29,14 @@ describe('identification transaction guard', () => {
 	let phase = 'identification';
 	let gameStatus = 'playing';
 	let playerExists = true;
-	let offlinePlayerIds: number[] = [];
+	let leftRoomPlayerIds: number[] = [];
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		phase = 'identification';
 		gameStatus = 'playing';
 		playerExists = true;
-		offlinePlayerIds = [];
+		leftRoomPlayerIds = [];
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
 
 		const rowsFor = (table: unknown, selection?: unknown) => {
@@ -45,7 +45,8 @@ describe('identification transaction guard', () => {
 				if (selection) {
 					return [11, 99].map((id) => ({
 						id,
-						isOnline: !offlinePlayerIds.includes(id)
+						isOnline: true,
+						roomPresence: leftRoomPlayerIds.includes(id) ? 'left' : 'active'
 					}));
 				}
 				return playerExists
@@ -146,8 +147,8 @@ describe('identification transaction guard', () => {
 		if ('error' in result) expect(result.error.status).toBe(409);
 	});
 
-	it('任何仍在場玩家離線時暫停並拒絕鑑人操作', async () => {
-		offlinePlayerIds = [99];
+	it('明確離開房間時暫停並拒絕鑑人操作', async () => {
+		leftRoomPlayerIds = [99];
 		const guard = getGuard();
 		expect(guard).toBeTypeOf('function');
 		if (!guard) return;
