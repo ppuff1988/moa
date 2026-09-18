@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 	select: vi.fn(),
 	emit: vi.fn(),
 	verifyPlayerInRoom: vi.fn(),
-	requireAllPlayersOnline: vi.fn()
+	requireAllPlayersPresent: vi.fn()
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -22,7 +22,7 @@ vi.mock('$lib/server/db', () => ({
 vi.mock('$lib/server/api-helpers', () => ({
 	getCurrentRoundOrError: vi.fn(),
 	verifyPlayerInRoom: mocks.verifyPlayerInRoom,
-	requireAllPlayersOnline: mocks.requireAllPlayersOnline
+	requireAllPlayersPresent: mocks.requireAllPlayersPresent
 }));
 
 vi.mock('$lib/server/socket', () => ({
@@ -56,7 +56,7 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 			},
 			player: { id: 7 }
 		});
-		mocks.requireAllPlayersOnline.mockResolvedValue(null);
+		mocks.requireAllPlayersPresent.mockResolvedValue(null);
 	});
 
 	it('acknowledges a committed vote without making another database read', async () => {
@@ -102,22 +102,22 @@ describe('POST /api/room/[name]/online-voting handler', () => {
 		consoleError.mockRestore();
 	});
 
-	it('rejects voting while any player is offline', async () => {
-		mocks.requireAllPlayersOnline.mockResolvedValue(
-			new Response(JSON.stringify({ code: 'GAME_PAUSED' }), {
-				status: 409,
-				headers: { 'Content-Type': 'application/json' }
-			})
-		);
+	it('allows voting while another player is temporarily disconnected', async () => {
+		mocks.transaction.mockResolvedValue({
+			currentRound: { id: 11, round: 1 },
+			chipBalance: 1,
+			completed: false,
+			votingResult: null,
+			submittedPlayers: [{ playerId: 7, color: '紅', colorCode: '#EF4444' }]
+		});
 
 		const response = await POST({
 			request: createRequest(),
 			params: { name: '123456' }
 		} as never);
 
-		expect(response.status).toBe(409);
-		expect(await response.json()).toEqual({ code: 'GAME_PAUSED' });
-		expect(mocks.transaction).not.toHaveBeenCalled();
+		expect(response.status).toBe(200);
+		expect(mocks.transaction).toHaveBeenCalled();
 	});
 
 	it('acknowledges a committed vote when progress broadcasting fails', async () => {
@@ -173,7 +173,7 @@ describe('online voting database constraints', () => {
 		);
 	});
 
-	it('documents that active games retain seats and wait for every disconnected player', () => {
+	it('documents that active games retain seats and wait only for explicitly departed players', () => {
 		const endpoint = readFileSync(
 			resolve(process.cwd(), 'src/routes/api/room/[name]/online-voting/+server.ts'),
 			'utf8'
@@ -181,8 +181,8 @@ describe('online voting database constraints', () => {
 		const rules = readFileSync(resolve(process.cwd(), 'docs/RULE.md'), 'utf8');
 
 		expect(endpoint).toContain('席位與投票資格不變');
-		expect(endpoint).toContain('等所有人重新連線才公布結果');
-		expect(rules).toContain('另開分頁瀏覽其他網站不算離線');
+		expect(endpoint).toContain('明確離開房間的玩家重新加入前');
+		expect(rules).toContain('手機縮小、背景休眠、網路短暫中斷');
 		expect(rules).toContain('不設定離房期限，也不因人數不足自動結束');
 	});
 });

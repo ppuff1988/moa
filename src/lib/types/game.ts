@@ -1,5 +1,7 @@
 // Game-related type definitions
 
+export type RoomPresence = 'active' | 'left';
+
 export interface Player {
 	id: number | string;
 	userId: number;
@@ -14,6 +16,7 @@ export interface Player {
 	isHost: boolean;
 	isReady: boolean;
 	isOnline: boolean;
+	roomPresence?: RoomPresence;
 	leftAt?: string | Date | null;
 	avatar?: string | null; // Player's avatar URL
 }

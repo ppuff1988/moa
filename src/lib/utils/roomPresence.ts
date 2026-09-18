@@ -17,7 +17,8 @@ export function mergeRoomPresence(currentPlayers: Player[], incomingPlayers: Pla
 		return {
 			...currentPlayer,
 			isOnline: incomingPlayer.isOnline,
-			leftAt: incomingPlayer.leftAt
+			roomPresence: incomingPlayer.roomPresence ?? currentPlayer.roomPresence,
+			leftAt: incomingPlayer.leftAt === undefined ? currentPlayer.leftAt : incomingPlayer.leftAt
 		};
 	});
 }

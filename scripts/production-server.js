@@ -156,7 +156,7 @@ try {
 				const gameId = game.id;
 
 				const playerResult = await pool.query(
-					'SELECT * FROM game_players WHERE game_id = $1 AND user_id = $2',
+					"SELECT * FROM game_players WHERE game_id = $1 AND user_id = $2 AND room_presence = 'active' AND left_at IS NULL",
 					[gameId, userId]
 				);
 
@@ -204,7 +204,7 @@ try {
 					if (!socket.connected) return false;
 
 					const currentPlayerResult = await pool.query(
-						'SELECT id FROM game_players WHERE game_id = $1 AND user_id = $2',
+						"SELECT id FROM game_players WHERE game_id = $1 AND user_id = $2 AND room_presence = 'active' AND left_at IS NULL",
 						[gameId, userId]
 					);
 					if (currentPlayerResult.rows.length === 0) {
@@ -216,8 +216,8 @@ try {
 					addRoomConnection(roomName, userId, socket.id);
 					// 更新玩家在線狀態
 					await pool.query(
-						'UPDATE game_players SET is_online = true, left_at = CASE WHEN $3::boolean THEN NULL ELSE left_at END, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
-						[gameId, userId, game.status === 'playing']
+						'UPDATE game_players SET is_online = true, last_active_at = NOW() WHERE game_id = $1 AND user_id = $2',
+						[gameId, userId]
 					);
 					if (!socket.connected) {
 						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
@@ -246,8 +246,9 @@ try {
 						gp.color_code,
 						gp.is_host,
 						gp.is_ready,
-						gp.is_online,
-						gp.left_at,
+							gp.is_online,
+							gp.room_presence,
+							gp.left_at,
 						gp.can_action,
 						gp.joined_at,
 						gp.last_active_at,
@@ -282,6 +283,7 @@ try {
 						isHost: p.is_host,
 						isReady: p.is_ready,
 						isOnline: p.is_online,
+						roomPresence: p.room_presence,
 						leftAt: p.left_at,
 						canAction: p.can_action,
 						joinedAt: p.joined_at,
@@ -349,8 +351,9 @@ try {
 							gp.color_code,
 							gp.is_host,
 							gp.is_ready,
-							gp.is_online,
-							gp.left_at,
+						gp.is_online,
+						gp.room_presence,
+						gp.left_at,
 							gp.can_action,
 							gp.joined_at,
 							gp.last_active_at,
@@ -388,6 +391,7 @@ try {
 							isHost: p.is_host,
 							isReady: p.is_ready,
 							isOnline: p.is_online,
+							roomPresence: p.room_presence,
 							leftAt: p.left_at,
 							canAction: p.can_action,
 							joinedAt: p.joined_at,
@@ -395,11 +399,6 @@ try {
 							nickname: p.nickname,
 							avatar: p.avatar
 						}))
-					});
-
-					socket.to(roomName).emit('player-offline', {
-						userId,
-						nickname
 					});
 
 					console.log(
@@ -424,7 +423,7 @@ try {
 			const roomName = socket.data.roomName;
 			if (roomName) {
 				try {
-					const wentOffline = await enqueuePresenceTransition(roomName, userId, async () => {
+					await enqueuePresenceTransition(roomName, userId, async () => {
 						if (!hasRoomSocket(roomName, userId, socket.id)) return false;
 						const remainingConnections = removeRoomConnection(roomName, userId, socket.id);
 						if (remainingConnections !== 0 || hasRoomConnection(roomName, userId)) return false;
@@ -440,11 +439,6 @@ try {
 						);
 						return true;
 					});
-
-					if (wentOffline) {
-						// 廣播玩家離線事件
-						io.to(roomName).emit('player-offline', { userId });
-					}
 				} catch (error) {
 					console.error('[Socket] 更新離線狀態錯誤:', error);
 				}

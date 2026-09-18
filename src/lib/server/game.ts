@@ -9,7 +9,7 @@ import {
 	gameActions
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { requireAllPlayersOnline } from './api-helpers';
+import { requireAllPlayersPresent } from './api-helpers';
 import { getNextRoundStarter } from './game-turn-order';
 import { COLOR_MAP, VALID_COLORS } from './constants';
 
@@ -154,6 +154,45 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 			throw new Error('遊戲不存在');
 		}
 
+		const existingPlayer = await tx
+			.select()
+			.from(gamePlayers)
+			.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
+			.limit(1);
+		const [userInfo] = await tx.select().from(user).where(eq(user.id, userId)).limit(1);
+
+		if (!userInfo) {
+			throw new Error('用戶不存在');
+		}
+
+		const departedPlayer = existingPlayer[0];
+		const hasDeparted =
+			departedPlayer !== undefined &&
+			(departedPlayer.roomPresence === 'left' || departedPlayer.leftAt !== null);
+		if (hasDeparted && (game.status === 'waiting' || game.status === 'playing')) {
+			const [reactivatedPlayer] = await tx
+				.update(gamePlayers)
+				.set({
+					leftAt: null,
+					roomPresence: 'active',
+					isOnline: false,
+					lastActiveAt: new Date()
+				})
+				.where(eq(gamePlayers.id, departedPlayer.id))
+				.returning();
+
+			return {
+				id: reactivatedPlayer.id,
+				userId,
+				nickname: userInfo.nickname,
+				avatar: userInfo.avatar,
+				isHost: reactivatedPlayer.isHost,
+				isReady: reactivatedPlayer.isReady,
+				color: reactivatedPlayer.color,
+				roleId: reactivatedPlayer.roleId
+			};
+		}
+
 		if (game.status !== 'waiting') {
 			throw new Error('遊戲已開始，無法加入');
 		}
@@ -162,20 +201,8 @@ export async function joinGame(gameId: string, userId: number, isHost: boolean =
 			throw new Error('房間已滿');
 		}
 
-		const existingPlayer = await tx
-			.select()
-			.from(gamePlayers)
-			.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)))
-			.limit(1);
-
 		if (existingPlayer.length > 0) {
 			throw new Error('玩家已在遊戲中');
-		}
-
-		const [userInfo] = await tx.select().from(user).where(eq(user.id, userId)).limit(1);
-
-		if (!userInfo) {
-			throw new Error('用戶不存在');
 		}
 
 		const [player] = await tx
@@ -227,6 +254,7 @@ export async function getGameState(gameId: string) {
 			isHost: gamePlayers.isHost,
 			isReady: gamePlayers.isReady,
 			isOnline: gamePlayers.isOnline,
+			roomPresence: gamePlayers.roomPresence,
 			leftAt: gamePlayers.leftAt,
 			canAction: gamePlayers.canAction,
 			joinedAt: gamePlayers.joinedAt,
@@ -246,18 +274,12 @@ export async function getGameState(gameId: string) {
 }
 
 // 更新玩家在線狀態
-export async function updatePlayerOnlineStatus(
-	gameId: string,
-	userId: number,
-	isOnline: boolean,
-	restoreSeat = false
-) {
+export async function updatePlayerOnlineStatus(gameId: string, userId: number, isOnline: boolean) {
 	await db
 		.update(gamePlayers)
 		.set({
 			isOnline,
-			lastActiveAt: new Date(),
-			...(isOnline && restoreSeat ? { leftAt: null } : {})
+			lastActiveAt: new Date()
 		})
 		.where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
 }
@@ -472,9 +494,9 @@ export async function startAutoAssignedGame(gameId: string) {
 			throw new Error('遊戲已經開始');
 		}
 
-		const pauseResponse = await requireAllPlayersOnline(gameId, tx, true);
+		const pauseResponse = await requireAllPlayersPresent(gameId, tx, true);
 		if (pauseResponse) {
-			throw new Error('有玩家離線，請等待所有玩家重新連線');
+			throw new Error('有玩家已離開房間，請等待玩家重新加入');
 		}
 
 		const players = await tx

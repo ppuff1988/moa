@@ -23,6 +23,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			.where(
 				and(
 					eq(gamePlayers.userId, locals.user.id),
+					eq(gamePlayers.roomPresence, 'active'),
 					isNull(gamePlayers.leftAt) // 只查詢未離開的遊戲
 				)
 			)

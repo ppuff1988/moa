@@ -83,7 +83,13 @@ export async function getPlayersWithRoles(
 		.from(gamePlayers)
 		.leftJoin(roles, eq(gamePlayers.roleId, roles.id))
 		.innerJoin(user, eq(gamePlayers.userId, user.id))
-		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+		.where(
+			and(
+				eq(gamePlayers.gameId, gameId),
+				eq(gamePlayers.roomPresence, 'active'),
+				isNull(gamePlayers.leftAt)
+			)
+		);
 }
 
 /**

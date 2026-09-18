@@ -110,4 +110,57 @@ describe('joinGame', () => {
 		expect(insertedPlayers[0]).toMatchObject({ isOnline: false });
 		expect(game.playerCount).toBe(8);
 	});
+
+	it('房間狀態已是 left 時即使 leftAt 缺失也能恢復原座位', async () => {
+		const game = { id: 'game-1', status: 'playing', playerCount: 8 };
+		const departedPlayer = {
+			id: 18,
+			gameId: 'game-1',
+			userId: 101,
+			roomPresence: 'left',
+			leftAt: null,
+			isHost: false,
+			isReady: true,
+			color: '紅',
+			roleId: 3
+		};
+		const reactivatedPlayer = { ...departedPlayer, roomPresence: 'active' as const };
+		const setMock = vi.fn();
+		const updateMock = vi.fn(() => ({
+			set: setMock.mockReturnValue({
+				where: vi.fn(() => ({ returning: async () => [reactivatedPlayer] }))
+			})
+		}));
+
+		const transaction = {
+			select: vi.fn(() => ({
+				from: (table: unknown) => ({
+					where: () => ({
+						limit: () => {
+							const rows =
+								table === games
+									? [game]
+									: table === gamePlayers
+										? [departedPlayer]
+										: [{ nickname: '玩家一', avatar: null }];
+							const promise = Promise.resolve(rows);
+							return {
+								for: () => promise,
+								then: promise.then.bind(promise)
+							};
+						}
+					})
+				})
+			})),
+			update: updateMock
+		};
+		dbMock.transaction.mockImplementation(async (callback) => callback(transaction));
+
+		const result = await joinGame('game-1', 101);
+
+		expect(result).toMatchObject({ id: 18, userId: 101, roleId: 3, color: '紅' });
+		expect(setMock).toHaveBeenCalledWith(
+			expect.objectContaining({ leftAt: null, roomPresence: 'active' })
+		);
+	});
 });

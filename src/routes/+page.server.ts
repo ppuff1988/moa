@@ -24,7 +24,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 			})
 			.from(gamePlayers)
 			.innerJoin(games, eq(gamePlayers.gameId, games.id))
-			.where(and(eq(gamePlayers.userId, locals.user.id), isNull(gamePlayers.leftAt)))
+			.where(
+				and(
+					eq(gamePlayers.userId, locals.user.id),
+					eq(gamePlayers.roomPresence, 'active'),
+					isNull(gamePlayers.leftAt)
+				)
+			)
 			.limit(1);
 
 		if (gameData) {

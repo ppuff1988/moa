@@ -12,7 +12,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			const activePlayers = await transaction
 				.select({ id: gamePlayers.id })
 				.from(gamePlayers)
-				.where(and(eq(gamePlayers.gameId, game.id), isNull(gamePlayers.leftAt)));
+				.where(
+					and(
+						eq(gamePlayers.gameId, game.id),
+						eq(gamePlayers.roomPresence, 'active'),
+						isNull(gamePlayers.leftAt)
+					)
+				);
 			const actionOrder = Array.isArray(currentRound.actionOrder)
 				? (currentRound.actionOrder as number[])
 				: [];

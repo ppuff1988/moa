@@ -29,8 +29,8 @@
 		<button class="history-btn" on:click={onOpenHistory}> 📜 查看行動歷史 </button>
 	{/if}
 
-	<!-- 離開房間按鈕（waiting 狀態或遊戲結束時顯示） -->
-	{#if gameStatus === 'waiting' || gameStatus === 'finished'}
+	<!-- 明確離開房間按鈕；遊戲進行中離開後等待玩家重新加入 -->
+	{#if gameStatus === 'waiting' || gameStatus === 'playing' || gameStatus === 'finished'}
 		<ActionButton
 			size="compact"
 			variant="destructive"

@@ -36,7 +36,7 @@ describe('current action transaction guard', () => {
 	let roundPhase = 'action';
 	let actionOrder: number[] = [11];
 	let activePlayerIds: number[] = [11, 99];
-	let offlinePlayerIds: number[] = [];
+	let leftRoomPlayerIds: number[] = [];
 	let gameStatus = 'playing';
 	let playerExists = true;
 
@@ -45,7 +45,7 @@ describe('current action transaction guard', () => {
 		roundPhase = 'action';
 		actionOrder = [11];
 		activePlayerIds = [11, 99];
-		offlinePlayerIds = [];
+		leftRoomPlayerIds = [];
 		gameStatus = 'playing';
 		playerExists = true;
 		getUserFromJWTMock.mockResolvedValue({ id: 7, email: 'user@example.com' });
@@ -58,7 +58,8 @@ describe('current action transaction guard', () => {
 				if (selection) {
 					return activePlayerIds.map((id) => ({
 						id,
-						isOnline: !offlinePlayerIds.includes(id)
+						isOnline: true,
+						roomPresence: leftRoomPlayerIds.includes(id) ? 'left' : 'active'
 					}));
 				}
 				return playerExists
@@ -200,8 +201,8 @@ describe('current action transaction guard', () => {
 		if ('error' in result) expect(result.error.status).toBe(409);
 	});
 
-	it('任何仍在場玩家離線時暫停並拒絕執行動作', async () => {
-		offlinePlayerIds = [99];
+	it('明確離開房間時暫停並拒絕執行動作', async () => {
+		leftRoomPlayerIds = [99];
 		const guard = getGuard();
 		expect(guard).toBeTypeOf('function');
 		if (!guard) return;

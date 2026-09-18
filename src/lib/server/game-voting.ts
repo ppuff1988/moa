@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { PublishedVotingResult } from '$lib/types/game';
 import type { db } from './db';
 import {
@@ -75,9 +75,9 @@ export async function getOnlineVotingProgress(
 ) {
 	const submittedPlayers = await getSubmittedOnlineVotingPlayers(executor, roundId);
 	const activePlayers = await executor
-		.select({ id: gamePlayers.id, isOnline: gamePlayers.isOnline })
+		.select({ id: gamePlayers.id, roomPresence: gamePlayers.roomPresence })
 		.from(gamePlayers)
-		.where(and(eq(gamePlayers.gameId, gameId), isNull(gamePlayers.leftAt)));
+		.where(eq(gamePlayers.gameId, gameId));
 	const submittedPlayerIds = new Set(
 		submittedPlayers.map((submittedPlayer) => submittedPlayer.playerId)
 	);
@@ -88,14 +88,15 @@ export async function getOnlineVotingProgress(
 		submittedPlayers,
 		totalPlayers: quorumPlayerIds.size,
 		completed: activePlayers.every(
-			(activePlayer) => activePlayer.isOnline && submittedPlayerIds.has(activePlayer.id)
+			(activePlayer) =>
+				activePlayer.roomPresence === 'active' && submittedPlayerIds.has(activePlayer.id)
 		)
 	};
 }
 
 /**
  * 在呼叫端已鎖定回合列的 transaction 內重新計算投票門檻並完成結算。
- * 暫時斷線玩家仍是 active，且回來前即使全員已提交也不公布結果。
+ * 暫時斷線玩家仍是 active；明確離開房間的玩家重新加入前不公布結果。
  */
 export async function finalizeOnlineVotingIfComplete(
 	executor: VotingTransaction,

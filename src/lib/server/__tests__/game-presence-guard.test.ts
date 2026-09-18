@@ -16,6 +16,7 @@ vi.mock('../lucia', () => ({
 import * as apiHelpers from '../api-helpers';
 
 type PresenceGuard = (gameId: string) => Promise<Response | null>;
+type PlayerPresence = { isOnline: boolean; roomPresence: 'active' | 'left' };
 
 describe('遊戲階段在線狀態 guard', () => {
 	beforeEach(() => {
@@ -23,18 +24,21 @@ describe('遊戲階段在線狀態 guard', () => {
 	});
 
 	function getGuard(): PresenceGuard | undefined {
-		return (apiHelpers as unknown as { requireAllPlayersOnline?: PresenceGuard })
-			.requireAllPlayersOnline;
+		return (apiHelpers as unknown as { requireAllPlayersPresent?: PresenceGuard })
+			.requireAllPlayersPresent;
 	}
 
-	function mockPlayers(players: Array<{ isOnline: boolean }>) {
+	function mockPlayers(players: PlayerPresence[]) {
 		dbMock.select.mockReturnValue({
 			from: () => ({ where: () => Promise.resolve(players) })
 		});
 	}
 
-	it('全部玩家在線時允許進行下一步', async () => {
-		mockPlayers([{ isOnline: true }, { isOnline: true }]);
+	it('暫時斷線但仍在房間的玩家不會阻擋下一步', async () => {
+		mockPlayers([
+			{ isOnline: false, roomPresence: 'active' },
+			{ isOnline: true, roomPresence: 'active' }
+		]);
 		const guard = getGuard();
 		expect(guard).toBeTypeOf('function');
 		if (!guard) return;
@@ -42,8 +46,11 @@ describe('遊戲階段在線狀態 guard', () => {
 		expect(await guard('game-1')).toBeNull();
 	});
 
-	it('任何仍在場玩家離線時回傳 GAME_PAUSED', async () => {
-		mockPlayers([{ isOnline: true }, { isOnline: false }]);
+	it('明確離開房間的玩家會讓遊戲等待其回來', async () => {
+		mockPlayers([
+			{ isOnline: false, roomPresence: 'left' },
+			{ isOnline: true, roomPresence: 'active' }
+		]);
 		const guard = getGuard();
 		expect(guard).toBeTypeOf('function');
 		if (!guard) return;
