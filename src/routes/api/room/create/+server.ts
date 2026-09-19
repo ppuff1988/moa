@@ -17,7 +17,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: '無效的 JSON 格式' }, { status: 400 });
 	}
 
-	const { password, autoAssignRolesAndColors = false, onlineVotingEnabled = false } = requestBody;
+	const {
+		password,
+		autoAssignRolesAndColors = false,
+		onlineVotingEnabled = false,
+		seatingMode = 'random'
+	} = requestBody;
+	if (!['random', 'manual'].includes(seatingMode)) {
+		return json({ message: '座位模式必須為隨機或依現場座位' }, { status: 400 });
+	}
 
 	// 驗證密碼輸入
 	if (!password) {
@@ -44,7 +52,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			password,
 			user.id,
 			autoAssignRolesAndColors,
-			onlineVotingEnabled
+			onlineVotingEnabled,
+			seatingMode
 		);
 
 		// 房主自動加入遊戲
@@ -57,6 +66,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				roomName: game.roomName,
 				autoAssignRolesAndColors: game.autoAssignRolesAndColors,
 				onlineVotingEnabled: game.onlineVotingEnabled,
+				seatingMode: game.seatingMode,
 				player
 			},
 			{ status: 201 }

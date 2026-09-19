@@ -51,7 +51,7 @@ async function postJson<T>(
 	return responseJson<T>(await page.request.post(path, { data }), expectedStatus, `POST ${path}`);
 }
 
-test('8 人遊戲完成三輪、鑑人並向所有玩家顯示最終結果', async ({ browser }) => {
+test('8 人遊戲完成三輪、鑑人並向所有玩家顯示最終結果', async ({ browser }, testInfo) => {
 	test.setTimeout(300_000);
 
 	const timestamp = Date.now();
@@ -68,6 +68,7 @@ test('8 人遊戲完成三輪、鑑人並向所有玩家顯示最終結果', asy
 		roleName: ''
 	}));
 	let roomName: string | undefined;
+	let fixedSeats: number[] | undefined;
 
 	try {
 		await createTestUsersInDatabase(pages[0], users);
@@ -204,7 +205,89 @@ test('8 人遊戲完成三輪、鑑人並向所有玩家顯示最終結果', asy
 			);
 			expect(discussionState).toMatchObject({ phase: 'discussion', round });
 
+			const discussion = await getJson<{
+				seatOrder: number[];
+				players: Array<{ playerId: number; actionPosition: number; speakingPosition: number }>;
+			}>(participants[0].page, `/api/room/${roomName}/discussion?round=${round}`);
+			fixedSeats ??= discussion.seatOrder;
+			expect(discussion.seatOrder).toEqual(fixedSeats);
+			expect(
+				[...discussion.players]
+					.sort((a, b) => a.actionPosition - b.actionPosition)
+					.map((p) => p.playerId)
+			).toEqual([...actedPlayerIds]);
+			const lastActor = [...actedPlayerIds].at(-1)!;
+			expect(discussion.players[0].playerId).toBe(
+				fixedSeats[(fixedSeats.indexOf(lastActor) + 1) % 8]
+			);
+
+			const notebookPage = participants[0].page;
+			await notebookPage.setViewportSize({ width: 390, height: 844 });
+			await notebookPage.goto(`/room/${roomName}/game`);
+			await expect(notebookPage.getByText('私人筆記・只有你看得到')).toBeVisible();
+			await notebookPage
+				.locator('.player-heading')
+				.filter({ hasText: participants[1].nickname })
+				.click();
+			await notebookPage.getByLabel('備註（選填）').fill(`第 ${round} 輪的私人推理`);
+			await expect
+				.poll(async () => {
+					const own = await getJson<{ notes: Array<{ memo: string }> }>(
+						notebookPage,
+						`/api/room/${roomName}/discussion-notes?round=${round}`
+					);
+					return own.notes[0]?.memo;
+				})
+				.toBe(`第 ${round} 輪的私人推理`);
+			expect(
+				(
+					await getJson<{ notes: unknown[] }>(
+						participants[1].page,
+						`/api/room/${roomName}/discussion-notes?round=${round}`
+					)
+				).notes
+			).toEqual([]);
+			await notebookPage.reload();
+			await notebookPage
+				.locator('.player-heading')
+				.filter({ hasText: participants[1].nickname })
+				.click();
+			await expect(notebookPage.getByLabel('備註（選填）')).toHaveValue(`第 ${round} 輪的私人推理`);
+			if (round === 1) {
+				for (const width of [375, 390, 430]) {
+					await notebookPage.setViewportSize({ width, height: 844 });
+					expect(
+						await notebookPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+					).toBe(true);
+				}
+				await notebookPage.setViewportSize({ width: 390, height: 844 });
+				await notebookPage.screenshot({
+					path: testInfo.outputPath('discussion-mobile.png'),
+					fullPage: true
+				});
+			}
+			if (round > 1) {
+				await notebookPage.getByLabel('筆記回合').selectOption('1');
+				await expect(notebookPage.getByLabel('備註（選填）')).toHaveValue('第 1 輪的私人推理');
+				await notebookPage.getByLabel('筆記回合').selectOption(String(round));
+				await expect(notebookPage.getByLabel('備註（選填）')).toHaveValue(
+					`第 ${round} 輪的私人推理`
+				);
+			}
+
 			await postJson(participants[0].page, `/api/room/${roomName}/start-voting`);
+			await notebookPage.goto(`/room/${roomName}/game`);
+			const allocation = notebookPage.locator('.vote-input').first();
+			await allocation.fill('3');
+			await notebookPage.getByRole('button', { name: /私人筆記/ }).click();
+			await notebookPage
+				.locator('.player-heading')
+				.filter({ hasText: participants[1].nickname })
+				.click();
+			await expect(notebookPage.getByLabel('備註（選填）')).toHaveValue(`第 ${round} 輪的私人推理`);
+			if (round > 1) await notebookPage.getByLabel('筆記回合').selectOption('1');
+			await notebookPage.getByRole('button', { name: /私人筆記/ }).click();
+			await expect(allocation).toHaveValue('3');
 			const fakeArtifact = artifactPayload.artifacts.find(
 				(artifact) => truthByArtifactId.get(artifact.id) === false
 			);
@@ -273,10 +356,11 @@ test('8 人遊戲完成三輪、鑑人並向所有玩家顯示最終結果', asy
 		expect(settlement.needIdentification).toBe(true);
 		await expect(participants[0].page.locator('.identification-phase')).toBeVisible();
 
-		const players = (
-			await getJson<PlayersResponse>(participants[0].page, `/api/room/${roomName}/players`)
-		).players;
-		const playerByRole = new Map(players.map((player) => [player.roleName, player]));
+		// The public players endpoint correctly hides other players' roles.
+		// Use the role assignments owned by this test's individual sessions.
+		const playerByRole = new Map(
+			participants.map((player) => [player.roleName, { id: player.playerId }])
+		);
 		const voteFieldByRole = new Map<string, 'laoChaoFeng' | 'xuYuan' | 'fangZhen'>([
 			['許愿', 'laoChaoFeng'],
 			['黃煙煙', 'laoChaoFeng'],

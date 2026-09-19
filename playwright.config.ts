@@ -24,7 +24,7 @@ export default defineConfig({
 			],
 
 	use: {
-		baseURL: 'http://localhost:5173',
+		baseURL: process.env.API_BASE_URL || 'http://localhost:5173',
 		trace: process.env.PLAYWRIGHT_SMOKE ? 'retain-on-failure' : 'on',
 		screenshot: process.env.PLAYWRIGHT_SMOKE ? 'only-on-failure' : 'on',
 		video: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
@@ -55,7 +55,7 @@ export default defineConfig({
 		? undefined // CI 環境中不自動啟動伺服器，由 CI workflow 手動管理
 		: {
 				command: 'npm run dev',
-				url: 'http://localhost:5173',
+				url: process.env.API_BASE_URL || 'http://localhost:5173',
 				reuseExistingServer: true,
 				timeout: 120000,
 				stdout: 'pipe',

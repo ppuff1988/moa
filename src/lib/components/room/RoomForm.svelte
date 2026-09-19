@@ -8,6 +8,7 @@
 	let roomPassword = '';
 	let autoAssignRolesAndColors = false;
 	let onlineVotingEnabled = false;
+	let seatingMode: 'random' | 'manual' = 'random';
 	let error = '';
 	let isLoading = false;
 
@@ -49,7 +50,7 @@
 			const apiEndpoint = mode === 'create' ? '/api/room/create' : '/api/room/join';
 			const body =
 				mode === 'create'
-					? { password: roomPassword, autoAssignRolesAndColors, onlineVotingEnabled }
+					? { password: roomPassword, autoAssignRolesAndColors, onlineVotingEnabled, seatingMode }
 					: { roomName: roomName.trim(), password: roomPassword };
 
 			const response = await fetch(apiEndpoint, {
@@ -111,6 +112,16 @@
 			/>
 
 			{#if mode === 'create'}
+				<fieldset class="seating-options">
+					<legend>座位安排</legend>
+					<label
+						><input type="radio" bind:group={seatingMode} value="random" disabled={isLoading} /> 隨機座位（適合線上）</label
+					>
+					<label
+						><input type="radio" bind:group={seatingMode} value="manual" disabled={isLoading} /> 依現場座位（房主排列）</label
+					>
+					<small>開局後固定三輪，與線上投票、自動選角分開設定。</small>
+				</fieldset>
 				<label class="checkbox-field">
 					<input type="checkbox" bind:checked={autoAssignRolesAndColors} disabled={isLoading} />
 					<span>
@@ -156,6 +167,23 @@
 </div>
 
 <style>
+	.seating-options {
+		display: grid;
+		gap: 0.5rem;
+		border: 1px solid hsl(var(--border) / 0.3);
+		border-radius: 8px;
+		padding: 0.75rem;
+	}
+	.seating-options label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 44px;
+		cursor: pointer;
+	}
+	.seating-options small {
+		line-height: 1.5;
+	}
 	.room-form-wrapper {
 		position: relative;
 		z-index: 1;
@@ -168,6 +196,10 @@
 		max-width: 500px;
 		width: 100%;
 		margin: 0 2rem;
+		max-height: calc(100vh - 2rem);
+		max-height: calc(100dvh - 2rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		transition: var(--transition-elegant);
 	}
 
@@ -364,6 +396,12 @@
 
 	/* 響應式設計 */
 	@media (max-width: 480px) {
+		.room-form-wrapper {
+			min-width: 0;
+			width: calc(100% - 2rem);
+			margin: 0 1rem;
+		}
+
 		.room-form-container {
 			padding: 1rem;
 		}
