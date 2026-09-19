@@ -114,25 +114,55 @@
 			{#if mode === 'create'}
 				<fieldset class="seating-options">
 					<legend>座位安排</legend>
-					<label
-						><input type="radio" bind:group={seatingMode} value="random" disabled={isLoading} /> 隨機座位（適合線上）</label
-					>
-					<label
-						><input type="radio" bind:group={seatingMode} value="manual" disabled={isLoading} /> 依現場座位（房主排列）</label
-					>
-					<small>開局後固定三輪，與線上投票、自動選角分開設定。</small>
+					<label class="room-option-card" class:active={seatingMode === 'random'}>
+						<input
+							class="room-option-input"
+							type="radio"
+							bind:group={seatingMode}
+							value="random"
+							disabled={isLoading}
+						/>
+						<span class="room-option-copy">
+							<strong>隨機座位</strong>
+							<small>適合線上遊戲，開局時由系統隨機安排。</small>
+						</span>
+					</label>
+					<label class="room-option-card" class:active={seatingMode === 'manual'}>
+						<input
+							class="room-option-input"
+							type="radio"
+							bind:group={seatingMode}
+							value="manual"
+							disabled={isLoading}
+						/>
+						<span class="room-option-copy">
+							<strong>依現場座位</strong>
+							<small>房主依現場座位排列，開局後固定。</small>
+						</span>
+					</label>
+					<p class="option-help">座位安排與線上投票、自動選角分開設定。</p>
 				</fieldset>
-				<label class="checkbox-field">
-					<input type="checkbox" bind:checked={autoAssignRolesAndColors} disabled={isLoading} />
-					<span>
+				<label class="room-option-card" class:active={autoAssignRolesAndColors}>
+					<input
+						class="room-option-input"
+						type="checkbox"
+						bind:checked={autoAssignRolesAndColors}
+						disabled={isLoading}
+					/>
+					<span class="room-option-copy">
 						<strong>自動分派角色與顏色</strong>
 						<small>所有玩家準備後，系統會在遊戲開始時隨機分派。</small>
 					</span>
 				</label>
 
-				<label class="checkbox-field">
-					<input type="checkbox" bind:checked={onlineVotingEnabled} disabled={isLoading} />
-					<span>
+				<label class="room-option-card" class:active={onlineVotingEnabled}>
+					<input
+						class="room-option-input"
+						type="checkbox"
+						bind:checked={onlineVotingEnabled}
+						disabled={isLoading}
+					/>
+					<span class="room-option-copy">
 						<strong>線上投票</strong>
 						<small>每位玩家自行分配籌碼；未使用可累積，第三輪必須全部投出。</small>
 					</span>
@@ -169,20 +199,79 @@
 <style>
 	.seating-options {
 		display: grid;
-		gap: 0.5rem;
-		border: 1px solid hsl(var(--border) / 0.3);
-		border-radius: 8px;
-		padding: 0.75rem;
+		gap: 0.625rem;
+		border: 0;
+		margin: 0;
+		padding: 0;
+		min-inline-size: 0;
 	}
-	.seating-options label {
+
+	.seating-options legend {
+		padding: 0;
+		margin-bottom: 0.5rem;
+		color: hsl(var(--card-foreground));
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+
+	.room-option-card {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-height: 44px;
+		align-items: flex-start;
+		gap: 0.75rem;
+		min-height: 3.5rem;
+		padding: 0.875rem 1rem;
+		border: 1px solid hsl(var(--border) / 0.7);
+		border-radius: var(--radius);
+		background: hsl(var(--muted) / 0.2);
+		color: hsl(var(--card-foreground));
 		cursor: pointer;
+		transition: var(--transition-elegant);
 	}
-	.seating-options small {
+
+	.room-option-card:hover {
+		border-color: hsl(var(--secondary) / 0.8);
+		background: hsl(var(--secondary) / 0.08);
+	}
+
+	.room-option-card.active {
+		border-color: hsl(var(--secondary));
+		background: hsl(var(--secondary) / 0.14);
+		box-shadow: 0 0 0 1px hsl(var(--secondary) / 0.25);
+	}
+
+	.room-option-input {
+		width: 1.125rem;
+		height: 1.125rem;
+		flex-shrink: 0;
+		margin: 0.15rem 0 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		accent-color: hsl(var(--secondary));
+	}
+
+	.room-option-copy {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.room-option-copy strong {
+		color: hsl(var(--card-foreground));
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+
+	.room-option-copy small,
+	.option-help {
+		color: hsl(var(--muted-foreground));
+		font-size: 0.8rem;
 		line-height: 1.5;
+	}
+
+	.option-help {
+		margin: 0.125rem 0 0;
 	}
 	.room-form-wrapper {
 		position: relative;
@@ -260,42 +349,6 @@
 	input:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
-	}
-
-	.checkbox-field {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		padding: 0.875rem 1rem;
-		border: 1px solid hsl(var(--border));
-		border-radius: var(--radius);
-		background: hsl(var(--muted) / 0.25);
-		cursor: pointer;
-	}
-
-	.checkbox-field input {
-		width: 1.1rem;
-		height: 1.1rem;
-		margin-top: 0.15rem;
-		accent-color: hsl(var(--secondary));
-		flex-shrink: 0;
-	}
-
-	.checkbox-field span {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.checkbox-field strong {
-		color: hsl(var(--card-foreground));
-		font-size: 0.95rem;
-	}
-
-	.checkbox-field small {
-		color: hsl(var(--muted-foreground));
-		font-size: 0.8rem;
-		line-height: 1.4;
 	}
 
 	.error-message {
