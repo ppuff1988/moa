@@ -85,8 +85,8 @@ openssl rand -base64 48
 #### 第 3 步：啟動服務
 
 ```bash
-# 使用 prod 配置文件啟動
-docker compose -f docker-compose.prod.yml up -d
+# 執行 migrations 後啟動指定版本
+./deploy-prod.sh
 
 # 查看服務狀態
 docker compose -f docker-compose.prod.yml ps
@@ -109,49 +109,15 @@ curl http://localhost:5173/api/health
 
 ### 方法 2: 使用自動化腳本
 
-創建一個生產部署腳本 `deploy-prod.sh`：
+使用 repository 內的 [deploy-prod.sh](../deploy-prod.sh)，不要另建略過 migration 的啟動腳本：
 
 ```bash
-#!/bin/bash
-set -e
-
-echo "🚀 開始生產環境部署..."
-
-# 檢查 .env
-if [ ! -f .env ]; then
-    echo "❌ 錯誤：找不到 .env 文件！"
-    exit 1
-fi
-
-# 拉取最新鏡像
-echo "📥 拉取最新 Docker 鏡像..."
-docker compose -f docker-compose.prod.yml pull
-
-# 停止舊服務
-echo "🛑 停止舊服務..."
-docker compose -f docker-compose.prod.yml down
-
-# 啟動新服務
-echo "🚀 啟動新服務..."
-docker compose -f docker-compose.prod.yml up -d
-
-# 等待服務啟動
-echo "⏳ 等待服務啟動..."
-sleep 15
-
-# 檢查狀態
-echo "📊 服務狀態："
-docker compose -f docker-compose.prod.yml ps
-
-echo "✅ 部署完成！"
-```
-
-使用方式：
-
-```bash
-chmod +x deploy-prod.sh
 ./deploy-prod.sh
 ```
+
+腳本會先執行所有尚未套用的編號 migration，再啟動新版服務。migration 失敗會保留舊服務；`SKIP_MIGRATION=true` 會中止部署。
+
+`0020_terminate_empty_unfinished_games.sql` 會在部署時把已無有效成員的未完成遊戲標記為 `terminated`，保留遊戲歷史；斷線成員及 `finished` 遊戲不受影響。詳見[全員離房終止與資料修正](development/empty-room-termination.md)。
 
 ---
 

@@ -53,6 +53,11 @@ if [ -z "${APP_IMAGE:-}" ] || [ -z "${WORKER_IMAGE:-}" ]; then
     exit 1
 fi
 
+if [ "${SKIP_MIGRATION:-false}" = "true" ]; then
+    echo "❌ 正式部署不可略過 migrations，避免 schema 或資料修正尚未套用"
+    exit 1
+fi
+
 # 先用正在運行容器的 immutable image ID 建立本機 rollback tag。
 # 舊版 compose 可能只記錄 moa:latest；若直接保存名稱，pull 後它會指向新版本，無法回復。
 PREVIOUS_APP_IMAGE_ID=$(docker inspect --format '{{.Image}}' moa_app_prod 2>/dev/null || true)
@@ -174,28 +179,22 @@ echo ""
 
 # 執行資料庫 Migrations
 echo "🔄 [4/5] 執行資料庫 Migrations..."
-SKIP_MIGRATION=${SKIP_MIGRATION:-false}
-
-if [ "$SKIP_MIGRATION" = "true" ]; then
-    echo "   ⏭️  跳過 migrations（SKIP_MIGRATION=true）"
+# 在 Docker 容器中執行 migrations，這樣可以訪問 Docker 網絡中的 'db' 主機
+echo "   使用 Docker 容器執行 migrations..."
+if docker run --rm \
+    --network moa_moa_network \
+    -v "$(pwd)/migrations:/app/migrations" \
+    -v "$(pwd)/scripts:/app/scripts" \
+    -v "$(pwd)/package.json:/app/package.json" \
+    -e DATABASE_URL="${DATABASE_URL}" \
+    -e NODE_ENV=production \
+    "${APP_IMAGE}" \
+    npm run db:migrate; then
+    echo "✅ Migrations 執行成功"
 else
-    # 在 Docker 容器中執行 migrations，這樣可以訪問 Docker 網絡中的 'db' 主機
-    echo "   使用 Docker 容器執行 migrations..."
-    if docker run --rm \
-        --network moa_moa_network \
-        -v "$(pwd)/migrations:/app/migrations" \
-        -v "$(pwd)/scripts:/app/scripts" \
-        -v "$(pwd)/package.json:/app/package.json" \
-        -e DATABASE_URL="${DATABASE_URL}" \
-        -e NODE_ENV=production \
-        "${APP_IMAGE}" \
-        npm run db:migrate; then
-        echo "✅ Migrations 執行成功"
-    else
-        echo "❌ Migrations 執行失敗！"
-        echo "   舊版本仍保持運行，不切換容器"
-        exit 1
-    fi
+    echo "❌ Migrations 執行失敗！"
+    echo "   舊版本仍保持運行，不切換容器"
+    exit 1
 fi
 echo ""
 

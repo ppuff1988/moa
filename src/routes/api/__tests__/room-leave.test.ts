@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { io as createSocket, type Socket } from 'socket.io-client';
 import { db } from '$lib/server/db';
-import { user, games, gamePlayers } from '$lib/server/db/schema';
+import {
+	user,
+	games,
+	gamePlayers,
+	gameRounds,
+	gameActions,
+	gameDiscussionNotes
+} from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { API_BASE, createTestUser, createTestRoom, joinTestRoom } from './helpers';
 
@@ -71,6 +78,9 @@ describe('Room Leave API', () => {
 		// 清理測試數據
 		for (const gameId of testGames) {
 			try {
+				await db.delete(gameDiscussionNotes).where(eq(gameDiscussionNotes.gameId, gameId));
+				await db.delete(gameActions).where(eq(gameActions.gameId, gameId));
+				await db.delete(gameRounds).where(eq(gameRounds.gameId, gameId));
 				await db.delete(gamePlayers).where(eq(gamePlayers.gameId, gameId));
 				await db.delete(games).where(eq(games.id, gameId));
 			} catch (error) {
@@ -88,6 +98,135 @@ describe('Room Leave API', () => {
 	});
 
 	describe('POST /api/room/[name]/leave', () => {
+		const leave = (roomName: string, actor: number) =>
+			fetch(`${API_BASE}/api/room/${roomName}/leave`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${testUsers[actor].token}` }
+			});
+
+		it.each(['waiting', 'selecting', 'playing'])(
+			'最後一人離開 %s 房間時標記終止',
+			async (status) => {
+				const room = await createTestRoom(testUsers[0].token);
+				testGames.push(room.gameId);
+				await db.update(games).set({ status }).where(eq(games.id, room.gameId));
+				const response = await leave(room.roomName, 0);
+				expect(response.status).toBe(200);
+				expect(await response.json()).toMatchObject({ gameEnded: true });
+				const [game] = await db.select().from(games).where(eq(games.id, room.gameId));
+				expect(game?.status).toBe('terminated');
+				expect(game?.finishedAt).toBeInstanceOf(Date);
+			}
+		);
+
+		it.each(['action', 'discussion', 'voting', 'result', 'identification', 'completed'] as const)(
+			'%s 階段全員同時離房只終止一次並保留歷史及筆記',
+			async (phase) => {
+				const room = await createTestRoom(testUsers[0].token);
+				testGames.push(room.gameId);
+				await joinTestRoom(testUsers[1].token, room.roomName, room.password);
+				const players = await db
+					.select()
+					.from(gamePlayers)
+					.where(eq(gamePlayers.gameId, room.gameId));
+				const seats = players.map((p) => p.id);
+				await db
+					.update(games)
+					.set({ status: 'playing', seatOrder: seats })
+					.where(eq(games.id, room.gameId));
+				const [round] = await db
+					.insert(gameRounds)
+					.values({ gameId: room.gameId, round: 1, phase, actionOrder: seats })
+					.returning();
+				await db.insert(gameActions).values({
+					gameId: room.gameId,
+					roundId: round.id,
+					playerId: seats[0],
+					ordering: 1,
+					actionData: { type: 'test' }
+				});
+				await db.insert(gameDiscussionNotes).values({
+					gameId: room.gameId,
+					roundId: round.id,
+					ownerPlayerId: seats[0],
+					subjectPlayerId: seats[1],
+					memo: '保留私人筆記'
+				});
+				const responses = await Promise.all([leave(room.roomName, 0), leave(room.roomName, 1)]);
+				expect(responses.map((r) => r.status)).toEqual([200, 200]);
+				const bodies = await Promise.all(responses.map((r) => r.json()));
+				expect(bodies.filter((body) => body.gameEnded)).toHaveLength(1);
+				const [game] = await db.select().from(games).where(eq(games.id, room.gameId));
+				expect(game).toMatchObject({ status: 'terminated', seatOrder: seats, playerCount: 2 });
+				const remaining = await db
+					.select()
+					.from(gamePlayers)
+					.where(eq(gamePlayers.gameId, room.gameId));
+				expect(remaining).toHaveLength(2);
+				expect(remaining.every((p) => p.roomPresence === 'left' && p.leftAt !== null)).toBe(true);
+				expect(
+					await db.select().from(gameActions).where(eq(gameActions.roundId, round.id))
+				).toHaveLength(1);
+				expect(
+					await db
+						.select()
+						.from(gameDiscussionNotes)
+						.where(eq(gameDiscussionNotes.roundId, round.id))
+				).toHaveLength(1);
+				const rejoin = await fetch(`${API_BASE}/api/room/join`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${testUsers[0].token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ roomName: room.roomName, password: room.password })
+				});
+				expect(rejoin.status).toBe(400);
+			}
+		);
+
+		it('finished 遊戲全員離房仍保留完成狀態與結束時間', async () => {
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+			const finishedAt = new Date('2026-09-01T00:00:00Z');
+			await db
+				.update(games)
+				.set({ status: 'finished', finishedAt })
+				.where(eq(games.id, room.gameId));
+			expect((await leave(room.roomName, 0)).status).toBe(200);
+			const [game] = await db.select().from(games).where(eq(games.id, room.gameId));
+			expect(game).toMatchObject({ status: 'finished', finishedAt });
+		});
+
+		it('最後一人離房與舊玩家重新加入競態不會產生已終止的有效成員', async () => {
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+			await joinTestRoom(testUsers[1].token, room.roomName, room.password);
+			await db.update(games).set({ status: 'playing' }).where(eq(games.id, room.gameId));
+			expect((await leave(room.roomName, 1)).status).toBe(200);
+			const [left, joined] = await Promise.all([
+				leave(room.roomName, 0),
+				fetch(`${API_BASE}/api/room/join`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${testUsers[1].token}`,
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ roomName: room.roomName, password: room.password })
+				})
+			]);
+			expect(left.status).toBe(200);
+			expect([200, 400]).toContain(joined.status);
+			const [game] = await db.select().from(games).where(eq(games.id, room.gameId));
+			const players = await db
+				.select()
+				.from(gamePlayers)
+				.where(eq(gamePlayers.gameId, room.gameId));
+			const active = players.filter((p) => p.roomPresence === 'active' && p.leftAt === null);
+			expect(game.status).toBe(joined.ok ? 'playing' : 'terminated');
+			expect(active).toHaveLength(joined.ok ? 1 : 0);
+		});
+
 		it('應該允許非房主玩家離開房間', async () => {
 			// 創建房間
 			const room = await createTestRoom(testUsers[0].token);
