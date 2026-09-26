@@ -1,6 +1,12 @@
 <script lang="ts">
 	import DiscussionDialog from './DiscussionDialog.svelte';
-	import { claimLabels, emptyNote, zodiacImage } from '$lib/utils/discussion';
+	import {
+		alignmentLabels,
+		alignmentOptions,
+		claimLabels,
+		emptyNote,
+		zodiacImage
+	} from '$lib/utils/discussion';
 	import type {
 		DiscussionData,
 		DiscussionPlayer,
@@ -77,10 +83,35 @@
 					>
 					<small>{summary(player.playerId)}</small></span
 				>
+				<span
+					class="alignment-badge"
+					class:good={note.alignment === 'good'}
+					class:bad={note.alignment === 'bad'}
+				>
+					{alignmentLabels[note.alignment ?? 'unknown']}
+				</span>
 				<span aria-hidden="true">{expanded === player.playerId ? '⌃' : '⌄'}</span>
 			</button>
 			{#if expanded === player.playerId}
 				<div class="editor">
+					<fieldset class="alignment-editor" aria-label={`${player.nickname}的陣營判斷`}>
+						<legend>我的陣營判斷</legend>
+						<div class="alignment-options">
+							{#each alignmentOptions as value (value)}
+								<button
+									type="button"
+									class:chosen={(note.alignment ?? 'unknown') === value}
+									class:good={value === 'good'}
+									class:bad={value === 'bad'}
+									aria-pressed={(note.alignment ?? 'unknown') === value}
+									disabled={!data.editable}
+									onclick={() => onedit(player.playerId, { field: 'alignment', value })}
+									>{alignmentLabels[value]}</button
+								>
+							{/each}
+						</div>
+						<p>個人推測，只有你看得到；依筆記回合保存。</p>
+					</fieldset>
 					{#each data.artifacts as artifact (artifact.id)}
 						{@const claim = note.claimedAttacked ? undefined : note.artifactClaims[artifact.id]}
 						<div class="artifact-row">
@@ -230,6 +261,80 @@
 	.editor {
 		padding: 12px;
 		border-top: 1px solid #79633c55;
+	}
+	.alignment-badge {
+		flex: none;
+		border: 1px solid #8b8578;
+		border-radius: 6px;
+		padding: 4px 6px;
+		font-size: 0.8rem;
+		color: #c8c1b4;
+		white-space: nowrap;
+	}
+	.alignment-badge.good {
+		color: #99cdaa;
+		border-color: #5e8c6d;
+	}
+	.alignment-badge.bad {
+		color: #ee9c8b;
+		border-color: #b96352;
+	}
+	.alignment-editor {
+		grid-column: 1 / -1;
+		min-width: 0;
+		margin: 0 0 12px;
+		padding: 0;
+		border: 0;
+	}
+	.alignment-editor legend {
+		padding: 0;
+		margin-bottom: 8px;
+		font-weight: 600;
+	}
+	.alignment-options {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+	.alignment-options button {
+		min-width: 0;
+		padding: 8px 4px;
+		font-size: 0.875rem;
+		background: #ffffff06;
+		border: 1px solid #79633c;
+	}
+	.alignment-options button + button {
+		border-left: 0;
+	}
+	.alignment-options button:first-child {
+		border-radius: 8px 0 0 8px;
+	}
+	.alignment-options button:last-child {
+		border-radius: 0 8px 8px 0;
+	}
+	.alignment-options .chosen {
+		background: #c6a664;
+		color: #1c1b19;
+		font-weight: 700;
+		box-shadow: inset 0 -3px 0 currentColor;
+	}
+	.alignment-options .chosen.good {
+		background: #345440;
+		color: #e0f1e3;
+	}
+	.alignment-options .chosen.bad {
+		background: #803c35;
+		color: #fff0eb;
+	}
+	.alignment-options button:focus-visible {
+		outline: 2px solid #dec18a;
+		outline-offset: 3px;
+		z-index: 1;
+	}
+	.alignment-editor p {
+		margin: 8px 0 0;
+		color: #c8c1b4;
+		font-size: 0.8rem;
+		line-height: 1.5;
 	}
 	.artifact-row {
 		display: grid;

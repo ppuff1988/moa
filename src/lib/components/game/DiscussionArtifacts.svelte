@@ -15,7 +15,9 @@
 			{@const result = claim ? claimLabels[claim] : '未鑑定'}
 			<li aria-label={`${artifact.animal}首：${result}`}>
 				<div class="animal">
-					<img src={zodiacImage(artifact.animal)} alt="" /><span>{artifact.animal}</span>
+					<img src={zodiacImage(artifact.animal)} alt="" /><span
+						>{artifact.animal}<span class="suffix">首</span></span
+					>
 				</div>
 				<span
 					class="result"
@@ -30,11 +32,11 @@
 
 <style>
 	.round-artifacts {
-		background: rgba(255, 255, 255, 0.075);
-		border: 1px solid rgba(255, 255, 255, 0.18);
+		background: #24221ed9;
+		border: 1px solid #79633c99;
 		border-radius: 12px;
 		backdrop-filter: blur(10px);
-		padding: 10px;
+		padding: 12px;
 		min-width: 0;
 	}
 	header {
@@ -73,6 +75,9 @@
 		align-items: center;
 		font-size: 0.875rem;
 	}
+	.suffix {
+		display: none;
+	}
 	img {
 		width: 30px;
 		height: 30px;
@@ -98,5 +103,43 @@
 	.unable {
 		color: #e4cf9e;
 		background: #c6a66420;
+	}
+	@media (min-width: 1024px) {
+		.round-artifacts {
+			padding: 16px;
+		}
+		header {
+			margin-bottom: 18px;
+		}
+		h3 {
+			font-size: 1rem;
+		}
+		ul {
+			gap: 0;
+		}
+		li {
+			gap: 10px;
+			padding: 0 4px;
+		}
+		li + li {
+			border-left: 1px solid #79633c40;
+		}
+		.animal {
+			flex-direction: column;
+			gap: 8px;
+			font-size: 0.9375rem;
+		}
+		.suffix {
+			display: inline;
+		}
+		img {
+			width: 48px;
+			height: 48px;
+			border-radius: 8px;
+		}
+		.result {
+			padding: 3px 4px;
+			font-size: 0.8125rem;
+		}
 	}
 </style>

@@ -1,8 +1,17 @@
 import type { DiscussionNote, NoteChange, NotePatch } from '$lib/types/discussion';
 
 export const claimLabels = { genuine: '真', fake: '偽', unable: '無法鑑定' } as const;
+export const alignmentOptions = ['good', 'unknown', 'bad'] as const;
+export const alignmentLabels = { good: '偏好人', unknown: '未判斷', bad: '偏壞人' } as const;
 export function emptyNote(subjectPlayerId: number): DiscussionNote {
-	return { subjectPlayerId, artifactClaims: {}, claimedAttacked: false, memo: '', version: 0 };
+	return {
+		subjectPlayerId,
+		artifactClaims: {},
+		claimedAttacked: false,
+		alignment: 'unknown',
+		memo: '',
+		version: 0
+	};
 }
 export function applyNoteChange(note: DiscussionNote, change: NoteChange): DiscussionNote {
 	if (change.field === 'claimedAttacked' && change.value)
@@ -53,6 +62,8 @@ export function parseNotePatch(input: unknown): NotePatch {
 		if (typeof change.value !== 'boolean') return invalid();
 	} else if (change.field === 'memo') {
 		if (typeof change.value !== 'string' || change.value.length > 500) return invalid();
+	} else if (change.field === 'alignment') {
+		if (!alignmentOptions.some((value) => value === change.value)) return invalid();
 	} else return invalid();
 	return data as unknown as NotePatch;
 }

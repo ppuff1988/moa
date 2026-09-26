@@ -46,13 +46,6 @@
 				)
 			: []
 	);
-	const actionPlayers = $derived(
-		data
-			? [...data.players]
-					.filter((p) => p.actionPosition !== null)
-					.sort((a, b) => a.actionPosition! - b.actionPosition!)
-			: []
-	);
 	const status = $derived(
 		Object.values($notes).some((e) => e.status === 'conflict')
 			? '有版本衝突'
@@ -165,17 +158,6 @@
 			<div class="discussion-layout">
 				<aside class="reference" aria-label="本輪參考資訊">
 					<DiscussionArtifacts artifacts={data.artifacts} myClaims={data.myClaims} />
-					<details class="order">
-						<summary>本輪行動順序 <span>{actionPlayers.length} 人</span></summary>
-						<ol>
-							{#each actionPlayers as player (player.playerId)}
-								<li>
-									<span class="dot" style:background={player.colorCode ?? '#aaa'}
-									></span>{player.actionPosition}. {player.nickname}
-								</li>
-							{/each}
-						</ol>
-					</details>
 				</aside>
 				<div class="notebook">
 					{#if data.notesAvailable}
@@ -283,38 +265,6 @@
 		margin-bottom: 12px;
 		color: #c8c1b4;
 	}
-	.order {
-		background: #ffffff06;
-		border: 1px solid #79633c99;
-		border-radius: 12px;
-		padding: 0 12px;
-	}
-	summary {
-		cursor: pointer;
-		min-height: 44px;
-		align-content: center;
-	}
-	ol {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px 8px;
-		list-style: none;
-		padding: 10px 0 0;
-		margin: 0;
-		border-top: 1px solid #ffffff18;
-	}
-	li {
-		font-size: 0.875rem;
-		overflow-wrap: anywhere;
-	}
-	.dot {
-		display: inline-block;
-		width: 10px;
-		height: 10px;
-		border: 1px solid #ffffff50;
-		border-radius: 50%;
-		margin-right: 4px;
-	}
 	.discussion-layout,
 	.reference {
 		display: grid;
@@ -324,14 +274,6 @@
 	.reference,
 	.notebook {
 		min-width: 0;
-	}
-	summary > span {
-		float: right;
-		color: #c8c1b4;
-		font-size: 0.8rem;
-	}
-	.order[open] {
-		padding-bottom: 12px;
 	}
 	@media (min-width: 1024px) {
 		.discussion-layout {
@@ -345,9 +287,6 @@
 		.round-select {
 			justify-content: flex-end;
 			gap: 12px;
-		}
-		ol {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 	.view-tabs {

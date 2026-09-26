@@ -1,14 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { applyNoteChange, parseNotePatch } from './discussion';
+import { applyNoteChange, emptyNote, parseNotePatch } from './discussion';
 
 describe('private note input', () => {
 	const base = { round: 1, subjectPlayerId: 7, expectedVersion: 0 };
+	it('starts with an undecided private alignment', () => {
+		expect(emptyNote(7)).toHaveProperty('alignment', 'unknown');
+	});
+	it.each(['good', 'unknown', 'bad'])('records %s without changing other notes', (value) => {
+		const patch = parseNotePatch({ ...base, change: { field: 'alignment', value } });
+		const note = { ...emptyNote(7), memo: '保留', artifactClaims: { 10: 'fake' as const } };
+		const updated = applyNoteChange(note, patch.change);
+		expect(updated).toEqual({ ...note, alignment: value });
+		expect(applyNoteChange(updated, { field: 'claimedAttacked', value: true })).toMatchObject({
+			alignment: value,
+			memo: '保留',
+			artifactClaims: {},
+			claimedAttacked: true
+		});
+	});
 	it('replaces a round attack statement when recording a new artifact claim', () => {
 		const patch = parseNotePatch({
 			...base,
 			change: { field: 'artifact', artifactId: 10, value: 'fake' }
 		});
 		const note = {
+			...emptyNote(7),
 			subjectPlayerId: 7,
 			version: 0,
 			memo: '',
@@ -22,6 +38,7 @@ describe('private note input', () => {
 	});
 	it('clears only the selected claim', () => {
 		const note = {
+			...emptyNote(7),
 			subjectPlayerId: 7,
 			version: 0,
 			memo: '保留',
@@ -34,6 +51,7 @@ describe('private note input', () => {
 	});
 	it('marks the whole round attacked and removes incompatible artifact claims', () => {
 		const note = {
+			...emptyNote(7),
 			subjectPlayerId: 7,
 			version: 2,
 			memo: '保留備註',
@@ -55,6 +73,10 @@ describe('private note input', () => {
 		{ change: { field: 'artifact', artifactId: 1, value: 'truth' } },
 		{ change: { field: 'artifact', artifactId: 1, value: ['fake'] } },
 		{ change: { field: 'claimedAttacked', value: 'true' } },
+		{ change: { field: 'alignment', value: 'evil' } },
+		{ change: { field: 'alignment', value: null } },
+		{ change: { field: 'alignment', value: ['good'] } },
+		{ change: { field: 'alignment', value: 'good', ownerPlayerId: 3 } },
 		{ change: { field: 'memo', value: 'a', hidden: 1 } }
 	])('rejects invalid or extra data %j', (override) => {
 		expect(() =>

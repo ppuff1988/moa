@@ -6,6 +6,52 @@ import type { DiscussionNote, NotePatch } from '$lib/types/discussion';
 
 describe('private notes autosave', () => {
 	afterEach(() => vi.useRealTimers());
+	it('keeps a newer alignment when an older save returns and isolates rounds', async () => {
+		const pending: Array<(value: { note: DiscussionNote; conflict: boolean }) => void> = [];
+		const store = createDiscussionNotes(
+			'alignment',
+			() => new Promise((resolve) => pending.push(resolve))
+		);
+		store.load(1, [emptyNote(7)]);
+		store.load(2, [emptyNote(7)]);
+		store.edit(1, 7, { field: 'alignment', value: 'bad' });
+		store.edit(1, 7, { field: 'alignment', value: 'good' });
+		pending[0]({ note: { ...emptyNote(7), alignment: 'bad', version: 1 }, conflict: false });
+		await vi.waitFor(() => expect(pending).toHaveLength(2));
+		expect(get(store)['1:7'].note.alignment).toBe('good');
+		expect(get(store)['2:7'].note.alignment).toBe('unknown');
+		pending[1]({ note: { ...emptyNote(7), alignment: 'good', version: 2 }, conflict: false });
+		await vi.waitFor(() => expect(get(store)['1:7'].status).toBe('saved'));
+		store.destroy();
+	});
+	it('restores an alignment draft and requires conflict resolution before saving', async () => {
+		const storage = {
+			getItem: () =>
+				JSON.stringify({ version: 0, changes: [{ field: 'alignment', value: 'bad' }] }),
+			setItem: () => {},
+			removeItem: () => {}
+		};
+		const save = vi.fn(async (patch: NotePatch) => ({
+			conflict: false,
+			note: {
+				...applyNoteChange({ ...emptyNote(7), memo: '另一分頁', version: 1 }, patch.change),
+				version: 2
+			}
+		}));
+		const store = createDiscussionNotes('alignment', save, storage);
+		store.load(1, [{ ...emptyNote(7), memo: '另一分頁', version: 1 }]);
+		expect(get(store)['1:7'].status).toBe('conflict');
+		expect(get(store)['1:7'].note.alignment).toBe('bad');
+		expect(save).not.toHaveBeenCalled();
+		store.resolve(1, 7, 'mine');
+		await vi.waitFor(() => expect(get(store)['1:7'].status).toBe('saved'));
+		expect(get(store)['1:7'].note).toMatchObject({
+			alignment: 'bad',
+			memo: '另一分頁',
+			version: 2
+		});
+		store.destroy();
+	});
 	it('saves only the latest debounced memo instead of every keystroke', async () => {
 		vi.useFakeTimers();
 		const save = vi.fn(async (patch: NotePatch) => ({

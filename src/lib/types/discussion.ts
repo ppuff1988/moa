@@ -1,5 +1,6 @@
 export type SeatingMode = 'random' | 'manual';
 export type ArtifactClaim = 'genuine' | 'fake' | 'unable';
+export type PlayerAlignment = 'good' | 'unknown' | 'bad';
 export interface DiscussionPlayer {
 	playerId: number;
 	nickname: string;
@@ -13,12 +14,14 @@ export interface DiscussionNote {
 	subjectPlayerId: number;
 	artifactClaims: Record<string, ArtifactClaim>;
 	claimedAttacked: boolean;
+	alignment: PlayerAlignment;
 	memo: string;
 	version: number;
 }
 export type NoteChange =
 	| { field: 'artifact'; artifactId: number; value: ArtifactClaim | null }
 	| { field: 'claimedAttacked'; value: boolean }
+	| { field: 'alignment'; value: PlayerAlignment }
 	| { field: 'memo'; value: string };
 export interface NotePatch {
 	round: number;

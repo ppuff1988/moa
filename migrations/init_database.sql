@@ -249,6 +249,8 @@ CREATE TABLE IF NOT EXISTS game_discussion_notes (
     subject_player_id integer NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
     artifact_claims json NOT NULL DEFAULT '{}',
     claimed_attacked boolean NOT NULL DEFAULT false,
+    alignment text NOT NULL DEFAULT 'unknown'
+        CONSTRAINT discussion_notes_alignment_check CHECK (alignment IN ('good', 'unknown', 'bad')),
     memo text NOT NULL DEFAULT '' CHECK (length(memo) <= 500),
     version integer NOT NULL DEFAULT 1 CHECK (version > 0),
     updated_at timestamp NOT NULL DEFAULT now()

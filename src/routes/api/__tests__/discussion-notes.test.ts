@@ -109,6 +109,65 @@ describe('discussion and private notes API', () => {
 		for (const actor of [0, 2])
 			expect((await (await call('discussion-notes?round=1', actor)).json()).notes).toEqual([]);
 	});
+	it('saves private per-round alignments, detects conflicts and permits clearing', async () => {
+		const update = (value: string, version: number) =>
+			call('discussion-notes', 1, {
+				...patch('', version),
+				change: { field: 'alignment', value }
+			});
+		expect((await call('discussion-notes', 1, patch('保留備註'))).status).toBe(200);
+		const saved = await update('bad', 1);
+		expect(saved.status).toBe(200);
+		expect((await saved.json()).note).toMatchObject({
+			alignment: 'bad',
+			memo: '保留備註',
+			version: 2
+		});
+		const own = await call('discussion-notes?round=1', 1);
+		expect(own.headers.get('cache-control')).toBe('private, no-store');
+		expect((await own.json()).notes[0].alignment).toBe('bad');
+		for (const actor of [0, 2]) {
+			expect((await (await call('discussion-notes?round=1', actor)).json()).notes).toEqual([]);
+		}
+		expect(await (await call('discussion', 0)).text()).not.toContain('alignment');
+		const stale = await update('good', 1);
+		expect(stale.status).toBe(409);
+		expect((await stale.json()).note.alignment).toBe('bad');
+		await db
+			.insert(gameRounds)
+			.values({ gameId, round: 2, phase: 'discussion', actionOrder: [...ids].reverse() });
+		expect((await (await call('discussion-notes?round=2', 1)).json()).notes).toEqual([]);
+		expect((await call('discussion-notes', 1, { ...patch('第二輪'), round: 2 })).status).toBe(200);
+		expect((await (await call('discussion-notes?round=2', 1)).json()).notes[0].alignment).toBe(
+			'unknown'
+		);
+		const cleared = await update('unknown', 2);
+		expect(cleared.status).toBe(200);
+		expect((await cleared.json()).note).toMatchObject({
+			alignment: 'unknown',
+			memo: '保留備註',
+			version: 3
+		});
+	});
+	it('rejects invalid alignment and prevents marking after leaving or game end', async () => {
+		const body = { ...patch(''), change: { field: 'alignment', value: 'bad' } };
+		for (const value of ['evil', null, ['bad'], true]) {
+			expect(
+				(await call('discussion-notes', 1, { ...body, change: { field: 'alignment', value } }))
+					.status
+			).toBe(400);
+		}
+		expect((await call('discussion-notes', 1, { ...body, ownerPlayerId: ids[0] })).status).toBe(
+			400
+		);
+		await db
+			.update(gamePlayers)
+			.set({ roomPresence: 'left', leftAt: new Date() })
+			.where(eq(gamePlayers.id, ids[2]));
+		expect((await call('discussion-notes', 2, body)).status).toBe(403);
+		await db.update(games).set({ status: 'finished' }).where(eq(games.id, gameId));
+		expect((await call('discussion-notes', 1, body)).status).toBe(409);
+	});
 	it('rejects stale updates and simultaneous creation without losing the first write', async () => {
 		const responses = await Promise.all([
 			call('discussion-notes', 1, patch('甲')),

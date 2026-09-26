@@ -159,6 +159,7 @@ function noteDto(row: typeof gameDiscussionNotes.$inferSelect): DiscussionNote {
 		subjectPlayerId: row.subjectPlayerId,
 		artifactClaims: row.artifactClaims,
 		claimedAttacked: row.claimedAttacked,
+		alignment: row.alignment,
 		memo: row.memo,
 		version: row.version
 	};
@@ -210,6 +211,7 @@ export async function saveNote(gameId: string, ownerPlayerId: number, patch: Not
 		const values = {
 			artifactClaims: next.artifactClaims,
 			claimedAttacked: next.claimedAttacked,
+			alignment: next.alignment,
 			memo: next.memo,
 			version: current.version + 1,
 			updatedAt: new Date()

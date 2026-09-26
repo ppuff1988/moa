@@ -12,7 +12,7 @@ import {
 	uuid
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { ArtifactClaim } from '$lib/types/discussion';
+import type { ArtifactClaim, PlayerAlignment } from '$lib/types/discussion';
 
 export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
@@ -259,6 +259,7 @@ export const gameDiscussionNotes = pgTable(
 			.notNull()
 			.default({}),
 		claimedAttacked: boolean('claimed_attacked').notNull().default(false),
+		alignment: text('alignment').$type<PlayerAlignment>().notNull().default('unknown'),
 		memo: text('memo').notNull().default(''),
 		version: integer('version').notNull().default(1),
 		updatedAt: timestamp('updated_at').notNull().defaultNow()
@@ -270,7 +271,11 @@ export const gameDiscussionNotes = pgTable(
 			table.subjectPlayerId
 		),
 		validVersion: check('discussion_notes_version_check', sql`${table.version} > 0`),
-		validMemo: check('discussion_notes_memo_check', sql`length(${table.memo}) <= 500`)
+		validMemo: check('discussion_notes_memo_check', sql`length(${table.memo}) <= 500`),
+		validAlignment: check(
+			'discussion_notes_alignment_check',
+			sql`${table.alignment} IN ('good', 'unknown', 'bad')`
+		)
 	})
 );
 
