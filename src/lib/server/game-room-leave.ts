@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from './db';
 import { gamePlayers, games, user } from './db/schema';
 
@@ -38,25 +38,14 @@ export async function leaveRoom(gameId: string, userId: number) {
 		const inLobby = game.status === 'waiting' || game.status === 'selecting';
 		const insufficientSelection = game.status === 'selecting' && remaining.length < 6;
 		if (remaining.length === 0 || insufficientSelection) {
-			if (insufficientSelection) {
-				await tx
-					.update(gamePlayers)
-					.set(departure)
-					.where(
-						and(
-							eq(gamePlayers.gameId, gameId),
-							eq(gamePlayers.roomPresence, 'active'),
-							isNull(gamePlayers.leftAt)
-						)
-					);
-			}
+			// 終止遊戲不等於其他玩家離房；保留其房間資格與 presence。
 			await tx
 				.update(games)
 				.set({
 					status: 'terminated',
 					finishedAt: now,
 					updatedAt: now,
-					...(inLobby ? { playerCount: 0 } : {})
+					...(inLobby ? { playerCount: remaining.length } : {})
 				})
 				.where(eq(games.id, gameId));
 			return {

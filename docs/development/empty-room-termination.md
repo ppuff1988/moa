@@ -3,6 +3,7 @@
 - 有效房間成員定義為 `room_presence = 'active' AND left_at IS NULL`，與 Socket 是否連線無關。
 - 最後一位成員明確離房後，`waiting`、`selecting`、`playing` 遊戲轉為 `terminated`，設定結束時間；`finished` 與既有 `terminated` 不改變狀態或結束時間。
 - 進行中的遊戲保留原始人數、玩家、固定座位、回合、行動、投票與私人筆記。終止後不能重新加入。部分玩家離房仍等待重新加入；選角中不足 6 人仍沿用提前終止規則。
+- 選角因人數不足而終止時，僅離房請求者設為 `left`，其餘成員保留原有 presence 與房間查閱資格；人數記錄為終止當下的剩餘成員數，不批次清空。
 - 離房與終止在同一交易內依 games → game_players 鎖定，與加入、開局及結算互斥。只有交易提交後才通知 Socket。
 - 離房 API 在本次終止時回傳 `gameEnded: true`、`gamePaused: false`；仍在進行中的遊戲回傳 `gamePaused: true`。
 

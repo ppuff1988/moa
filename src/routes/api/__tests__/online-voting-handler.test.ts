@@ -183,6 +183,7 @@ describe('online voting database constraints', () => {
 		expect(endpoint).toContain('席位與投票資格不變');
 		expect(endpoint).toContain('明確離開房間的玩家重新加入前');
 		expect(rules).toContain('手機縮小、背景休眠、網路短暫中斷');
-		expect(rules).toContain('不設定離房期限，也不因人數不足自動結束');
+		expect(rules).toContain('不設定離房期限，也不因部分玩家離房而結束');
+		expect(rules).toContain('若所有玩家都明確離房，未完成遊戲會自動標記為 `terminated`');
 	});
 });

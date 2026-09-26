@@ -64,7 +64,7 @@ describe('Room Leave API', () => {
 
 	beforeAll(async () => {
 		// 創建測試用戶
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 6; i++) {
 			const userData = await createTestUser(`-leave-${i}`);
 			testUsers.push({
 				email: userData.email,
@@ -184,6 +184,45 @@ describe('Room Leave API', () => {
 				expect(rejoin.status).toBe(400);
 			}
 		);
+
+		it.each([0, 1])('選角中玩家 %s 離房使人數不足時，其餘玩家保留房間資格', async (actor) => {
+			const room = await createTestRoom(testUsers[0].token);
+			testGames.push(room.gameId);
+			for (const member of testUsers.slice(1)) {
+				await joinTestRoom(member.token, room.roomName, room.password);
+			}
+			await db.update(games).set({ status: 'selecting' }).where(eq(games.id, room.gameId));
+			const before = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, room.gameId));
+
+			const response = await leave(room.roomName, actor);
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ gameEnded: true, gamePaused: false });
+			const after = await db.select().from(gamePlayers).where(eq(gamePlayers.gameId, room.gameId));
+			expect(after).toHaveLength(6);
+			for (const member of before) {
+				const current = after.find((p) => p.id === member.id);
+				if (member.userId === testUsers[actor].userId) {
+					expect(current).toMatchObject({ roomPresence: 'left', isOnline: false });
+					expect(current?.leftAt).toBeInstanceOf(Date);
+				} else {
+					expect(current).toEqual(member);
+				}
+			}
+			const [game] = await db.select().from(games).where(eq(games.id, room.gameId));
+			expect(game).toMatchObject({ status: 'terminated', playerCount: 5 });
+			expect(game.finishedAt).toBeInstanceOf(Date);
+
+			for (const [index, member] of testUsers.entries()) {
+				const roomInfo = await fetch(`${API_BASE}/api/room/${room.roomName}`, {
+					headers: { Authorization: `Bearer ${member.token}` }
+				});
+				expect(roomInfo.status).toBe(index === actor ? 403 : 200);
+			}
+			const remainingActor = actor === 0 ? 1 : 0;
+			expect((await leave(room.roomName, remainingActor)).status).toBe(200);
+			const [ended] = await db.select().from(games).where(eq(games.id, room.gameId));
+			expect(ended).toMatchObject({ status: 'terminated', finishedAt: game.finishedAt });
+		});
 
 		it('finished 遊戲全員離房仍保留完成狀態與結束時間', async () => {
 			const room = await createTestRoom(testUsers[0].token);
