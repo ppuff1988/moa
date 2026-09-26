@@ -25,6 +25,7 @@
 	let errorMessage = $state('');
 	let scope = '';
 	let lastRound = 0;
+	let lastPhase = '';
 	let requestId = 0;
 	let destroyed = false;
 	let notes = $state(
@@ -103,13 +104,17 @@
 		void roomName;
 		void userId;
 		untrack(() => {
-			const target =
-				phase === 'finished' && lastRound === 0
+			const enteringDiscussion = phase === 'discussion' && lastPhase !== 'discussion';
+			if (enteringDiscussion) selectedRound = round;
+			const target = enteringDiscussion
+				? round
+				: phase === 'finished' && lastRound === 0
 					? undefined
 					: lastRound === round && selectedRound
 						? selectedRound
 						: round;
 			lastRound = round;
+			lastPhase = phase;
 			void load(target);
 		});
 	});
@@ -143,7 +148,7 @@
 			{#if data.availableRounds.length}
 				<label class="round-select"
 					>筆記回合 <select
-						value={selectedRound}
+						bind:value={selectedRound}
 						disabled={loading}
 						onchange={(event) => load(Number(event.currentTarget.value))}
 					>

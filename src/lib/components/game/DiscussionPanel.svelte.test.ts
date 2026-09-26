@@ -206,6 +206,46 @@ it('defaults to speaking order when action progresses into discussion', async ()
 		.toHaveAttribute('aria-pressed', 'true');
 });
 
+it('loads the current round when action enters discussion after viewing earlier notes', async () => {
+	let inDiscussion = false;
+	const fetchMock = vi.fn(async (url: string) => {
+		if (url.includes('discussion-notes')) return new Response(JSON.stringify({ notes: [] }));
+		const requestedRound = new URL(url, location.origin).searchParams.get('round');
+		return new Response(
+			JSON.stringify({
+				...data,
+				round: Number(requestedRound ?? 2),
+				availableRounds: [1, 2],
+				notesAvailable: inDiscussion
+			})
+		);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const screen = render(DiscussionPanel, {
+		roomName: 'test',
+		userId: 100,
+		currentRound: 2,
+		phase: 'action'
+	});
+
+	await screen.getByRole('button', { name: '私人筆記', exact: true }).click();
+	const roundSelect = screen.getByRole('combobox', { name: '筆記回合' });
+	await expect.element(roundSelect).toHaveValue('2');
+	await roundSelect.selectOptions('1');
+	await expect.element(roundSelect).toHaveValue('1');
+
+	inDiscussion = true;
+	await screen.rerender({ phase: 'discussion' });
+	await expect
+		.poll(
+			() =>
+				fetchMock.mock.calls.filter(([url]) => url === '/api/room/test/discussion?round=2').length
+		)
+		.toBe(2);
+	await expect.element(screen.getByRole('combobox', { name: '筆記回合' })).toHaveValue('2');
+	expect(fetchMock).toHaveBeenCalledWith('/api/room/test/discussion?round=2', expect.anything());
+});
+
 it('loads the latest round when opening a finished game', async () => {
 	const fetchMock = vi.fn(async (url: string) => {
 		return new Response(
