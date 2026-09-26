@@ -115,9 +115,11 @@ curl http://localhost:5173/api/health
 ./deploy-prod.sh
 ```
 
-腳本會先執行所有尚未套用的編號 migration，再啟動新版服務。migration 失敗會保留舊服務；`SKIP_MIGRATION=true` 會中止部署。
+腳本在拉取映像後停止舊 App／Worker，再執行所有尚未套用的編號 migration 及空局補修，最後啟動新版服務。這段期間服務會短暫中斷；停止服務、migration 或補修失敗時，會嘗試恢復先前保存的舊版映像。首次部署沒有舊版可恢復。`SKIP_MIGRATION=true` 會在停止服務前中止部署。
 
-`0020_terminate_empty_unfinished_games.sql` 會在部署時把已無有效成員的未完成遊戲標記為 `terminated`，保留遊戲歷史；斷線成員及 `finished` 遊戲不受影響。詳見[全員離房終止與資料修正](development/empty-room-termination.md)。
+若僅有 App 或 Worker 其中一個既有容器，腳本會在拉取映像與停止服務前中止，保留既有服務。請先恢復缺少的舊版容器再重新部署；只有兩個容器都不存在時才視為首次部署。
+
+部署會透過 `--repair-empty-games` 每次重新執行 `0020_terminate_empty_unfinished_games.sql`，即使該 migration 已記錄完成或上次部署曾回退，也會把已無有效成員的未完成遊戲標記為 `terminated`，保留遊戲歷史；斷線成員及 `finished` 遊戲不受影響。詳見[全員離房終止與資料修正](development/empty-room-termination.md)。
 
 ---
 

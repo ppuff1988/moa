@@ -13,9 +13,13 @@
 1. 鎖定未完成遊戲及其玩家，再重新檢查有效成員。
 2. 已無有效成員（包含空房）的未完成遊戲標記為 `terminated`，補上結束時間；保留其餘資料。
 3. 全員暫時斷線、仍有部分成員、`finished` 或 `terminated` 均不更新。
-4. SQL 可重複執行，已終止遊戲不重設時間；runner 以完整 migration 檔名追蹤。
+4. SQL 可重複執行，已終止遊戲不重設時間；runner 以完整 migration 檔名追蹤一般升級，部署額外傳入 `--repair-empty-games`，每次重新執行補修，不受既有 migration 紀錄影響。
 
-使用 repository 的 `deploy-prod.sh`，流程為拉取指定版本 → migrations → 啟動新版服務 → health check。migrations 使用部署環境的 `DATABASE_URL`（CD 由 GitHub secret 寫入），本機的 `POSTGRES_PROD_*` 不會自動覆蓋部署設定，也不應寫入版本庫。`SKIP_MIGRATION=true` 會中止部署；migration 失敗時保留舊服務。
+使用 repository 的 `deploy-prod.sh`，流程為拉取指定版本 → 停止舊 App／Worker → migrations 與空局補修 → 啟動新版服務 → health check。停止完成後才執行第一次 migration 與後續補修，避免把建立中、尚未加入房主的房間誤判為空房，也避免舊服務在掃描後繼續產生未終止的空局。服務在這段維護期間會短暫中斷。migrations 使用部署環境的 `DATABASE_URL`（CD 由 GitHub secret 寫入），本機的 `POSTGRES_PROD_*` 不會自動覆蓋部署設定，也不應寫入版本庫。`SKIP_MIGRATION=true` 會中止部署；停止服務、migration 或補修失敗時會嘗試恢復舊映像；首次部署無舊映像可恢復。若回退後舊版又產生空局，下次部署仍會補修。
+
+執行此資料修正前必須停止所有會建立房間或變更成員的服務；不要在服務運行中單獨執行 0020 或使用 `--repair-empty-games`。正式部署由腳本完成停止與恢復，不需人工更新資料庫。
+
+停止服務前須成功準備 App／Worker 兩者的回復映像。若只存在其中一個舊容器，部署會在拉取映像前中止並保留既有服務，待缺少的舊版容器恢復後再重試；兩者皆不存在才視為首次部署。
 
 這是資料修正，沒有新增 schema 或外鍵，全新初始化與 reset 順序不需調整。回退應用版本時保留修正後狀態，不自動恢復已全員離房的遊戲。
 

@@ -122,8 +122,13 @@ if [ -n "$PREVIOUS_APP_IMAGE_ID" ] && [ -n "$PREVIOUS_WORKER_IMAGE_ID" ]; then
     docker image tag "$PREVIOUS_WORKER_IMAGE_ID" "moa-rollback:worker"
     PREVIOUS_WORKER_IMAGE="moa-rollback:worker"
     echo "🛟 已固定目前運行映像，供部署失敗時回復"
+elif [ -n "$PREVIOUS_APP_IMAGE_ID" ] || [ -n "$PREVIOUS_WORKER_IMAGE_ID" ]; then
+    # 已有部分服務時不能當成首次部署；停止它們後將無法透過 rollback 恢復。
+    echo "❌ 既有 App／Worker 不完整，無法準備完整回復映像，部署已中止"
+    echo "   請先恢復缺少的舊版容器；目前既有服務保持原狀"
+    exit 1
 else
-    echo "ℹ️ 找不到完整的既有 App／Worker 容器，這次部署沒有可用 rollback 映像"
+    echo "ℹ️ 沒有既有 App／Worker 容器，視為首次部署，沒有可用 rollback 映像"
 fi
 
 rollback() {
@@ -173,8 +178,14 @@ else
 fi
 echo ""
 
-# migrations 執行期間保留舊應用服務，避免 migration 失敗造成停機。
-echo "🛡️ [3/5] 保留舊應用服務直到新版本通過 migration..."
+# 資料補修必須在舊服務停止後執行，避免漏掉最後離房或誤判建立中的空房。
+# stop 完成後才進入 migration；先啟用 rollback，涵蓋 stop 部分失敗的情況。
+echo "🛡️ [3/5] 暫停應用服務，進入資料修正維護期間..."
+SWITCHOVER_STARTED=true
+if ! $DOCKER_COMPOSE -f docker-compose.prod.yml stop --timeout 30 app email-worker; then
+    echo "❌ 無法停止舊服務，不執行資料修正"
+    exit 1
+fi
 echo ""
 
 # 執行資料庫 Migrations
@@ -189,18 +200,17 @@ if docker run --rm \
     -e DATABASE_URL="${DATABASE_URL}" \
     -e NODE_ENV=production \
     "${APP_IMAGE}" \
-    npm run db:migrate; then
-    echo "✅ Migrations 執行成功"
+    npm run db:migrate -- --repair-empty-games; then
+    echo "✅ Migrations 與空局補修執行成功"
 else
     echo "❌ Migrations 執行失敗！"
-    echo "   舊版本仍保持運行，不切換容器"
+    echo "   將嘗試恢復舊版本，不啟動新版容器"
     exit 1
 fi
 echo ""
 
 # 啟動應用服務
 echo "🚀 [5/5] 啟動應用服務..."
-SWITCHOVER_STARTED=true
 if ! $DOCKER_COMPOSE -f docker-compose.prod.yml up -d app email-worker; then
     echo "❌ 應用服務切換失敗，立即回復舊版本"
     rollback || true
