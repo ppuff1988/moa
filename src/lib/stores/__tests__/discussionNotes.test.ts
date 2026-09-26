@@ -24,6 +24,60 @@ describe('private notes autosave', () => {
 		await vi.waitFor(() => expect(get(store)['1:7'].status).toBe('saved'));
 		store.destroy();
 	});
+	it.each(['cloud', 'mine'] as const)(
+		'preserves restored conflicts across remounts until choosing %s',
+		async (choice) => {
+			const memory = new Map<string, string>();
+			const storage = {
+				getItem: (key: string) => memory.get(key) ?? null,
+				setItem: (key: string, value: string) => {
+					memory.set(key, value);
+				},
+				removeItem: (key: string) => {
+					memory.delete(key);
+				}
+			};
+			let cloud = { ...emptyNote(7), memo: '另一分頁', version: 1 };
+			const save = vi.fn(async (patch: NotePatch) => {
+				if (patch.expectedVersion !== cloud.version) return { conflict: true, note: cloud };
+				cloud = { ...applyNoteChange(cloud, patch.change), version: cloud.version + 1 };
+				return { conflict: false, note: cloud };
+			});
+			let store = createDiscussionNotes('scope', save, storage);
+			try {
+				store.load(1, [emptyNote(7)]);
+				store.edit(1, 7, { field: 'memo', value: '本機草稿' }, true);
+				store.destroy();
+
+				for (let remount = 0; remount < 3; remount++) {
+					store = createDiscussionNotes('scope', save, storage);
+					store.load(1, [cloud]);
+					expect(get(store)['1:7'].status).toBe('conflict');
+					expect(get(store)['1:7'].note.memo).toBe('本機草稿');
+					store.retry(1, 7);
+					if (remount === 1) store.edit(1, 7, { field: 'alignment', value: 'bad' });
+					expect(save).not.toHaveBeenCalled();
+					if (remount < 2) store.destroy();
+				}
+
+				store.resolve(1, 7, choice);
+				await vi.waitFor(() => expect(get(store)['1:7'].status).toBe('saved'));
+				expect(cloud).toMatchObject(
+					choice === 'mine'
+						? { memo: '本機草稿', alignment: 'bad', version: 3 }
+						: { memo: '另一分頁', alignment: 'unknown', version: 1 }
+				);
+				expect(get(store)['1:7'].note).toEqual(cloud);
+				expect(save).toHaveBeenCalledTimes(choice === 'mine' ? 2 : 0);
+				store.destroy();
+				store = createDiscussionNotes('scope', save, storage);
+				store.load(1, [cloud]);
+				expect(get(store)['1:7']).toEqual({ note: cloud, status: 'saved' });
+			} finally {
+				store.destroy();
+			}
+		}
+	);
 	it('restores an alignment draft and requires conflict resolution before saving', async () => {
 		const storage = {
 			getItem: () =>

@@ -104,7 +104,8 @@ export function createDiscussionNotes(scope: string, save: Save, storage?: Draft
 				if (!changes.length) continue;
 				queues.set(key, changes);
 				entries[key] = {
-					note: changes.reduce(applyNoteChange, note),
+					// Keep the draft's base version until the user explicitly resolves the conflict.
+					note: changes.reduce(applyNoteChange, { ...note, version: draft.version }),
 					status: draft.version === note.version ? 'error' : 'conflict',
 					cloud: note,
 					message: '有尚未同步的草稿，請重試'
