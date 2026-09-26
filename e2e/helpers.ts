@@ -5,6 +5,8 @@
 
 import { expect, type BrowserContext, type Page } from '@playwright/test';
 
+const TEST_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5173';
+
 /**
  * 測試用戶類型
  */
@@ -78,7 +80,7 @@ export function createTestUser(prefix: string, timestamp: number): TestUser {
 export async function createTestUsersInDatabase(page: Page, users: TestUser[]): Promise<void> {
 	console.log(`📝 正在批量創建 ${users.length} 個測試帳號...`);
 
-	const response = await page.request.post('http://localhost:5173/api/test/create-users', {
+	const response = await page.request.post(`${TEST_BASE_URL}/api/test/create-users`, {
 		data: {
 			users: users.map((u) => ({
 				email: u.username,
@@ -161,7 +163,7 @@ export async function registerAndVerifyUser(
 	await page.waitForTimeout(1000);
 
 	// 使用測試 API 驗證用戶
-	const response = await page.request.post('http://localhost:5173/api/test/verify-user', {
+	const response = await page.request.post(`${TEST_BASE_URL}/api/test/verify-user`, {
 		data: { email: username }
 	});
 
@@ -205,7 +207,7 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 			// 註冊成功後，自動驗證 Email
 			if (registerResponse.status() === 201) {
 				console.log('註冊成功，正在驗證 Email...');
-				await page.request.post('http://localhost:5173/api/test/verify-user', {
+				await page.request.post(`${TEST_BASE_URL}/api/test/verify-user`, {
 					data: { email: user.username }
 				});
 				console.log('✅ Email 已驗證');
@@ -227,7 +229,7 @@ export async function registerAndLogin(page: Page, user: TestUser) {
 
 	// 檢查是否被重定向到首頁（已經登入）
 	if (
-		page.url() === 'http://localhost:5173/' ||
+		page.url() === `${TEST_BASE_URL}/` ||
 		(page.url().endsWith('/') && !page.url().includes('/auth/'))
 	) {
 		await page.locator('button:has-text("創建房間")').waitFor({ timeout: 5000 });
@@ -310,7 +312,7 @@ export async function logoutUser(page: Page) {
  */
 export async function ensureLoggedIn(page: Page, user: TestUser) {
 	// Step 1: 確保用戶存在並已驗證
-	const verifyResp = await page.request.post('http://localhost:5173/api/test/verify-user', {
+	const verifyResp = await page.request.post(`${TEST_BASE_URL}/api/test/verify-user`, {
 		data: { email: user.username }
 	});
 
@@ -324,17 +326,17 @@ export async function ensureLoggedIn(page: Page, user: TestUser) {
 	await page.context().clearCookies();
 
 	// Step 3: 透過 API 登入（會在瀏覽器上下文中設定 auth_session cookie）
-	let loginResp = await page.request.post('http://localhost:5173/api/auth/login', {
+	let loginResp = await page.request.post(`${TEST_BASE_URL}/api/auth/login`, {
 		data: { email: user.username, password: user.password }
 	});
 
 	if (loginResp.status() === 403) {
 		// Email 未驗證，先驗證再重試
 		console.log('用戶未驗證，正在驗證:', user.username);
-		await page.request.post('http://localhost:5173/api/test/verify-user', {
+		await page.request.post(`${TEST_BASE_URL}/api/test/verify-user`, {
 			data: { email: user.username }
 		});
-		loginResp = await page.request.post('http://localhost:5173/api/auth/login', {
+		loginResp = await page.request.post(`${TEST_BASE_URL}/api/auth/login`, {
 			data: { email: user.username, password: user.password }
 		});
 	}

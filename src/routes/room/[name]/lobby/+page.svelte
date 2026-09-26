@@ -5,12 +5,21 @@
 	import { useRoomLobby } from '$lib/composables/useRoomLobby';
 	import LoadingSpinner from '$lib/components/ui/LoadingSpinner.svelte';
 	import RoomHeader from '$lib/components/room/RoomHeader.svelte';
+	import SeatingSetup from '$lib/components/room/SeatingSetup.svelte';
 	import PlayersGrid from '$lib/components/player/PlayersGrid.svelte';
 	import NotificationManager from '$lib/components/notification/NotificationManager.svelte';
-	import { currentGameStatus } from '$lib/stores/notifications';
+	import { addNotification, currentGameStatus } from '$lib/stores/notifications';
 
 	const minPlayers = 6;
 	const maxPlayers = 8;
+	let seatingReady = false;
+	function withConfirmedSeats(action: () => void) {
+		if (!seatingReady) {
+			addNotification('請先確認並儲存下方的座位安排', 'warning');
+			return;
+		}
+		action();
+	}
 
 	// 從 URL 獲取房間名稱
 	const roomName = $page.params.name || '';
@@ -80,8 +89,8 @@
 			onlineVotingEnabled={$onlineVotingEnabled}
 			allPlayersReady={$allPlayersReady}
 			players={$players}
-			onStartSelection={roomLobby.startSelection}
-			onStartGame={roomLobby.startGame}
+			onStartSelection={() => withConfirmedSeats(roomLobby.startSelection)}
+			onStartGame={() => withConfirmedSeats(roomLobby.startGame)}
 		/>
 
 		{#if $onlineVotingEnabled}
@@ -100,6 +109,13 @@
 			{roomName}
 			onKickPlayer={roomLobby.kickPlayer}
 			onToggleReady={roomLobby.setReady}
+		/>
+
+		<SeatingSetup
+			{roomName}
+			currentUserId={$currentUser?.id}
+			isHost={$isHost}
+			onready={(ready) => (seatingReady = ready)}
 		/>
 
 		<div class="footer-wrapper">

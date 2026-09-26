@@ -11,6 +11,7 @@
 -- ==========================================
 -- 第一部分：清理現有表
 -- ==========================================
+DROP TABLE IF EXISTS game_discussion_notes CASCADE;
 DROP TABLE IF EXISTS identification_votes CASCADE;
 DROP TABLE IF EXISTS artifact_vote_allocations CASCADE;
 DROP TABLE IF EXISTS game_vote_submissions CASCADE;
@@ -235,6 +236,27 @@ CREATE INDEX identification_votes_player_id_idx ON identification_votes(player_i
 -- ==========================================
 -- 第三部分：插入遊戲角色資料
 -- ==========================================
+
+ALTER TABLE games ADD COLUMN IF NOT EXISTS seating_mode text NOT NULL DEFAULT 'random'
+    CHECK (seating_mode IN ('random', 'manual'));
+ALTER TABLE games ADD COLUMN IF NOT EXISTS seat_order json;
+
+CREATE TABLE IF NOT EXISTS game_discussion_notes (
+    id serial PRIMARY KEY,
+    game_id uuid NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    round_id integer NOT NULL REFERENCES game_rounds(id) ON DELETE CASCADE,
+    owner_player_id integer NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+    subject_player_id integer NOT NULL REFERENCES game_players(id) ON DELETE CASCADE,
+    artifact_claims json NOT NULL DEFAULT '{}',
+    claimed_attacked boolean NOT NULL DEFAULT false,
+    alignment text NOT NULL DEFAULT 'unknown'
+        CONSTRAINT discussion_notes_alignment_check CHECK (alignment IN ('good', 'unknown', 'bad')),
+    memo text NOT NULL DEFAULT '' CHECK (length(memo) <= 500),
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    updated_at timestamp NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS discussion_notes_owner_subject_round_idx
+    ON game_discussion_notes(round_id, owner_player_id, subject_player_id);
 
 INSERT INTO roles (name, camp, skill, can_check_artifact, can_swap, can_check_people, can_attack, can_block, can_fool) VALUES
 ('許愿', 'good', '{"checkArtifact": 2}'::jsonb, true, false, false, false, false, true),

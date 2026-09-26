@@ -30,6 +30,7 @@ SELECT
 -- 但為了明確性，我們按依賴順序刪除
 
 -- 1. 刪除遊戲行動記錄
+DELETE FROM game_discussion_notes;
 DELETE FROM game_actions;
 
 -- 2. 刪除鑑人階段投票記錄

@@ -1,6 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { startAutoAssignedGame, startGame, startRoleSelection } from '$lib/server/game';
+import {
+	SeatingError,
+	startAutoAssignedGame,
+	startGame,
+	startRoleSelection
+} from '$lib/server/game';
 import { runAllPlayersOnlineTransaction, verifyHostPermission } from '$lib/server/api-helpers';
 import { db } from '$lib/server/db';
 import { gamePlayers, gameRounds, roles } from '$lib/server/db/schema';
@@ -336,6 +341,7 @@ export const POST: RequestHandler = async (event) => {
 		// 其他狀態
 		return json({ message: `遊戲狀態不正確（當前: ${game.status}）` }, { status: 400 });
 	} catch (error) {
+		if (error instanceof SeatingError) return json({ message: error.message }, { status: 400 });
 		console.error('開始遊戲/回合錯誤:', error);
 		return json({ message: error instanceof Error ? error.message : '開始失敗' }, { status: 500 });
 	}

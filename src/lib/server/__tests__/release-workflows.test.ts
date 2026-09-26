@@ -356,7 +356,7 @@ describe('release workflow contracts', () => {
 		expect(deploy).toContain('DEPLOYMENT_SUCCEEDED=true');
 		expect(deploy).toContain('已持久化 rollback image 選擇');
 		expect(deploy).toContain('回復舊版本');
-		expect(deploy).not.toContain('stop app email-worker');
+		expect(deploy).toContain('stop --timeout 30 app email-worker');
 	});
 
 	it('actively restores both previous images when service replacement fails', () => {
