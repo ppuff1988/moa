@@ -112,7 +112,7 @@ release/* (發布分支，可選)
 
 Ruleset 另外要求 PR、`lint`、`test-api` 與 conversation resolution。Workflow gate 同時綁定 CI 的 head SHA、base SHA 與 base ref；Codex 等待期間若 PR 關閉、轉為 draft、被 retarget，或任一 SHA 改變，都必須停止或重新執行 CI／Review，也不接受 `mergeable_state: unstable`。自動合併 concurrency 使用 PR number（沒有關聯 PR 時才退回 run ID），避免不同 fork 或不同目標的同名分支互相取消。
 
-發布與部署採狀態重建而非把 concurrency 當 FIFO。GitHub 若取代 pending event，後續 scanner 仍會找到最舊的未完成版本；`main → dev` 合併使用 automation PAT，讓同步後的 `dev` push 能重新喚醒等待中的版本請求。migration 執行期間保留舊服務；部署會在 pull 新 image 前以運行中容器的 immutable image ID 建立 rollback tag。服務切換開始後的任何錯誤（包含 `compose up` 部分失敗）都會立即嘗試主動 rollback；所有部署失敗也會把 `.env` 的 App／Worker image 持久化回 rollback tag 並保留該 tag，避免後續 `compose up` 再次啟動失敗版本。只有部署成功才清除 rollback tag。migration 必須保持向後相容。
+發布與部署採狀態重建而非把 concurrency 當 FIFO。GitHub 若取代 pending event，後續 scanner 仍會找到最舊的未完成版本；`main → dev` 合併使用 automation PAT，讓同步後的 `dev` push 能重新喚醒等待中的版本請求。部署會在 pull 新 image 前以運行中容器的 immutable image ID 建立 rollback tag；pull 完成後停止舊 App／Worker，再執行 migration 與每次部署都會重跑的空局補修，期間服務短暫中斷。停止舊服務開始後的任何錯誤（包含 stop、migration、補修或 `compose up` 失敗）都會立即嘗試主動 rollback；所有部署失敗也會把 `.env` 的 App／Worker image 持久化回 rollback tag 並保留該 tag，避免後續 `compose up` 再次啟動失敗版本。只有部署成功才清除 rollback tag。migration 必須保持向後相容。
 
 ## 📝 Commit 訊息規範
 

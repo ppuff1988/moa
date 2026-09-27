@@ -12,6 +12,7 @@ import {
 	uuid
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { ArtifactClaim, PlayerAlignment } from '$lib/types/discussion';
 
 export const user = pgTable('users', {
 	id: serial('id').primaryKey(),
@@ -78,6 +79,10 @@ export const games = pgTable(
 		status: text('status').notNull().default('waiting'), // waiting: 等待玩家, selecting: 選角階段, playing: 遊戲中, finished: 正常結束, terminated: 強制結束
 		autoAssignRolesAndColors: boolean('auto_assign_roles_and_colors').notNull().default(false),
 		onlineVotingEnabled: boolean('online_voting_enabled').notNull().default(false),
+		seatingMode: text('seating_mode', { enum: ['random', 'manual'] })
+			.notNull()
+			.default('random'),
+		seatOrder: json('seat_order').$type<number[] | null>(),
 		playerCount: integer('player_count').notNull().default(0),
 		totalScore: integer('total_score').default(0), // 許愿陣營總分
 		createdAt: timestamp('created_at').defaultNow(),
@@ -232,6 +237,47 @@ export const gameActions = pgTable('game_actions', {
 	actionData: json('action_data'), // 行動詳細資料
 	timestamp: timestamp('timestamp').defaultNow()
 });
+
+export const gameDiscussionNotes = pgTable(
+	'game_discussion_notes',
+	{
+		id: serial('id').primaryKey(),
+		gameId: uuid('game_id')
+			.notNull()
+			.references(() => games.id, { onDelete: 'cascade' }),
+		roundId: integer('round_id')
+			.notNull()
+			.references(() => gameRounds.id, { onDelete: 'cascade' }),
+		ownerPlayerId: integer('owner_player_id')
+			.notNull()
+			.references(() => gamePlayers.id, { onDelete: 'cascade' }),
+		subjectPlayerId: integer('subject_player_id')
+			.notNull()
+			.references(() => gamePlayers.id, { onDelete: 'cascade' }),
+		artifactClaims: json('artifact_claims')
+			.$type<Record<string, ArtifactClaim>>()
+			.notNull()
+			.default({}),
+		claimedAttacked: boolean('claimed_attacked').notNull().default(false),
+		alignment: text('alignment').$type<PlayerAlignment>().notNull().default('unknown'),
+		memo: text('memo').notNull().default(''),
+		version: integer('version').notNull().default(1),
+		updatedAt: timestamp('updated_at').notNull().defaultNow()
+	},
+	(table) => ({
+		ownerSubjectRound: uniqueIndex('discussion_notes_owner_subject_round_idx').on(
+			table.roundId,
+			table.ownerPlayerId,
+			table.subjectPlayerId
+		),
+		validVersion: check('discussion_notes_version_check', sql`${table.version} > 0`),
+		validMemo: check('discussion_notes_memo_check', sql`length(${table.memo}) <= 500`),
+		validAlignment: check(
+			'discussion_notes_alignment_check',
+			sql`${table.alignment} IN ('good', 'unknown', 'bad')`
+		)
+	})
+);
 
 export const identificationVotes = pgTable('identification_votes', {
 	id: serial('id').primaryKey(),

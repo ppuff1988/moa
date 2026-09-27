@@ -4,7 +4,7 @@
  */
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readdir } from 'fs/promises';
+import { readdir, readFile } from 'fs/promises';
 import pg from 'pg';
 import dotenvFlow from 'dotenv-flow';
 
@@ -93,7 +93,6 @@ async function runMigrations() {
 
 			try {
 				// 讀取 SQL 檔案
-				const { readFile } = await import('fs/promises');
 				const sqlPath = join(migrationsDir, file);
 				const sql = await readFile(sqlPath, 'utf-8');
 
@@ -122,6 +121,25 @@ async function runMigrations() {
 			console.log('✨ 所有 migrations 都已是最新狀態');
 		} else {
 			console.log(`🎉 成功執行 ${executed} 個 migration(s)`);
+		}
+
+		// deploy-prod.sh 停止舊服務後才傳入此參數。每次部署都重查，涵蓋回退舊版
+		// 期間新增的空局；沿用已存在且可重複執行的 SQL，不變更 migration 紀錄。
+		if (process.argv.includes('--repair-empty-games')) {
+			const repair = await readFile(
+				join(migrationsDir, '0020_terminate_empty_unfinished_games.sql'),
+				'utf8'
+			);
+			console.log('🔄 重新檢查並修正無有效成員的未完成遊戲...');
+			try {
+				await client.query('BEGIN');
+				await client.query(repair);
+				await client.query('COMMIT');
+			} catch (error) {
+				await client.query('ROLLBACK');
+				throw error;
+			}
+			console.log('✅ 空局補修完成');
 		}
 	} catch (error) {
 		console.error('💥 Migration 執行失敗:', error);

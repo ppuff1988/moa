@@ -233,11 +233,15 @@
 		left: 0;
 		width: 100vw;
 		height: 100vh;
+		height: 100dvh;
 		background: rgba(0, 0, 0, 0.8);
 		backdrop-filter: blur(5px);
 		display: flex;
 		justify-content: center;
-		align-items: center;
+		align-items: flex-start;
+		padding: 1rem 0;
+		box-sizing: border-box;
+		overflow-y: auto;
 		z-index: 100;
 	}
 

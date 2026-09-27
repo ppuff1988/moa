@@ -10,7 +10,8 @@ import {
 } from './db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { requireAllPlayersPresent } from './api-helpers';
-import { getNextRoundStarter } from './game-turn-order';
+import { getNextRoundStarter, isCompletePlayerOrder } from './game-turn-order';
+import type { SeatingMode } from '$lib/types/discussion';
 import { COLOR_MAP, VALID_COLORS } from './constants';
 
 type GameExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
@@ -38,6 +39,22 @@ function shuffle<T>(items: readonly T[], random: () => number): T[] {
 		[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
 	}
 	return shuffled;
+}
+
+export class SeatingError extends Error {}
+
+export function resolveStartingSeats(
+	mode: SeatingMode,
+	seats: unknown,
+	playerIds: number[],
+	random: () => number = Math.random
+): number[] {
+	if (mode === 'manual') {
+		if (!isCompletePlayerOrder(seats, playerIds))
+			throw new SeatingError('請房主依目前玩家名單重新確認座位');
+		return [...seats];
+	}
+	return shuffle(playerIds, random);
 }
 
 export function createRandomAssignments(
@@ -113,7 +130,8 @@ export async function createGame(
 	roomPassword: string,
 	hostId: number,
 	autoAssignRolesAndColors: boolean = false,
-	onlineVotingEnabled: boolean = false
+	onlineVotingEnabled: boolean = false,
+	seatingMode: SeatingMode = 'random'
 ) {
 	// 檢查房間名稱是否已存在
 	const existingGame = await db
@@ -136,6 +154,7 @@ export async function createGame(
 			status: 'waiting',
 			autoAssignRolesAndColors,
 			onlineVotingEnabled,
+			seatingMode,
 			playerCount: 0,
 			totalScore: 0
 		})
@@ -371,6 +390,11 @@ export async function startGame(gameId: string, executor: GameExecutor = db) {
 		.update(games)
 		.set({
 			status: 'playing',
+			seatOrder: resolveStartingSeats(
+				game.seatingMode,
+				game.seatOrder,
+				players.map((p) => p.id)
+			),
 			updatedAt: new Date()
 		})
 		.where(eq(games.id, gameId));
@@ -534,7 +558,15 @@ export async function startAutoAssignedGame(gameId: string) {
 
 		await tx
 			.update(games)
-			.set({ status: 'playing', updatedAt: new Date() })
+			.set({
+				status: 'playing',
+				updatedAt: new Date(),
+				seatOrder: resolveStartingSeats(
+					game.seatingMode,
+					game.seatOrder,
+					players.map((p) => p.id)
+				)
+			})
 			.where(eq(games.id, gameId));
 
 		const shuffledAnimals = shuffle(ZODIAC_ANIMALS, Math.random);

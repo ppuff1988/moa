@@ -1,3 +1,5 @@
+import type { DiscussionPlayer } from '$lib/types/discussion';
+
 /**
  * actionOrder stores the current/latest player first. Players that already had
  * their turn remain behind the current player, even when they performed no
@@ -59,4 +61,51 @@ export function buildRoundPlayerOrder(
 			colorCode: player.colorCode,
 			position: index + 1
 		}));
+}
+
+export function isCompletePlayerOrder(value: unknown, playerIds: number[]): value is number[] {
+	return (
+		Array.isArray(value) &&
+		value.length === playerIds.length &&
+		value.length > 0 &&
+		new Set(value).size === value.length &&
+		value.every((id) => Number.isSafeInteger(id) && playerIds.includes(id))
+	);
+}
+
+export function buildDiscussionOrder(
+	seats: unknown,
+	actions: unknown,
+	players: OrderedPlayerSource[],
+	completed = true
+): { seatOrder: number[] | null; players: DiscussionPlayer[] } {
+	const ids = players.map((player) => player.id);
+	const seatOrder = isCompletePlayerOrder(seats, ids) ? [...seats] : null;
+	const actionIds = Array.isArray(actions) ? actions : [];
+	const validActions =
+		new Set(actionIds).size === actionIds.length &&
+		actionIds.every((id) => Number.isSafeInteger(id) && ids.includes(id));
+	const chronological = validActions ? ([...actionIds].reverse() as number[]) : [];
+	let speaking: number[] = [];
+	if (completed && seatOrder && isCompletePlayerOrder(actionIds, ids)) {
+		const start = (seatOrder.indexOf(actionIds[0]) + 1) % seatOrder.length;
+		speaking = [...seatOrder.slice(start), ...seatOrder.slice(0, start)];
+	}
+	const position = (list: number[], id: number) =>
+		list.includes(id) ? list.indexOf(id) + 1 : null;
+	const result = players.map((player) => ({
+		playerId: player.id,
+		nickname: player.nickname,
+		color: player.color,
+		colorCode: player.colorCode,
+		seatPosition: position(seatOrder ?? [], player.id),
+		actionPosition: position(chronological, player.id),
+		speakingPosition: position(speaking, player.id)
+	}));
+	result.sort(
+		(a, b) =>
+			(a.speakingPosition ?? a.actionPosition ?? 99) -
+			(b.speakingPosition ?? b.actionPosition ?? 99)
+	);
+	return { seatOrder, players: result };
 }

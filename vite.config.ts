@@ -70,6 +70,10 @@ export default defineConfig({
 				navigateFallbackDenylist: [/^\/(auth|api)\/.*/],
 				runtimeCaching: [
 					{
+						urlPattern: /\/api\/room\/[^/]+\/(discussion|discussion-notes|seating)(?:\?|$)/,
+						handler: 'NetworkOnly'
+					},
+					{
 						urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
 						handler: 'CacheFirst',
 						options: {

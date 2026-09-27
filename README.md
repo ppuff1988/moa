@@ -256,9 +256,11 @@ Versioned PR merged to main
 
 ## 📚 完整文件
 
+- [AI 開發協作指南](AGENTS.md) - 專案結構、驗證指令、遊戲資料界線與開發慣例
 - 📖 [遊戲規則說明](docs/RULE.md) - 遊戲玩法與規則
 - 🛠️ [開發工具與腳本指南](docs/DEVELOPMENT-TOOLS.md) - NPM Scripts、Makefile、Shell 腳本使用說明
 - 🔄 [工作流程說明](docs/WORKFLOWS.md) - Git 工作流程與開發規範
+- 📝 [討論與私人筆記實作計畫](docs/development/discussion-notes-plan.md) - 隨機／現場座位、行動與發言順序、手機私人筆記
 - 🚀 [生產環境部署](docs/PRODUCTION-DEPLOYMENT.md) - 部署到生產環境
 - 🔄 [CI/CD 設定](docs/CI-CD.md) - 自動化流程設定
 - 📧 [郵件隊列系統](docs/EMAIL-QUEUE-GUIDE.md) - 郵件服務與隊列管理（使用 pg-boss）

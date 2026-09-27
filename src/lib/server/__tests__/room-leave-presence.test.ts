@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { gamePlayers } from '../db/schema';
+import { gamePlayers, games } from '../db/schema';
 
 const {
 	dbMock,
@@ -65,8 +65,16 @@ describe('playing game leave presence', () => {
 		});
 
 		dbMock.select.mockReturnValue({
-			from: () => ({
-				where: () => ({ limit: async () => [{ status: 'playing' }] })
+			from: (table: unknown) => ({
+				where: () => ({
+					for: async () =>
+						table === games
+							? [{ id: 'game-1', status: 'playing', hostId: 7 }]
+							: [
+									{ id: 17, userId: 7, roomPresence: 'active', leftAt: null },
+									{ id: 18, userId: 8, roomPresence: 'active', leftAt: null }
+								]
+				})
 			})
 		});
 		dbMock.update.mockImplementation((table: unknown) => ({
@@ -78,16 +86,7 @@ describe('playing game leave presence', () => {
 		}));
 
 		const transaction = {
-			select: vi.fn(() => ({
-				from: () => ({
-					where: () => ({
-						orderBy: () => ({
-							limit: () => ({ for: async () => [{ id: 21, round: 1, phase: 'action' }] })
-						}),
-						then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve)
-					})
-				})
-			})),
+			select: dbMock.select,
 			update: dbMock.update
 		};
 		dbMock.transaction.mockImplementation(async (callback) => callback(transaction));
