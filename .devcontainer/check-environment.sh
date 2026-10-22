@@ -77,8 +77,8 @@ check_database() {
 # 1. 檢查系統工具
 echo "1️⃣  檢查系統工具"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-check_command "node" "Node.js" "v24"
-check_command "npm" "npm"
+check_command "node" "Node.js" "v24.22"
+check_command "npm" "npm" "12.0"
 check_command "git" "Git"
 check_command "psql" "PostgreSQL Client"
 check_command "docker" "Docker"
