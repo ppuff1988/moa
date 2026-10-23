@@ -1,6 +1,6 @@
 # 開發容器專用 Dockerfile
 # 基於 Node.js 24 Alpine 映像，包含開發所需的所有工具
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 
 # 安裝開發必需的系統套件
 RUN apk add \
@@ -18,7 +18,7 @@ RUN apk add \
 	font-wqy-zenhei \
 	ttf-dejavu \
 	fontconfig \
-	&& npm install -g npm@latest \
+	&& npm install -g npm@12.0.1 \
 	&& fc-cache -f \
 	&& rm -rf /var/cache/apk/*
 

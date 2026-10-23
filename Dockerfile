@@ -1,10 +1,13 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24.22.1-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+
+# Use the npm version required by package.json
+RUN npm install -g npm@12.0.1
 
 # Install dependencies with optimizations for cross-platform builds
 # Use --ignore-scripts to avoid running scripts that might fail in QEMU
@@ -24,12 +27,15 @@ ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 RUN npm run build
 
 # Production stage - Main App
-FROM node:24-alpine AS app
+FROM node:24.22.1-alpine AS app
 
 WORKDIR /app
 
 # Copy package files first (no need for curl healthcheck, use wget which is built-in)
 COPY package*.json ./
+
+# Use the npm version required by package.json
+RUN npm install -g npm@12.0.1
 
 # Install production dependencies with QEMU-friendly settings
 # --ignore-scripts prevents running native binaries that fail in QEMU
@@ -53,13 +59,16 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD ["node", "scripts/production-server.js"]
 
 # Worker stage - Email Worker (輕量化)
-FROM node:24-alpine AS worker
+FROM node:24.22.1-alpine AS worker
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 COPY tsconfig.json ./
+
+# Use the npm version required by package.json
+RUN npm install -g npm@12.0.1
 
 # 只安裝 worker 需要的依賴（不包含前端相關）
 RUN npm ci --omit=dev --ignore-scripts --prefer-offline --no-audit && \
