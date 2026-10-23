@@ -32,6 +32,10 @@ version_satisfies_caret_range() {
     actual_patch=${BASH_REMATCH[3]}
     actual_prerelease=${BASH_REMATCH[5]}
 
+    if [[ -n $actual_prerelease ]]; then
+        return 1
+    fi
+
     if [[ $range_version == "$range" ]] || [[ ! $range_version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
         return 1
     fi
@@ -60,10 +64,6 @@ version_satisfies_caret_range() {
     if (( actual_major == required_major && actual_minor == required_minor && actual_patch < required_patch )); then
         return 1
     fi
-    if (( actual_major == required_major && actual_minor == required_minor && actual_patch == required_patch )) && [[ -n $actual_prerelease ]]; then
-        return 1
-    fi
-
     return 0
 }
 

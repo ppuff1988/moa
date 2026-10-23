@@ -91,7 +91,8 @@ describe('devcontainer Node.js engine validation', () => {
 		['v24.22.1', true],
 		['v24.23.0', true],
 		['v25.0.0', false],
-		['v24.22.1-rc.1', false]
+		['v24.22.1-rc.1', false],
+		['v24.23.0-rc.1', false]
 	])('reports whether %s satisfies the package engine range', (nodeVersion, satisfies) => {
 		const output = runDevcontainerCheck(nodeVersion, engineRange);
 		const expected = satisfies
