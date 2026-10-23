@@ -1,11 +1,14 @@
 # Dockerfile.worker - 輕量化的 Email Worker
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 
 WORKDIR /app
 
 # 只複製必要的依賴文件
 COPY package*.json ./
 COPY tsconfig.json ./
+
+# Use the npm version required by package.json
+RUN npm install -g npm@12.0.1
 
 # 只安裝生產環境依賴
 RUN npm ci --only=production

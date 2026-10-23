@@ -680,3 +680,56 @@ exit 0
 		expect(workflow).not.toContain('closedPulls = await github.paginate');
 	});
 });
+
+describe('Docker image Node.js engine alignment', () => {
+	const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
+		engines: { node: string };
+		packageManager: string;
+	};
+	const expectedNodeImage = `node:${packageJson.engines.node.replace(/^\^/, '')}-alpine`;
+	const expectedNpmVersion = packageJson.packageManager.match(/^npm@(.+)$/)?.[1] ?? '';
+	const dockerfiles = ['Dockerfile', 'Dockerfile.worker', '.devcontainer/Dockerfile.devcontainer'];
+
+	it.each(dockerfiles)('%s uses the package Node engine minimum for every stage', (dockerfile) => {
+		const contents = readFileSync(resolve(process.cwd(), dockerfile), 'utf8');
+		const nodeImages = Array.from(
+			contents.matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?(node:\S+)/gm),
+			(match) => match[1]
+		);
+
+		expect(nodeImages.length).toBeGreaterThan(0);
+		expect(nodeImages).toEqual(Array(nodeImages.length).fill(expectedNodeImage));
+	});
+
+	it('keeps Docker build instructions out of .dockerignore', () => {
+		const dockerignore = readFileSync(resolve(process.cwd(), '.dockerignore'), 'utf8');
+
+		expect(dockerignore).not.toMatch(/^\s*FROM\s+node:/m);
+	});
+
+	it('installs the package manager version declared by package.json in the devcontainer', () => {
+		const dockerfile = readFileSync(
+			resolve(process.cwd(), '.devcontainer/Dockerfile.devcontainer'),
+			'utf8'
+		);
+
+		expect(dockerfile).toContain(`npm install -g npm@${expectedNpmVersion}`);
+	});
+
+	it.each(['Dockerfile', 'Dockerfile.worker'])(
+		'%s installs the package manager version before npm ci in every stage',
+		(dockerfile) => {
+			const contents = readFileSync(resolve(process.cwd(), dockerfile), 'utf8');
+			const stages = contents.split(/^\s*FROM\b/gm).slice(1);
+
+			for (const stage of stages) {
+				const npmCiIndex = stage.indexOf('npm ci');
+				if (npmCiIndex === -1) continue;
+
+				const npmInstallIndex = stage.indexOf(`npm install -g npm@${expectedNpmVersion}`);
+				expect(npmInstallIndex).toBeGreaterThanOrEqual(0);
+				expect(npmInstallIndex).toBeLessThan(npmCiIndex);
+			}
+		}
+	);
+});
