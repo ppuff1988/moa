@@ -17,6 +17,56 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # 檢查函式
+version_satisfies_caret_range() {
+    local actual_version=${1#v}
+    local range=$2
+    local range_version=${range#^}
+    local actual_major actual_minor actual_patch actual_prerelease
+    local required_major required_minor required_patch
+
+    if [[ ! $actual_version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([0-9A-Za-z.-]+))?(\+[0-9A-Za-z.-]+)?$ ]]; then
+        return 1
+    fi
+    actual_major=${BASH_REMATCH[1]}
+    actual_minor=${BASH_REMATCH[2]}
+    actual_patch=${BASH_REMATCH[3]}
+    actual_prerelease=${BASH_REMATCH[5]}
+
+    if [[ $range_version == "$range" ]] || [[ ! $range_version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+        return 1
+    fi
+    required_major=${BASH_REMATCH[1]}
+    required_minor=${BASH_REMATCH[2]}
+    required_patch=${BASH_REMATCH[3]}
+
+    if (( required_major > 0 )); then
+        if (( actual_major != required_major )); then
+            return 1
+        fi
+    elif (( required_minor > 0 )); then
+        if (( actual_major != 0 || actual_minor != required_minor )); then
+            return 1
+        fi
+    elif (( actual_major != 0 || actual_minor != 0 )); then
+        return 1
+    fi
+
+    if (( actual_major < required_major )); then
+        return 1
+    fi
+    if (( actual_major == required_major && actual_minor < required_minor )); then
+        return 1
+    fi
+    if (( actual_major == required_major && actual_minor == required_minor && actual_patch < required_patch )); then
+        return 1
+    fi
+    if (( actual_major == required_major && actual_minor == required_minor && actual_patch == required_patch )) && [[ -n $actual_prerelease ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 check_command() {
     local cmd=$1
     local name=$2
@@ -27,7 +77,11 @@ check_command() {
         echo -e "${GREEN}✓${NC} $name: $version"
         
         if [ ! -z "$expected_version" ]; then
-            if [[ $version == *"$expected_version"* ]]; then
+            if [ "$cmd" = "node" ] && version_satisfies_caret_range "$version" "$expected_version"; then
+                echo -e "  ${GREEN}版本符合 ($expected_version)${NC}"
+            elif [ "$cmd" = "node" ]; then
+                echo -e "  ${YELLOW}警告: $name $version 不符合 $expected_version${NC}"
+            elif [[ $version == *"$expected_version"* ]]; then
                 echo -e "  ${GREEN}版本符合${NC}"
             else
                 echo -e "  ${YELLOW}警告: 預期版本包含 $expected_version${NC}"
@@ -77,7 +131,14 @@ check_database() {
 # 1. 檢查系統工具
 echo "1️⃣  檢查系統工具"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-check_command "node" "Node.js" "v24"
+NODE_ENGINE_RANGE="^24.22.1"
+if command -v node &> /dev/null; then
+    configured_node_engine=$(node -p "require('./package.json').engines.node" 2>/dev/null || true)
+    if [ ! -z "$configured_node_engine" ]; then
+        NODE_ENGINE_RANGE=$configured_node_engine
+    fi
+fi
+check_command "node" "Node.js" "$NODE_ENGINE_RANGE"
 check_command "npm" "npm"
 check_command "git" "Git"
 check_command "psql" "PostgreSQL Client"

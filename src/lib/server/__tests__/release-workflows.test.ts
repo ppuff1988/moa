@@ -1,6 +1,14 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,6 +32,75 @@ function readGithubScript(name: string, stepId: string): string {
 	}
 	return script.join('\n');
 }
+
+function runDevcontainerCheck(nodeVersion: string, engineRange: string): string {
+	const tempDir = mkdtempSync(join(tmpdir(), 'moa-devcontainer-check-'));
+	const binDir = join(tempDir, 'bin');
+	const nodeCommand = `#!/bin/sh
+case "$1" in
+	--version) printf '%s\\n' "$MOCK_NODE_VERSION" ;;
+	-p) printf '%s\\n' "$MOCK_NODE_ENGINE" ;;
+esac
+`;
+	const commands: Record<string, string> = {
+		node: nodeCommand,
+		npm: '#!/bin/sh\nprintf "12.0.1\\n"\n',
+		git: '#!/bin/sh\nprintf "git version 2.50.0\\n"\n',
+		psql: '#!/bin/sh\nprintf "psql 16.0\\n"\n',
+		docker: '#!/bin/sh\nprintf "Docker version 28.0.0\\n"\n',
+		zsh: '#!/bin/sh\nprintf "zsh 5.9\\n"\n'
+	};
+
+	try {
+		mkdirSync(binDir, { recursive: true });
+		for (const [name, command] of Object.entries(commands)) {
+			const path = join(binDir, name);
+			writeFileSync(path, command, 'utf8');
+			chmodSync(path, 0o755);
+		}
+
+		const scriptPath = resolve(process.cwd(), '.devcontainer/check-environment.sh');
+		const script = readFileSync(scriptPath, 'utf8');
+		const systemCheckEnd = script.indexOf('# 2. 檢查 Node.js 套件');
+		expect(systemCheckEnd).toBeGreaterThan(0);
+		const result = spawnSync('bash', ['-c', script.slice(0, systemCheckEnd)], {
+			cwd: tempDir,
+			env: {
+				...process.env,
+				MOCK_NODE_VERSION: nodeVersion,
+				MOCK_NODE_ENGINE: engineRange,
+				PATH: `${binDir}:${process.env.PATH ?? ''}`
+			},
+			encoding: 'utf8'
+		});
+
+		if (result.error) throw result.error;
+		expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+		return `${result.stdout}\n${result.stderr}`;
+	} finally {
+		rmSync(tempDir, { recursive: true, force: true });
+	}
+}
+
+describe('devcontainer Node.js engine validation', () => {
+	const engineRange = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'))
+		.engines.node as string;
+
+	it.each([
+		['v24.22.0', false],
+		['v24.22.1', true],
+		['v24.23.0', true],
+		['v25.0.0', false],
+		['v24.22.1-rc.1', false]
+	])('reports whether %s satisfies the package engine range', (nodeVersion, satisfies) => {
+		const output = runDevcontainerCheck(nodeVersion, engineRange);
+		const expected = satisfies
+			? `版本符合 (${engineRange})`
+			: `警告: Node.js ${nodeVersion} 不符合 ${engineRange}`;
+
+		expect(output).toContain(expected);
+	});
+});
 
 describe('release workflow contracts', () => {
 	it('does not execute notification actions from mutable branches', () => {
@@ -218,6 +295,7 @@ describe('release workflow contracts', () => {
 		expect(workflow).toContain('tagCommit !== releaseSha');
 		expect(workflow).toContain('generate_release_notes: true');
 		expect(buildDockerJob).toContain('    environment: production');
+		expect((buildDockerJob.match(/^\s+pull: true$/gm) ?? []).length).toBe(2);
 		expect(createReleaseJob).toContain('    environment: production');
 		expect(workflow).not.toContain(
 			"github.rest.actions.createWorkflowDispatch({\n                owner: context.repo.owner,\n                repo: context.repo.repo,\n                workflow_id: 'cd.yml'"
