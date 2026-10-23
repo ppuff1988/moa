@@ -263,6 +263,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:latest
           cache-to: type=inline
           platforms: linux/amd64,linux/arm64
+          pull: true
 
       - name: 建置並推送 Worker image
         uses: docker/build-push-action@v6
@@ -277,6 +278,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/moa:worker
           cache-to: type=inline
           platforms: linux/amd64,linux/arm64
+          pull: true
 
   prepare-tag:
     name: 建立或驗證版本標籤
